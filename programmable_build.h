@@ -19,6 +19,16 @@
     #define prb_assert assert
 #endif
 
+#ifndef prb_memcpy
+    #include <stdlib.h>
+    #define prb_memcpy memcpy
+#endif
+
+#ifndef prb_allocAndZero
+    #include <stdlib.h>
+    #define prb_allocAndZero(bytes) calloc(bytes, 1)
+#endif
+
 #define prb_arrayLength(arr) ((sizeof((arr)[0])) / sizeof(arr))
 #define prb_STR(str) \
     (prb_String) { \
@@ -74,8 +84,9 @@ prb_StepHandle prb_addStep(prb_StepProc proc, prb_StepData data);
 void prb_setDependency(prb_StepHandle dependent, prb_StepHandle dependency);
 void prb_run(void);
 
+prb_String prb_allocEmptyString(int32_t len);
 bool prb_isDirectory(prb_String path);
-prb_String prb_getAbsolutePath(prb_String path);
+prb_String prb_stringCopy(prb_String source, int32_t len);
 prb_String prb_getParentDir(prb_String path);
 prb_String prb_pathJoin(prb_String path1, prb_String path2);
 prb_String prb_createIncludeFlag(prb_String path);
@@ -97,7 +108,7 @@ struct {
 void
 prb_init(prb_String rootPath) {
     prb_assert(prb_isDirectory(rootPath));
-    prb_globalBuilder.rootPath = prb_getAbsolutePath(rootPath);
+    prb_globalBuilder.rootPath = rootPath;
 }
 
 prb_StepHandle
@@ -122,17 +133,48 @@ prb_run(void) {
     }
 }
 
+prb_String
+prb_allocEmptyString(int32_t len) {
+    prb_assert(len > 0);
+    prb_String result = {prb_allocAndZero(len + 1), len};
+    return result;
+}
+
+prb_String
+prb_stringCopy(prb_String source, int32_t len) {
+    prb_String result = prb_allocEmptyString(len);
+    prb_memcpy(result.ptr, source.ptr, len);
+    return result;
+}
+
 bool
 prb_isDirectory(prb_String path) {}
 
 prb_String
-prb_getAbsolutePath(prb_String path) {}
+prb_getParentDir(prb_String path) {
+    prb_assert(path.ptr && path.len > 0);
+    int32_t lastPathSepIndex = -1;
+    for (int32_t index = path.len - 1; index >= 0; index--) {
+        char ch = path.ptr[index];
+        if (ch == '/' || ch == '\\') {
+            lastPathSepIndex = index;
+            break;
+        }
+    }
+    prb_assert(lastPathSepIndex >= 0);
+    prb_String result = prb_stringCopy(path, lastPathSepIndex + 1);
+    return result;
+}
 
 prb_String
-prb_getParentDir(prb_String path) {}
-
-prb_String
-prb_pathJoin(prb_String path1, prb_String path2) {}
+prb_pathJoin(prb_String path1, prb_String path2) {
+    prb_assert(path1.ptr && path1.len > 0 && path2.ptr && path2.len > 0);
+    prb_String result = prb_allocEmptyString(path1.len + 1 + path2.len);
+    prb_memcpy(result.ptr, path1.ptr, path1.len);
+    result.ptr[path1.len] = '/';
+    prb_memcpy(result.ptr + path1.len + 1, path2.ptr, path2.len);
+    return result;
+}
 
 prb_String
 prb_createIncludeFlag(prb_String path) {}
