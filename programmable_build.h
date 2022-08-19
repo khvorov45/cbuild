@@ -204,6 +204,7 @@ prb_run(void) {
     for (int32_t stepIndex = 0; stepIndex < prb_globalBuilder.stepCount; stepIndex++) {
         // prb_Step* step = prb_globalBuilder.steps + stepIndex;
         // step->proc(step->data);
+        prb_assert(!"unimplemented");
     }
 }
 
@@ -292,13 +293,19 @@ prb_createIncludeFlag(prb_String path) {
 //
 
 void
-prb_gitClone(prb_StepData data) {}
+prb_gitClone(prb_StepData data) {
+    prb_assert(!"unimplemented");
+}
 
 void
-prb_compileStaticLibrary(prb_StepData data) {}
+prb_compileStaticLibrary(prb_StepData data) {
+    prb_assert(!"unimplemented");
+}
 
 void
-prb_compileExecutable(prb_StepData data) {}
+prb_compileExecutable(prb_StepData data) {
+    prb_assert(!"unimplemented");
+}
 
 //
 // SECTION Platform-specific stuff
