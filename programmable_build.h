@@ -136,12 +136,25 @@ typedef struct prb_StepData {
     };
 } prb_StepData;
 
-typedef void (*prb_StepProc)(prb_StepData data);
+typedef enum prb_CompletionStatus {
+    prb_CompletionStatus_Success,
+    prb_CompletionStatus_Failure,
+} prb_CompletionStatus;
+
+typedef prb_CompletionStatus (*prb_StepProc)(prb_StepData data);
 
 typedef struct prb_Step {
     prb_StepProc proc;
     prb_StepData data;
 } prb_Step;
+
+typedef enum prb_StepStatus {
+    prb_StepStatus_NotStarted,
+    prb_StepStatus_NotStartedBecauseDepsFailed,
+    prb_StepStatus_InProgress,
+    prb_StepStatus_CompletedSuccessfully,
+    prb_StepStatus_CompletedUnsuccessfully,
+} prb_StepStatus;
 
 // SECTION Core
 void prb_init(prb_String rootPath);
@@ -150,7 +163,8 @@ void prb_setDependency(prb_StepHandle dependent, prb_StepHandle dependency);
 void prb_run(void);
 
 // SECTION Helpers
-bool prb_isDirectory(prb_String path);
+bool prb_directoryExists(prb_String path);
+bool prb_directoryIsEmpty(prb_String path);
 bool prb_charIsSep(char ch);
 prb_StringBuilder prb_createStringBuilder(int32_t len);
 void prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source);
@@ -159,18 +173,25 @@ prb_String prb_getParentDir(prb_String path);
 prb_String prb_stringJoin(prb_String str1, prb_String str2);
 prb_String prb_pathJoin(prb_String path1, prb_String path2);
 prb_String prb_createIncludeFlag(prb_String path);
+prb_CompletionStatus prb_execCmd(prb_String cmd);
+void prb_logMessage(prb_String msg);
+void prb_logMessageLn(prb_String msg);
+int32_t prb_atomicIncrement(int32_t volatile* addend);
+bool prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t compare);
 
 // SECTION Sample step procedures
-void prb_gitClone(prb_StepData data);
-void prb_compileStaticLibrary(prb_StepData data);
-void prb_compileExecutable(prb_StepData data);
+prb_CompletionStatus prb_gitClone(prb_StepData data);
+prb_CompletionStatus prb_compileStaticLibrary(prb_StepData data);
+prb_CompletionStatus prb_compileExecutable(prb_StepData data);
 
 #ifdef PROGRAMMABLE_BUILD_IMPLEMENTATION
 
 struct {
     prb_String rootPath;
     prb_Step steps[prb_MAX_STEPS];
+    prb_StepStatus stepStatus[prb_MAX_STEPS];
     int32_t stepCount;
+    int32_t stepsCompleted;
     prb_StepHandle dependencies[prb_MAX_STEPS][prb_MAX_DEPENDENCIES_PER_STEP];
     int32_t dependenciesCounts[prb_MAX_STEPS];
 } prb_globalBuilder;
@@ -181,7 +202,7 @@ struct {
 
 void
 prb_init(prb_String rootPath) {
-    prb_assert(prb_isDirectory(rootPath));
+    prb_assert(prb_directoryExists(rootPath));
     prb_globalBuilder.rootPath = rootPath;
 }
 
@@ -200,12 +221,57 @@ prb_setDependency(prb_StepHandle dependent, prb_StepHandle dependency) {
 }
 
 void
-prb_run(void) {
-    for (int32_t stepIndex = 0; stepIndex < prb_globalBuilder.stepCount; stepIndex++) {
-        // prb_Step* step = prb_globalBuilder.steps + stepIndex;
-        // step->proc(step->data);
-        prb_assert(!"unimplemented");
+prb_completeAllSteps(void) {
+    while (prb_globalBuilder.stepsCompleted != prb_globalBuilder.stepCount) {
+        for (int32_t stepIndex = 0; stepIndex < prb_globalBuilder.stepCount; stepIndex++) {
+            if (prb_globalBuilder.stepStatus[stepIndex] == prb_StepStatus_NotStarted) {
+                bool anyDepsFailed = false;
+                bool allDepsDone = true;
+                prb_StepHandle* dependencies = prb_globalBuilder.dependencies[stepIndex];
+                int32_t depCount = prb_globalBuilder.dependenciesCounts[stepIndex];
+                for (int32_t depIndexIndex = 0; depIndexIndex < depCount; depIndexIndex++) {
+                    prb_StepHandle depHandle = dependencies[depIndexIndex];
+                    prb_StepStatus depStatus = prb_globalBuilder.stepStatus[depHandle.index];
+                    if (depStatus != prb_StepStatus_CompletedSuccessfully) {
+                        allDepsDone = false;
+                    }
+                    if (depStatus == prb_StepStatus_CompletedUnsuccessfully
+                        || depStatus == prb_StepStatus_NotStartedBecauseDepsFailed) {
+                        anyDepsFailed = true;
+                    }
+                }
+
+                if (anyDepsFailed
+                    && prb_atomicCompareExchange(
+                        (int32_t volatile*)(prb_globalBuilder.stepStatus + stepIndex),
+                        prb_StepStatus_NotStartedBecauseDepsFailed,
+                        prb_StepStatus_NotStarted
+                    )) {
+                    prb_atomicIncrement(&prb_globalBuilder.stepsCompleted);
+                } else if (allDepsDone && prb_atomicCompareExchange((int32_t volatile*)(prb_globalBuilder.stepStatus + stepIndex), prb_StepStatus_InProgress, prb_StepStatus_NotStarted)) {
+                    prb_Step* step = prb_globalBuilder.steps + stepIndex;
+                    prb_CompletionStatus procStatus = step->proc(step->data);
+
+                    // NOTE(khvorov) Only one thread can be here per step, so these status writes are not atomic
+                    switch (procStatus) {
+                        case prb_CompletionStatus_Success: {
+                            prb_globalBuilder.stepStatus[stepIndex] = prb_StepStatus_CompletedSuccessfully;
+                        } break;
+                        case prb_CompletionStatus_Failure: {
+                            prb_globalBuilder.stepStatus[stepIndex] = prb_StepStatus_CompletedUnsuccessfully;
+                        } break;
+                    }
+
+                    prb_atomicIncrement(&prb_globalBuilder.stepsCompleted);
+                }
+            }
+        }
     }
+}
+
+void
+prb_run(void) {
+    prb_completeAllSteps();
 }
 
 //
@@ -292,19 +358,36 @@ prb_createIncludeFlag(prb_String path) {
 // SECTION Example step procedures
 //
 
-void
+prb_CompletionStatus
 prb_gitClone(prb_StepData data) {
-    prb_assert(!"unimplemented");
+    prb_assert(data.kind == prb_StepDataKind_GitClone);
+    prb_String cmdStart = prb_STR("git clone ");
+    prb_String realDest = prb_pathJoin(prb_globalBuilder.rootPath, data.gitClone.dest);
+
+    prb_CompletionStatus status = prb_CompletionStatus_Success;
+    if (!prb_directoryExists(realDest) || prb_directoryIsEmpty(realDest)) {
+        prb_StringBuilder cmdBuilder = prb_createStringBuilder(cmdStart.len + data.gitClone.url.len + 1 + realDest.len);
+        prb_stringBuilderWrite(&cmdBuilder, cmdStart);
+        prb_stringBuilderWrite(&cmdBuilder, data.gitClone.url);
+        prb_stringBuilderWrite(&cmdBuilder, prb_STR(" "));
+        prb_stringBuilderWrite(&cmdBuilder, realDest);
+        prb_logMessageLn(cmdBuilder.string);
+        status = prb_execCmd(cmdBuilder.string);
+    }
+
+    return status;
 }
 
-void
+prb_CompletionStatus
 prb_compileStaticLibrary(prb_StepData data) {
     prb_assert(!"unimplemented");
+    return prb_CompletionStatus_Success;
 }
 
-void
+prb_CompletionStatus
 prb_compileExecutable(prb_StepData data) {
     prb_assert(!"unimplemented");
+    return prb_CompletionStatus_Success;
 }
 
 //
@@ -316,7 +399,7 @@ prb_compileExecutable(prb_StepData data) {
         #include <windows.h>
 
 bool
-prb_isDirectory(prb_String path) {
+prb_directoryExists(prb_String path) {
     prb_assert(path.ptr && path.len > 0);
     prb_String pathNoTrailingSlash = path;
     char lastChar = path.ptr[path.len - 1];
@@ -329,6 +412,70 @@ prb_isDirectory(prb_String path) {
     if (findHandle != INVALID_HANDLE_VALUE) {
         result = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
     }
+    return result;
+}
+
+bool
+prb_directoryIsEmpty(prb_String path) {
+    prb_assert(prb_directoryExists(path));
+    prb_String search = prb_pathJoin(path, prb_STR("*"));
+    WIN32_FIND_DATAA findData;
+    HANDLE firstHandle = FindFirstFileA(search.ptr, &findData);
+    bool result = true;
+    if (findData.cFileName[0] == '.' && findData.cFileName[1] == '\0') {
+        while (FindNextFileA(firstHandle, &findData)) {
+            if (findData.cFileName[0] == '.' && findData.cFileName[1] == '.' && findData.cFileName[2] == '\0') {
+                continue;
+            }
+            result = false;
+            break;
+        }
+    }
+    return result;
+}
+
+prb_CompletionStatus
+prb_execCmd(prb_String cmd) {
+    STARTUPINFOA startupInfo = {.cb = sizeof(STARTUPINFOA)};
+
+    PROCESS_INFORMATION processInfo;
+    if (CreateProcessA(0, cmd.ptr, 0, 0, 0, 0, 0, 0, &startupInfo, &processInfo)) {
+        WaitForSingleObject(processInfo.hProcess, INFINITE);
+    }
+
+    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Success;
+    DWORD exitCode;
+    if (GetExitCodeProcess(processInfo.hProcess, &exitCode)) {
+        if (exitCode != 0) {
+            cmdStatus = prb_CompletionStatus_Failure;
+        }
+    }
+
+    return cmdStatus;
+}
+
+void
+prb_logMessage(prb_String msg) {
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    WriteFile(out, msg.ptr, msg.len, 0, 0);
+}
+
+void
+prb_logMessageLn(prb_String msg) {
+    prb_logMessage(msg);
+    prb_logMessage(prb_STR("\n"));
+}
+
+int32_t
+prb_atomicIncrement(int32_t volatile* addend) {
+    int32_t result = InterlockedAdd((long volatile*)addend, 1);
+    return result;
+}
+
+bool
+prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t compare) {
+    int32_t initValue = InterlockedCompareExchange((long volatile*)dest, exchange, compare);
+    bool result = initValue == compare;
     return result;
 }
 
