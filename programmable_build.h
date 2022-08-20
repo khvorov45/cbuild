@@ -178,6 +178,7 @@ void prb_logMessage(prb_String msg);
 void prb_logMessageLn(prb_String msg);
 int32_t prb_atomicIncrement(int32_t volatile* addend);
 bool prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t compare);
+void prb_sleepMs(int32_t ms);
 
 // SECTION Sample step procedures
 prb_CompletionStatus prb_gitClone(prb_StepData data);
@@ -223,6 +224,8 @@ prb_setDependency(prb_StepHandle dependent, prb_StepHandle dependency) {
 void
 prb_completeAllSteps(void) {
     while (prb_globalBuilder.stepsCompleted != prb_globalBuilder.stepCount) {
+        int32_t stepsCompletedBeforeLoop = prb_globalBuilder.stepsCompleted;
+
         for (int32_t stepIndex = 0; stepIndex < prb_globalBuilder.stepCount; stepIndex++) {
             if (prb_globalBuilder.stepStatus[stepIndex] == prb_StepStatus_NotStarted) {
                 bool anyDepsFailed = false;
@@ -265,6 +268,11 @@ prb_completeAllSteps(void) {
                     prb_atomicIncrement(&prb_globalBuilder.stepsCompleted);
                 }
             }
+        }
+
+        while (stepsCompletedBeforeLoop == prb_globalBuilder.stepsCompleted
+               && prb_globalBuilder.stepsCompleted != prb_globalBuilder.stepCount) {
+            prb_sleepMs(100);
         }
     }
 }
@@ -477,6 +485,11 @@ prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t comp
     int32_t initValue = InterlockedCompareExchange((long volatile*)dest, exchange, compare);
     bool result = initValue == compare;
     return result;
+}
+
+void
+prb_sleepMs(int32_t ms) {
+    Sleep(ms);
 }
 
     #endif  // prb_PLATFORM == prb_PLATFORM_WINDOWS
