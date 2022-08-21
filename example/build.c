@@ -207,14 +207,7 @@ main() {
 
     {
         prb_String cmd = prb_stringJoin2(compileCmdStart, prb_pathJoin2(rootDir, prb_STR("example.c")));
-        prb_StepHandle exeCompileHandle = prb_addStep(
-            compile,
-            &(Compile) {
-                .name = prb_STR("example"),
-                .cmds = &cmd,
-                .cmdCount = 1,
-            }
-        );
+        prb_StepHandle exeCompileHandle = prb_addStep(compile, &(Compile) {.cmds = &cmd, .cmdCount = 1});
 
         prb_setDependency(exeCompileHandle, freetypeFinalHandle);
     }
