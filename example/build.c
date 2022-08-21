@@ -37,11 +37,12 @@ compile(void* dataInit) {
     uint64_t sourceLastMod = prb_getLastModifiedFromPatterns(data->sources, data->sourcesCount);
     uint64_t outputsLastMod = prb_getLastModifiedFromPatterns(data->outputs, data->outputsCount);
     if (sourceLastMod > outputsLastMod) {
-        prb_String cmd = prb_stringJoin2(data->cmdStart, prb_stringsJoin(data->sources, data->sourcesCount, prb_STR(" ")));
+        prb_String cmd =
+            prb_stringJoin2(data->cmdStart, prb_stringsJoin(data->sources, data->sourcesCount, prb_STR(" ")));
         prb_logMessageLn(cmd);
         status = prb_execCmd(cmd);
     } else {
-        prb_logMessageLn(prb_stringJoin2(prb_STR("skip compile "), data->name));
+        prb_logMessageLn(prb_stringJoin2(prb_STR("skip "), data->name));
     }
 
     return status;
@@ -51,23 +52,35 @@ int
 main() {
     prb_String rootDir = prb_getParentDir(prb_STR(__FILE__));
 
-    prb_String freetypeDownloadDir = prb_pathJoin2(rootDir, prb_STR("freetype"));
-    prb_StepHandle freetypeDownloadHandle = prb_addStep(
-        gitClone,
-        &(GitClone) {.url = prb_STR("https://github.com/freetype/freetype"), .dest = freetypeDownloadDir}
-    );
-
     prb_String compileOutDir = prb_pathJoin2(rootDir, prb_STR("build-debug"));
     prb_createDirIfNotExists(compileOutDir);
+
 #if prb_PLATFORM == prb_PLATFORM_WINDOWS
     prb_String compileCmdStart = prb_STR("cl /nologo /diagnostics:column /FC ");
+    prb_String staticLibCmdStart = prb_STR("lib /nologo ");
 #endif
 
+    //
+    // SECTION Freetype
+    //
+
+    prb_String freetypeDownloadDir = prb_pathJoin2(rootDir, prb_STR("freetype"));
     prb_String freetypeIncludeFlag =
         prb_stringJoin2(prb_STR("-I"), prb_pathJoin2(freetypeDownloadDir, prb_STR("include")));
-    prb_StepHandle freetypeCompileHandle;
+
+#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+    prb_String freetypeLibFile = prb_pathJoin2(compileOutDir, prb_STR("freetype.lib"));
+#endif
+
+    prb_StepHandle freetypeFinalHandle;
     {
-        prb_String sources[] = {
+        
+        prb_StepHandle downloadHandle = prb_addStep(
+            gitClone,
+            &(GitClone) {.url = prb_STR("https://github.com/freetype/freetype"), .dest = freetypeDownloadDir}
+        );
+
+        prb_String compileSources[] = {
             // Required
             prb_pathJoin2(freetypeDownloadDir, prb_STR("src/base/ftsystem.c")),
             prb_pathJoin2(freetypeDownloadDir, prb_STR("src/base/ftinit.c")),
@@ -128,9 +141,9 @@ main() {
         prb_String freetypeObjDir = prb_pathJoin2(compileOutDir, prb_STR("freetype"));
         prb_createDirIfNotExists(freetypeObjDir);
 
-        prb_String outputs[] = {prb_pathJoin2(freetypeObjDir, prb_STR("*.obj"))};
+        prb_String objOutputs[] = {prb_pathJoin2(freetypeObjDir, prb_STR("*.obj"))};
 
-        prb_String flagsArr[] = {
+        prb_String compileFlags[] = {
             freetypeIncludeFlag,
             prb_STR("-DFT2_BUILD_LIBRARY"),
             prb_STR("-c"),
@@ -140,22 +153,40 @@ main() {
 #endif
         };
 
-        freetypeCompileHandle = prb_addStep(
+        prb_StepHandle compileHandle = prb_addStep(
             compile,
-            &(Compile) {
-                .name = prb_STR("freetype"),
-                .cmdStart = prb_stringJoin2(
-                    compileCmdStart,
-                    prb_stringsJoin(flagsArr, prb_arrayLength(flagsArr), prb_STR(" "))
-                ),
-                .sources = sources,
-                .sourcesCount = prb_arrayLength(sources),
-                .outputs = outputs,
-                .outputsCount = prb_arrayLength(outputs)
-            }
+            &(Compile
+            ) {.name = prb_STR("freetype compile"),
+               .cmdStart = prb_stringJoin2(
+                   compileCmdStart,
+                   prb_stringsJoin(compileFlags, prb_arrayLength(compileFlags), prb_STR(" "))
+               ),
+               .sources = compileSources,
+               .sourcesCount = prb_arrayLength(compileSources),
+               .outputs = objOutputs,
+               .outputsCount = prb_arrayLength(objOutputs)}
         );
 
-        prb_setDependency(freetypeCompileHandle, freetypeDownloadHandle);
+        prb_setDependency(compileHandle, downloadHandle);
+
+        prb_String libFlags[] = {
+#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+            prb_stringJoin2(prb_STR("-out:"), freetypeLibFile),
+#endif
+        };
+
+        freetypeFinalHandle = prb_addStep(
+            compile,
+            &(Compile
+            ) {.name = prb_STR("freetype lib"),
+               .cmdStart = prb_stringJoin2(staticLibCmdStart, prb_stringsJoin(libFlags, prb_arrayLength(libFlags), prb_STR(" "))),
+               .sources = objOutputs,
+               .sourcesCount = prb_arrayLength(objOutputs),
+               .outputs = &freetypeLibFile,
+               .outputsCount = 1}
+        );
+
+        prb_setDependency(freetypeFinalHandle, compileHandle);
     }
 
     {
@@ -171,7 +202,7 @@ main() {
             }
         );
 
-        prb_setDependency(exeCompileHandle, freetypeCompileHandle);
+        prb_setDependency(exeCompileHandle, freetypeFinalHandle);
     }
 
     prb_run();
