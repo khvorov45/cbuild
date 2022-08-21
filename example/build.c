@@ -8,7 +8,8 @@ typedef struct GitClone {
 
 typedef struct Compile {
     prb_String name;
-    prb_String cmdStart;
+    prb_String* cmds;
+    int32_t cmdCount;
     prb_String* sources;
     int32_t sourcesCount;
     prb_String* outputs;
@@ -36,11 +37,12 @@ compile(void* dataInit) {
 
     uint64_t sourceLastMod = prb_getLastModifiedFromPatterns(data->sources, data->sourcesCount);
     uint64_t outputsLastMod = prb_getLastModifiedFromPatterns(data->outputs, data->outputsCount);
-    if (sourceLastMod > outputsLastMod) {
-        prb_String cmd =
-            prb_stringJoin2(data->cmdStart, prb_stringsJoin(data->sources, data->sourcesCount, prb_STR(" ")));
-        prb_logMessageLn(cmd);
-        status = prb_execCmd(cmd);
+    if (sourceLastMod > outputsLastMod || data->sourcesCount == 0 || data->outputsCount == 0) {
+        for (int32_t cmdIndex = 0; cmdIndex < data->cmdCount; cmdIndex++) {
+            prb_String cmd = data->cmds[cmdIndex];
+            prb_logMessageLn(cmd);
+            status = prb_execCmd(cmd);
+        }
     } else {
         prb_logMessageLn(prb_stringJoin2(prb_STR("skip "), data->name));
     }
@@ -74,7 +76,6 @@ main() {
 
     prb_StepHandle freetypeFinalHandle;
     {
-        
         prb_StepHandle downloadHandle = prb_addStep(
             gitClone,
             &(GitClone) {.url = prb_STR("https://github.com/freetype/freetype"), .dest = freetypeDownloadDir}
@@ -153,14 +154,18 @@ main() {
 #endif
         };
 
+        prb_String compileCmd = prb_stringJoin3(
+            compileCmdStart,
+            prb_stringsJoin(compileFlags, prb_arrayLength(compileFlags), prb_STR(" ")),
+            prb_stringsJoin(compileSources, prb_arrayLength(compileSources), prb_STR(" "))
+        );
+
         prb_StepHandle compileHandle = prb_addStep(
             compile,
             &(Compile
             ) {.name = prb_STR("freetype compile"),
-               .cmdStart = prb_stringJoin2(
-                   compileCmdStart,
-                   prb_stringsJoin(compileFlags, prb_arrayLength(compileFlags), prb_STR(" "))
-               ),
+               .cmds = &compileCmd,
+               .cmdCount = 1,
                .sources = compileSources,
                .sourcesCount = prb_arrayLength(compileSources),
                .outputs = objOutputs,
@@ -175,11 +180,18 @@ main() {
 #endif
         };
 
+        prb_String libCmd = prb_stringJoin3(
+            staticLibCmdStart,
+            prb_stringsJoin(libFlags, prb_arrayLength(libFlags), prb_STR(" ")),
+            prb_stringsJoin(objOutputs, prb_arrayLength(objOutputs), prb_STR(" "))
+        );
+
         freetypeFinalHandle = prb_addStep(
             compile,
             &(Compile
             ) {.name = prb_STR("freetype lib"),
-               .cmdStart = prb_stringJoin2(staticLibCmdStart, prb_stringsJoin(libFlags, prb_arrayLength(libFlags), prb_STR(" "))),
+               .cmds = &libCmd,
+               .cmdCount = 1,
                .sources = objOutputs,
                .sourcesCount = prb_arrayLength(objOutputs),
                .outputs = &freetypeLibFile,
@@ -189,16 +201,18 @@ main() {
         prb_setDependency(freetypeFinalHandle, compileHandle);
     }
 
-    {
-        prb_String sources[] = {prb_pathJoin2(rootDir, prb_STR("example.c"))};
+    //
+    // SECTION Main program
+    //
 
+    {
+        prb_String cmd = prb_stringJoin2(compileCmdStart, prb_pathJoin2(rootDir, prb_STR("example.c")));
         prb_StepHandle exeCompileHandle = prb_addStep(
             compile,
             &(Compile) {
                 .name = prb_STR("example"),
-                .cmdStart = compileCmdStart,
-                .sources = sources,
-                .sourcesCount = prb_arrayLength(sources),
+                .cmds = &cmd,
+                .cmdCount = 1,
             }
         );
 
