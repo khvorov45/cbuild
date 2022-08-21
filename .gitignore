@@ -6,3 +6,4 @@
 /shell.bat
 /example/freetype
 /example/build-*
+/msvc.env

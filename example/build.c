@@ -7,9 +7,12 @@ typedef struct GitClone {
 } GitClone;
 
 typedef struct Compile {
+    prb_String name;
     prb_String cmdStart;
     prb_String* sources;
     int32_t sourcesCount;
+    prb_String* outputs;
+    int32_t outputsCount;
 } Compile;
 
 prb_CompletionStatus
@@ -20,6 +23,8 @@ gitClone(void* dataInit) {
         prb_String cmd = prb_stringJoin4(prb_STR("git clone "), data->url, prb_STR(" "), data->dest);
         prb_logMessageLn(cmd);
         status = prb_execCmd(cmd);
+    } else {
+        prb_logMessageLn(prb_stringJoin2(prb_STR("skip git clone "), prb_getLastEntryInPath(data->dest)));
     }
     return status;
 }
@@ -27,11 +32,18 @@ gitClone(void* dataInit) {
 prb_CompletionStatus
 compile(void* dataInit) {
     Compile* data = (Compile*)dataInit;
-    
-    prb_assert(!"unimplemented");
-    prb_String cmd = prb_stringJoin2(data->cmdStart, prb_stringsJoin(data->sources, data->sourcesCount, prb_STR(" ")));
-    prb_logMessageLn(cmd);
-    prb_CompletionStatus status = prb_execCmd(cmd);
+    prb_CompletionStatus status = prb_CompletionStatus_Success;
+
+    uint64_t sourceLastMod = prb_getLastModifiedFromPatterns(data->sources, data->sourcesCount);
+    uint64_t outputsLastMod = prb_getLastModifiedFromPatterns(data->outputs, data->outputsCount);
+    if (sourceLastMod > outputsLastMod) {
+        prb_String cmd = prb_stringJoin2(data->cmdStart, prb_stringsJoin(data->sources, data->sourcesCount, prb_STR(" ")));
+        prb_logMessageLn(cmd);
+        status = prb_execCmd(cmd);
+    } else {
+        prb_logMessageLn(prb_stringJoin2(prb_STR("skip compile "), data->name));
+    }
+
     return status;
 }
 
@@ -116,6 +128,8 @@ main() {
         prb_String freetypeObjDir = prb_pathJoin2(compileOutDir, prb_STR("freetype"));
         prb_createDirIfNotExists(freetypeObjDir);
 
+        prb_String outputs[] = {prb_pathJoin2(freetypeObjDir, prb_STR("*.obj"))};
+
         prb_String flagsArr[] = {
             freetypeIncludeFlag,
             prb_STR("-DFT2_BUILD_LIBRARY"),
@@ -129,12 +143,15 @@ main() {
         freetypeCompileHandle = prb_addStep(
             compile,
             &(Compile) {
+                .name = prb_STR("freetype"),
                 .cmdStart = prb_stringJoin2(
                     compileCmdStart,
                     prb_stringsJoin(flagsArr, prb_arrayLength(flagsArr), prb_STR(" "))
                 ),
                 .sources = sources,
                 .sourcesCount = prb_arrayLength(sources),
+                .outputs = outputs,
+                .outputsCount = prb_arrayLength(outputs)
             }
         );
 
@@ -147,6 +164,7 @@ main() {
         prb_StepHandle exeCompileHandle = prb_addStep(
             compile,
             &(Compile) {
+                .name = prb_STR("example"),
                 .cmdStart = compileCmdStart,
                 .sources = sources,
                 .sourcesCount = prb_arrayLength(sources),

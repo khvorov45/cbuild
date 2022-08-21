@@ -88,6 +88,8 @@ extern void __cdecl __debugbreak(void);
     #define prb_allocAndZero(bytes) calloc(bytes, 1)
 #endif
 
+#define prb_max(a, b) (((a) > (b)) ? (a) : (b))
+#define prb_min(a, b) (((a) < (b)) ? (a) : (b))
 #define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
 #define prb_STR(str) \
     (prb_String) { \
@@ -146,8 +148,12 @@ void prb_createDirIfNotExists(prb_String path);
 bool prb_charIsSep(char ch);
 prb_StringBuilder prb_createStringBuilder(int32_t len);
 void prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source);
-prb_String prb_stringCopy(prb_String source, int32_t len);
+prb_String prb_stringCopy(prb_String source, int32_t from, int32_t to);
+prb_String prb_getCurrentWorkingDir(void);
 prb_String prb_getParentDir(prb_String path);
+prb_String prb_getLastEntryInPath(prb_String path);
+uint64_t prb_getLastModifiedFromPattern(prb_String pattern);
+uint64_t prb_getLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 prb_String prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
 prb_String prb_stringJoin2(prb_String str1, prb_String str2);
 prb_String prb_stringJoin3(prb_String str1, prb_String str2, prb_String str3);
@@ -277,15 +283,16 @@ prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source) {
 }
 
 prb_String
-prb_stringCopy(prb_String source, int32_t len) {
-    prb_assert(len <= source.len);
+prb_stringCopy(prb_String source, int32_t from, int32_t to) {
+    prb_assert(to >= from && to >= 0 && from >= 0 && to < source.len && from < source.len);
+    int32_t len = to - from + 1;
     prb_StringBuilder builder = prb_createStringBuilder(len);
-    prb_stringBuilderWrite(&builder, (prb_String) {source.ptr, len});
+    prb_stringBuilderWrite(&builder, (prb_String) {source.ptr + from, len});
     return builder.string;
 }
 
-prb_String
-prb_getParentDir(prb_String path) {
+int32_t
+prb_getLastPathSepIndex(prb_String path) {
     prb_assert(path.ptr && path.len > 0);
     int32_t lastPathSepIndex = -1;
     for (int32_t index = path.len - 1; index >= 0; index--) {
@@ -295,8 +302,20 @@ prb_getParentDir(prb_String path) {
             break;
         }
     }
-    prb_assert(lastPathSepIndex >= 0);
-    prb_String result = prb_stringCopy(path, lastPathSepIndex + 1);
+    return lastPathSepIndex;
+}
+
+prb_String
+prb_getParentDir(prb_String path) {
+    int32_t lastPathSepIndex = prb_getLastPathSepIndex(path);
+    prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, 0, lastPathSepIndex) : prb_getCurrentWorkingDir();
+    return result;
+}
+
+prb_String
+prb_getLastEntryInPath(prb_String path) {
+    int32_t lastPathSepIndex = prb_getLastPathSepIndex(path);
+    prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, lastPathSepIndex + 1, path.len - 1) : path;
     return result;
 }
 
@@ -388,7 +407,7 @@ prb_directoryExists(prb_String path) {
     prb_String pathNoTrailingSlash = path;
     char lastChar = path.ptr[path.len - 1];
     if (lastChar == '/' || lastChar == '\\') {
-        pathNoTrailingSlash = prb_stringCopy(path, path.len - 1);
+        pathNoTrailingSlash = prb_stringCopy(path, 0, path.len - 2);
     }
     bool result = false;
     WIN32_FIND_DATAA findData;
@@ -470,6 +489,43 @@ prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t comp
 void
 prb_sleepMs(int32_t ms) {
     Sleep(ms);
+}
+
+prb_String
+prb_getCurrentWorkingDir(void) {
+    prb_StringBuilder builder = prb_createStringBuilder(MAX_PATH);
+    GetCurrentDirectoryA(builder.string.len, builder.string.ptr);
+    return builder.string;
+}
+
+uint64_t
+prb_getLastModifiedFromPattern(prb_String pattern) {
+    uint64_t result = 0;
+
+    WIN32_FIND_DATAA findData;
+    HANDLE firstHandle = FindFirstFileA(pattern.ptr, &findData);
+    if (firstHandle != INVALID_HANDLE_VALUE) {
+        uint64_t thisLastMod =
+            ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+        result = prb_max(result, thisLastMod);
+        while (FindNextFileA(firstHandle, &findData)) {
+            thisLastMod =
+                ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+            result = prb_max(result, thisLastMod);
+        }
+        FindClose(firstHandle);
+    }
+
+    return result;
+}
+
+uint64_t
+prb_getLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
+    uint64_t result = 0;
+    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
+        result = prb_max(result, prb_getLastModifiedFromPattern(patterns[patternIndex]));
+    }
+    return result;
 }
 
     #endif  // prb_PLATFORM == prb_PLATFORM_WINDOWS
