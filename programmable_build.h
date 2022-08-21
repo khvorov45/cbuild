@@ -88,7 +88,7 @@ extern void __cdecl __debugbreak(void);
     #define prb_allocAndZero(bytes) calloc(bytes, 1)
 #endif
 
-#define prb_arrayLength(arr) ((sizeof((arr)[0])) / sizeof(arr))
+#define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
 #define prb_STR(str) \
     (prb_String) { \
         .ptr = (str), .len = (int32_t)prb_strlen(str) \
@@ -114,38 +114,16 @@ typedef enum prb_StepDataKind {
     prb_StepDataKind_Custom,
 } prb_StepDataKind;
 
-typedef struct prb_StepData {
-    prb_StepDataKind kind;
-    union {
-        struct {
-            prb_String url;
-            prb_String dest;
-        } gitClone;
-
-        struct {
-            prb_String dir;
-            prb_String* sources;
-            int32_t sourcesCount;
-            prb_String* flags;
-            int32_t flagsCount;
-            prb_String* extraWatch;
-            int32_t extraWatchCount;
-        } compile;
-
-        void* custom;
-    };
-} prb_StepData;
-
 typedef enum prb_CompletionStatus {
     prb_CompletionStatus_Success,
     prb_CompletionStatus_Failure,
 } prb_CompletionStatus;
 
-typedef prb_CompletionStatus (*prb_StepProc)(prb_StepData data);
+typedef prb_CompletionStatus (*prb_StepProc)(void* data);
 
 typedef struct prb_Step {
     prb_StepProc proc;
-    prb_StepData data;
+    void* data;
 } prb_Step;
 
 typedef enum prb_StepStatus {
@@ -157,33 +135,31 @@ typedef enum prb_StepStatus {
 } prb_StepStatus;
 
 // SECTION Core
-void prb_init(prb_String rootPath);
-prb_StepHandle prb_addStep(prb_StepProc proc, prb_StepData data);
+prb_StepHandle prb_addStep(prb_StepProc proc, void* data);
 void prb_setDependency(prb_StepHandle dependent, prb_StepHandle dependency);
 void prb_run(void);
 
 // SECTION Helpers
 bool prb_directoryExists(prb_String path);
 bool prb_directoryIsEmpty(prb_String path);
+void prb_createDirIfNotExists(prb_String path);
 bool prb_charIsSep(char ch);
 prb_StringBuilder prb_createStringBuilder(int32_t len);
 void prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source);
 prb_String prb_stringCopy(prb_String source, int32_t len);
 prb_String prb_getParentDir(prb_String path);
-prb_String prb_stringJoin(prb_String str1, prb_String str2);
-prb_String prb_pathJoin(prb_String path1, prb_String path2);
-prb_String prb_createIncludeFlag(prb_String path);
+prb_String prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
+prb_String prb_stringJoin2(prb_String str1, prb_String str2);
+prb_String prb_stringJoin3(prb_String str1, prb_String str2, prb_String str3);
+prb_String prb_stringJoin4(prb_String str1, prb_String str2, prb_String str3, prb_String str4);
+prb_String prb_pathJoin2(prb_String path1, prb_String path2);
+prb_String prb_pathJoin3(prb_String path1, prb_String path2, prb_String path3);
 prb_CompletionStatus prb_execCmd(prb_String cmd);
 void prb_logMessage(prb_String msg);
 void prb_logMessageLn(prb_String msg);
 int32_t prb_atomicIncrement(int32_t volatile* addend);
 bool prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t compare);
 void prb_sleepMs(int32_t ms);
-
-// SECTION Sample step procedures
-prb_CompletionStatus prb_gitClone(prb_StepData data);
-prb_CompletionStatus prb_compileStaticLibrary(prb_StepData data);
-prb_CompletionStatus prb_compileExecutable(prb_StepData data);
 
 #ifdef PROGRAMMABLE_BUILD_IMPLEMENTATION
 
@@ -201,14 +177,8 @@ struct {
 // SECTION Core
 //
 
-void
-prb_init(prb_String rootPath) {
-    prb_assert(prb_directoryExists(rootPath));
-    prb_globalBuilder.rootPath = rootPath;
-}
-
 prb_StepHandle
-prb_addStep(prb_StepProc proc, prb_StepData data) {
+prb_addStep(prb_StepProc proc, void* data) {
     prb_StepHandle handle = {prb_globalBuilder.stepCount++};
     prb_globalBuilder.steps[handle.index] = (prb_Step) {proc, data};
     return handle;
@@ -331,7 +301,28 @@ prb_getParentDir(prb_String path) {
 }
 
 prb_String
-prb_stringJoin(prb_String str1, prb_String str2) {
+prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
+    prb_assert(sep.ptr && sep.len > 0 && stringsCount >= 0);
+
+    int32_t totalLen = stringsCount * sep.len;
+    for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
+        prb_String str = strings[strIndex];
+        totalLen += str.len;
+    }
+
+    prb_StringBuilder builder = prb_createStringBuilder(totalLen);
+    for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
+        prb_String str = strings[strIndex];
+        prb_stringBuilderWrite(&builder, str);
+        prb_stringBuilderWrite(&builder, sep);
+    }
+
+    return builder.string;
+}
+
+prb_String
+prb_stringJoin2(prb_String str1, prb_String str2) {
+    prb_assert(str1.ptr && str1.len > 0 && str2.ptr && str2.len > 0);
     prb_StringBuilder builder = prb_createStringBuilder(str1.len + str2.len);
     prb_stringBuilderWrite(&builder, str1);
     prb_stringBuilderWrite(&builder, str2);
@@ -339,7 +330,30 @@ prb_stringJoin(prb_String str1, prb_String str2) {
 }
 
 prb_String
-prb_pathJoin(prb_String path1, prb_String path2) {
+prb_stringJoin3(prb_String str1, prb_String str2, prb_String str3) {
+    prb_assert(str1.ptr && str1.len > 0 && str2.ptr && str2.len > 0 && str3.ptr && str3.len > 0);
+    prb_StringBuilder builder = prb_createStringBuilder(str1.len + str2.len + str3.len);
+    prb_stringBuilderWrite(&builder, str1);
+    prb_stringBuilderWrite(&builder, str2);
+    prb_stringBuilderWrite(&builder, str3);
+    return builder.string;
+}
+
+prb_String
+prb_stringJoin4(prb_String str1, prb_String str2, prb_String str3, prb_String str4) {
+    prb_assert(
+        str1.ptr && str1.len > 0 && str2.ptr && str2.len > 0 && str3.ptr && str3.len > 0 && str4.ptr && str4.len > 0
+    );
+    prb_StringBuilder builder = prb_createStringBuilder(str1.len + str2.len + str3.len + str4.len);
+    prb_stringBuilderWrite(&builder, str1);
+    prb_stringBuilderWrite(&builder, str2);
+    prb_stringBuilderWrite(&builder, str3);
+    prb_stringBuilderWrite(&builder, str4);
+    return builder.string;
+}
+
+prb_String
+prb_pathJoin2(prb_String path1, prb_String path2) {
     prb_assert(path1.ptr && path1.len > 0 && path2.ptr && path2.len > 0);
     char path1LastChar = path1.ptr[path1.len - 1];
     bool path1EndsOnSep = prb_charIsSep(path1LastChar);
@@ -347,55 +361,17 @@ prb_pathJoin(prb_String path1, prb_String path2) {
     prb_StringBuilder builder = prb_createStringBuilder(totalLen);
     prb_stringBuilderWrite(&builder, path1);
     if (!path1EndsOnSep) {
-        prb_stringBuilderWrite(
-            &builder,
-            prb_STR("/")
-        );  // NOTE(khvorov) Windows seems to handle mixing \ and / just fine
+        // NOTE(khvorov) Windows seems to handle mixing \ and / just fine
+        prb_stringBuilderWrite(&builder, prb_STR("/"));
     }
     prb_stringBuilderWrite(&builder, path2);
     return builder.string;
 }
 
 prb_String
-prb_createIncludeFlag(prb_String path) {
-    prb_String result = prb_stringJoin(prb_STR("-I"), prb_pathJoin(prb_globalBuilder.rootPath, path));
+prb_pathJoin3(prb_String path1, prb_String path2, prb_String path3) {
+    prb_String result = prb_pathJoin2(prb_pathJoin2(path1, path2), path3);
     return result;
-}
-
-//
-// SECTION Example step procedures
-//
-
-prb_CompletionStatus
-prb_gitClone(prb_StepData data) {
-    prb_assert(data.kind == prb_StepDataKind_GitClone);
-    prb_String cmdStart = prb_STR("git clone ");
-    prb_String realDest = prb_pathJoin(prb_globalBuilder.rootPath, data.gitClone.dest);
-
-    prb_CompletionStatus status = prb_CompletionStatus_Success;
-    if (!prb_directoryExists(realDest) || prb_directoryIsEmpty(realDest)) {
-        prb_StringBuilder cmdBuilder = prb_createStringBuilder(cmdStart.len + data.gitClone.url.len + 1 + realDest.len);
-        prb_stringBuilderWrite(&cmdBuilder, cmdStart);
-        prb_stringBuilderWrite(&cmdBuilder, data.gitClone.url);
-        prb_stringBuilderWrite(&cmdBuilder, prb_STR(" "));
-        prb_stringBuilderWrite(&cmdBuilder, realDest);
-        prb_logMessageLn(cmdBuilder.string);
-        status = prb_execCmd(cmdBuilder.string);
-    }
-
-    return status;
-}
-
-prb_CompletionStatus
-prb_compileStaticLibrary(prb_StepData data) {
-    prb_assert(!"unimplemented");
-    return prb_CompletionStatus_Success;
-}
-
-prb_CompletionStatus
-prb_compileExecutable(prb_StepData data) {
-    prb_assert(!"unimplemented");
-    return prb_CompletionStatus_Success;
 }
 
 //
@@ -423,10 +399,15 @@ prb_directoryExists(prb_String path) {
     return result;
 }
 
+void
+prb_createDirIfNotExists(prb_String path) {
+    CreateDirectory(path.ptr, 0);
+}
+
 bool
 prb_directoryIsEmpty(prb_String path) {
     prb_assert(prb_directoryExists(path));
-    prb_String search = prb_pathJoin(path, prb_STR("*"));
+    prb_String search = prb_pathJoin2(path, prb_STR("*"));
     WIN32_FIND_DATAA findData;
     HANDLE firstHandle = FindFirstFileA(search.ptr, &findData);
     bool result = true;
@@ -444,18 +425,17 @@ prb_directoryIsEmpty(prb_String path) {
 
 prb_CompletionStatus
 prb_execCmd(prb_String cmd) {
-    STARTUPINFOA startupInfo = {.cb = sizeof(STARTUPINFOA)};
+    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
 
+    STARTUPINFOA startupInfo = {.cb = sizeof(STARTUPINFOA)};
     PROCESS_INFORMATION processInfo;
     if (CreateProcessA(0, cmd.ptr, 0, 0, 0, 0, 0, 0, &startupInfo, &processInfo)) {
         WaitForSingleObject(processInfo.hProcess, INFINITE);
-    }
-
-    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Success;
-    DWORD exitCode;
-    if (GetExitCodeProcess(processInfo.hProcess, &exitCode)) {
-        if (exitCode != 0) {
-            cmdStatus = prb_CompletionStatus_Failure;
+        DWORD exitCode;
+        if (GetExitCodeProcess(processInfo.hProcess, &exitCode)) {
+            if (exitCode == 0) {
+                cmdStatus = prb_CompletionStatus_Success;
+            }
         }
     }
 
