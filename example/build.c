@@ -206,7 +206,27 @@ main() {
     //
 
     {
-        prb_String cmd = prb_stringJoin2(compileCmdStart, prb_pathJoin2(rootDir, prb_STR("example.c")));
+        prb_String flags[] = {
+            freetypeIncludeFlag,
+#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+            prb_STR("-Zi"),
+            prb_stringJoin2(prb_STR("-Fo"), prb_pathJoin2(compileOutDir, prb_STR("example.obj"))),
+            prb_stringJoin2(prb_STR("-Fe"), prb_pathJoin2(compileOutDir, prb_STR("example.exe"))),
+            prb_stringJoin2(prb_STR("-Fd"), prb_pathJoin2(compileOutDir, prb_STR("example.pdb"))),
+#endif
+        };
+
+        prb_String files[] = {
+            prb_pathJoin2(rootDir, prb_STR("example.c")),
+            freetypeLibFile,
+        };
+
+        prb_String cmd = prb_stringJoin3(
+            compileCmdStart,
+            prb_stringsJoin(flags, prb_arrayLength(flags), prb_STR(" ")),
+            prb_stringsJoin(files, prb_arrayLength(files), prb_STR(" "))
+        );
+
         prb_StepHandle exeCompileHandle = prb_addStep(compile, &(Compile) {.cmds = &cmd, .cmdCount = 1});
 
         prb_setDependency(exeCompileHandle, freetypeFinalHandle);
