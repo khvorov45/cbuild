@@ -10,8 +10,8 @@ typedef struct Compile {
     prb_String name;
     prb_String* cmds;
     int32_t cmdCount;
-    prb_String* sources;
-    int32_t sourcesCount;
+    prb_String* watch;
+    int32_t watchCount;
     prb_String* outputs;
     int32_t outputsCount;
 } Compile;
@@ -35,9 +35,9 @@ compile(void* dataInit) {
     Compile* data = (Compile*)dataInit;
     prb_CompletionStatus status = prb_CompletionStatus_Success;
 
-    uint64_t sourceLastMod = prb_getLastModifiedFromPatterns(data->sources, data->sourcesCount);
+    uint64_t sourceLastMod = prb_getLastModifiedFromPatterns(data->watch, data->watchCount);
     uint64_t outputsLastMod = prb_getLastModifiedFromPatterns(data->outputs, data->outputsCount);
-    if (sourceLastMod > outputsLastMod || data->sourcesCount == 0 || data->outputsCount == 0) {
+    if (sourceLastMod > outputsLastMod || data->watchCount == 0 || data->outputsCount == 0) {
         for (int32_t cmdIndex = 0; cmdIndex < data->cmdCount; cmdIndex++) {
             prb_String cmd = data->cmds[cmdIndex];
             prb_logMessageLn(cmd);
@@ -139,10 +139,10 @@ main() {
             prb_pathJoin2(freetypeDownloadDir, prb_STR("src/psnames/psnames.c")),
         };
 
-        prb_String freetypeObjDir = prb_pathJoin2(compileOutDir, prb_STR("freetype"));
-        prb_createDirIfNotExists(freetypeObjDir);
+        prb_String objDir = prb_pathJoin2(compileOutDir, prb_STR("freetype"));
+        prb_createDirIfNotExists(objDir);
 
-        prb_String objOutputs[] = {prb_pathJoin2(freetypeObjDir, prb_STR("*.obj"))};
+        prb_String objOutputs[] = {prb_pathJoin2(objDir, prb_STR("*.obj"))};
 
         prb_String compileFlags[] = {
             freetypeIncludeFlag,
@@ -150,7 +150,8 @@ main() {
             prb_STR("-c"),
 #if prb_PLATFORM == prb_PLATFORM_WINDOWS
             prb_STR("-Zi"),
-            prb_stringJoin2(prb_STR("/Fo"), prb_stringJoin2(freetypeObjDir, prb_STR("/")))
+            prb_stringJoin2(prb_STR("/Fo"), prb_stringJoin2(objDir, prb_STR("/"))),
+            prb_stringJoin2(prb_STR("/Fd"), prb_pathJoin2(compileOutDir, prb_STR("freetype.pdb"))),
 #endif
         };
 
@@ -166,8 +167,8 @@ main() {
             ) {.name = prb_STR("freetype compile"),
                .cmds = &compileCmd,
                .cmdCount = 1,
-               .sources = compileSources,
-               .sourcesCount = prb_arrayLength(compileSources),
+               .watch = compileSources,
+               .watchCount = prb_arrayLength(compileSources),
                .outputs = objOutputs,
                .outputsCount = prb_arrayLength(objOutputs)}
         );
@@ -192,13 +193,135 @@ main() {
             ) {.name = prb_STR("freetype lib"),
                .cmds = &libCmd,
                .cmdCount = 1,
-               .sources = objOutputs,
-               .sourcesCount = prb_arrayLength(objOutputs),
+               .watch = objOutputs, // TODO(khvorov) add pdb
+               .watchCount = prb_arrayLength(objOutputs),
                .outputs = &freetypeLibFile,
                .outputsCount = 1}
         );
 
         prb_setDependency(freetypeFinalHandle, compileHandle);
+    }
+
+    //
+    // SECTION SDL
+    //
+
+    prb_String sdlDownloadDir = prb_pathJoin2(rootDir, prb_STR("sdl"));
+    prb_String sdlIncludeFlag =
+        prb_stringJoin2(prb_STR("-I"), prb_pathJoin2(sdlDownloadDir, prb_STR("include")));
+
+#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+    prb_String sdlLibFile = prb_pathJoin2(compileOutDir, prb_STR("sdl.lib"));
+#endif
+
+    prb_StepHandle sdlFinalHandle;
+    {
+        prb_StepHandle downloadHandle = prb_addStep(
+            gitClone,
+            &(GitClone) {.url = prb_STR("https://github.com/libsdl-org/SDL"), .dest = sdlDownloadDir}
+        );
+
+        // TODO(khvorov) Disable sdl dynamic api
+
+        prb_String compileSources[] = {
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/atomic/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/generic/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/events/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/file/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/stdlib/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/libm/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/video/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/video/dummy/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/video/yuv2rgb/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/software/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/cpuinfo/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/*.c")),
+            #if prb_PLATFORM == prb_PLATFORM_WINDOWS
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/core/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/video/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/loadso/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/main/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/windows/*.c")),
+            #endif
+        };
+
+        prb_String objDir = prb_pathJoin2(compileOutDir, prb_STR("sdl"));
+        prb_createDirIfNotExists(objDir);
+
+        prb_String objOutputs[] = {prb_pathJoin2(objDir, prb_STR("*.obj"))};
+
+        prb_String compileFlags[] = {
+            sdlIncludeFlag,
+            prb_STR("-DSDL_AUDIO_DISABLED"),
+            prb_STR("-DSDL_HAPTIC_DISABLED"),
+            prb_STR("-DSDL_HIDAPI_DISABLED"),
+            prb_STR("-DSDL_SENSOR_DISABLED"),
+            prb_STR("-DSDL_JOYSTICK_DISABLED"),
+            prb_STR("-DSDL_VIDEO_RENDER_D3D=0"),
+            prb_STR("-DSDL_VIDEO_RENDER_D3D11=0"),
+            prb_STR("-DSDL_VIDEO_RENDER_D3D12=0"),
+            prb_STR("-DSDL_VIDEO_RENDER_OGL=0"),
+            prb_STR("-DSDL_VIDEO_RENDER_OGL_ES2=0"),
+            prb_STR("-c"),
+#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+            prb_STR("-Zi"),
+            prb_stringJoin2(prb_STR("/Fo"), prb_stringJoin2(objDir, prb_STR("/"))),
+            prb_stringJoin2(prb_STR("/Fd"), prb_pathJoin2(compileOutDir, prb_STR("sdl.pdb"))),
+#endif
+        };
+
+        prb_String compileCmd = prb_stringJoin3(
+            compileCmdStart,
+            prb_stringsJoin(compileFlags, prb_arrayLength(compileFlags), prb_STR(" ")),
+            prb_stringsJoin(compileSources, prb_arrayLength(compileSources), prb_STR(" "))
+        );
+
+        prb_StepHandle compileHandle = prb_addStep(
+            compile,
+            &(Compile
+            ) {.name = prb_STR("sdl compile"),
+               .cmds = &compileCmd,
+               .cmdCount = 1,
+               .watch = compileSources, // TODO(khvorov) add pdb
+               .watchCount = prb_arrayLength(compileSources),
+               .outputs = objOutputs,
+               .outputsCount = prb_arrayLength(objOutputs)}
+        );
+
+        prb_setDependency(compileHandle, downloadHandle);
+
+        prb_String libFlags[] = {
+#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+            prb_stringJoin2(prb_STR("-out:"), sdlLibFile),
+#endif
+        };
+
+        prb_String libCmd = prb_stringJoin3(
+            staticLibCmdStart,
+            prb_stringsJoin(libFlags, prb_arrayLength(libFlags), prb_STR(" ")),
+            prb_stringsJoin(objOutputs, prb_arrayLength(objOutputs), prb_STR(" "))
+        );
+
+        sdlFinalHandle = prb_addStep(
+            compile,
+            &(Compile
+            ) {.name = prb_STR("sdl lib"),
+               .cmds = &libCmd,
+               .cmdCount = 1,
+               .watch = objOutputs,
+               .watchCount = prb_arrayLength(objOutputs),
+               .outputs = &sdlLibFile,
+               .outputsCount = 1}
+        );
+
+        prb_setDependency(sdlFinalHandle, compileHandle);
     }
 
     //
@@ -208,6 +331,7 @@ main() {
     {
         prb_String flags[] = {
             freetypeIncludeFlag,
+            sdlIncludeFlag,
 #if prb_PLATFORM == prb_PLATFORM_WINDOWS
             prb_STR("-Zi"),
             prb_stringJoin2(prb_STR("-Fo"), prb_pathJoin2(compileOutDir, prb_STR("example.obj"))),
@@ -219,6 +343,7 @@ main() {
         prb_String files[] = {
             prb_pathJoin2(rootDir, prb_STR("example.c")),
             freetypeLibFile,
+            sdlLibFile,
         };
 
         prb_String cmd = prb_stringJoin3(
@@ -227,9 +352,14 @@ main() {
             prb_stringsJoin(files, prb_arrayLength(files), prb_STR(" "))
         );
 
+#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+        cmd = prb_stringJoin2(cmd, prb_STR(" -link -incremental:no -subsystem:windows Ole32.lib Advapi32.lib Winmm.lib User32.lib Gdi32.lib OleAut32.lib Imm32.lib Shell32.lib Version.lib"));
+#endif
+
         prb_StepHandle exeCompileHandle = prb_addStep(compile, &(Compile) {.cmds = &cmd, .cmdCount = 1});
 
         prb_setDependency(exeCompileHandle, freetypeFinalHandle);
+        prb_setDependency(exeCompileHandle, sdlFinalHandle);
     }
 
     prb_run();

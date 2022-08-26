@@ -246,6 +246,7 @@ prb_completeAllSteps(void) {
             }
         }
 
+        // TODO(khvorov) futex
         while (stepsCompletedBeforeLoop == prb_globalBuilder.stepsCompleted
                && prb_globalBuilder.stepsCompleted != prb_globalBuilder.stepCount) {
             prb_sleepMs(100);
