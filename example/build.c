@@ -57,7 +57,7 @@ main() {
     prb_String compileOutDir = prb_pathJoin2(rootDir, prb_STR("build-debug"));
     prb_createDirIfNotExists(compileOutDir);
 
-#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+#ifdef prb_PLATFORM_WINDOWS
     prb_String compileCmdStart = prb_STR("cl /nologo /diagnostics:column /FC ");
     prb_String staticLibCmdStart = prb_STR("lib /nologo ");
 #endif
@@ -70,7 +70,7 @@ main() {
     prb_String freetypeIncludeFlag =
         prb_stringJoin2(prb_STR("-I"), prb_pathJoin2(freetypeDownloadDir, prb_STR("include")));
 
-#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+#ifdef prb_PLATFORM_WINDOWS
     prb_String freetypeLibFile = prb_pathJoin2(compileOutDir, prb_STR("freetype.lib"));
 #endif
 
@@ -148,7 +148,7 @@ main() {
             freetypeIncludeFlag,
             prb_STR("-DFT2_BUILD_LIBRARY"),
             prb_STR("-c"),
-#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+#ifdef prb_PLATFORM_WINDOWS
             prb_STR("-Zi"),
             prb_stringJoin2(prb_STR("/Fo"), prb_stringJoin2(objDir, prb_STR("/"))),
             prb_stringJoin2(prb_STR("/Fd"), prb_pathJoin2(compileOutDir, prb_STR("freetype.pdb"))),
@@ -176,7 +176,7 @@ main() {
         prb_setDependency(compileHandle, downloadHandle);
 
         prb_String libFlags[] = {
-#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+#ifdef prb_PLATFORM_WINDOWS
             prb_stringJoin2(prb_STR("-out:"), freetypeLibFile),
 #endif
         };
@@ -209,7 +209,7 @@ main() {
     prb_String sdlDownloadDir = prb_pathJoin2(rootDir, prb_STR("sdl"));
     prb_String sdlIncludeFlag = prb_stringJoin2(prb_STR("-I"), prb_pathJoin2(sdlDownloadDir, prb_STR("include")));
 
-#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+#ifdef prb_PLATFORM_WINDOWS
     prb_String sdlLibFile = prb_pathJoin2(compileOutDir, prb_STR("sdl.lib"));
 #endif
 
@@ -251,7 +251,7 @@ main() {
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/*.c")),
-#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+#ifdef prb_PLATFORM_WINDOWS
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/dummy/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/disk/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/winmm/*.c")),
@@ -296,7 +296,7 @@ main() {
             prb_STR("-DSDL_VIDEO_RENDER_OGL=0"),
             prb_STR("-DSDL_VIDEO_RENDER_OGL_ES2=0"),
             prb_STR("-c"),
-#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+#ifdef prb_PLATFORM_WINDOWS
             prb_STR("-Zi"),
             prb_stringJoin2(prb_STR("/Fo"), prb_stringJoin2(objDir, prb_STR("/"))),
             prb_stringJoin2(prb_STR("/Fd"), prb_pathJoin2(compileOutDir, prb_STR("sdl.pdb"))),
@@ -324,7 +324,7 @@ main() {
         prb_setDependency(compileHandle, downloadHandle);
 
         prb_String libFlags[] = {
-#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+#ifdef prb_PLATFORM_WINDOWS
             prb_stringJoin2(prb_STR("-out:"), sdlLibFile),
 #endif
         };
@@ -358,7 +358,7 @@ main() {
         prb_String flags[] = {
             freetypeIncludeFlag,
             sdlIncludeFlag,
-#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+#ifdef prb_PLATFORM_WINDOWS
             prb_STR("-Zi"),
             prb_stringJoin2(prb_STR("-Fo"), prb_pathJoin2(compileOutDir, prb_STR("example.obj"))),
             prb_stringJoin2(prb_STR("-Fe"), prb_pathJoin2(compileOutDir, prb_STR("example.exe"))),
@@ -378,7 +378,7 @@ main() {
             prb_stringsJoin(files, prb_arrayLength(files), prb_STR(" "))
         );
 
-#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+#ifdef prb_PLATFORM_WINDOWS
         cmd = prb_stringJoin2(
             cmd,
             prb_STR(" -link -incremental:no -subsystem:windows "

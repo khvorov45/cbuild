@@ -1,16 +1,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define prb_PLATFORM_WINDOWS 1
-#define prb_PLATFORM_LINUX 2
-
-#ifndef prb_PLATFORM
+#if !defined(prb_PLATFORM_WINDOWS) && !defined(prb_PLATFORM_LINUX)
     #if defined(WIN32) || defined(_WIN32)
-        #define prb_PLATFORM prb_PLATFORM_WINDOWS
+        #define prb_PLATFORM_WINDOWS
     #elif (defined(linux) || defined(__linux) || defined(__linux__))
-        #define prb_PLATFORM prb_PLATFORM_LINUX
+        #define prb_PLATFORM_LINUX
     #else
-        #error unrecognized platform, see prb_PLATFORM
+        #error unrecognized platform, define prb_PLATFORM_WINDOWS or prb_PLATFORM_LINUX
     #endif
 #endif
 
@@ -398,7 +395,7 @@ prb_pathJoin3(prb_String path1, prb_String path2, prb_String path3) {
 // SECTION Platform-specific stuff
 //
 
-    #if prb_PLATFORM == prb_PLATFORM_WINDOWS
+    #ifdef prb_PLATFORM_WINDOWS
         #define WIN32_LEAN_AND_MEAN
         #include <windows.h>
         #include <shellapi.h>
@@ -546,6 +543,6 @@ prb_getLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
     return result;
 }
 
-    #endif  // prb_PLATFORM == prb_PLATFORM_WINDOWS
+    #endif  // prb_PLATFORM_WINDOWS
 
 #endif  // PROGRAMMABLE_BUILD_IMPLEMENTATION
