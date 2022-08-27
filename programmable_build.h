@@ -403,7 +403,7 @@ prb_pathJoin3(prb_String path1, prb_String path2, prb_String path3) {
         #include <windows.h>
         #include <shellapi.h>
 
-#pragma comment(lib, "Shell32.lib")
+        #pragma comment(lib, "Shell32.lib")
 
 bool
 prb_directoryExists(prb_String path) {
@@ -448,16 +448,16 @@ prb_directoryIsEmpty(prb_String path) {
 
 void
 prb_clearDirectory(prb_String path) {
-	prb_StringBuilder doubleNullBuilder = prb_createStringBuilder(path.len + 2);
-	prb_stringBuilderWrite(&doubleNullBuilder, path);
+    prb_StringBuilder doubleNullBuilder = prb_createStringBuilder(path.len + 2);
+    prb_stringBuilderWrite(&doubleNullBuilder, path);
 
-	SHFileOperationA(&(SHFILEOPSTRUCTA){
+    SHFileOperationA(&(SHFILEOPSTRUCTA) {
         .wFunc = FO_DELETE,
         .pFrom = doubleNullBuilder.string.ptr,
         .fFlags = FOF_NO_UI,
     });
 
-	prb_createDirIfNotExists(path);
+    prb_createDirIfNotExists(path);
 }
 
 prb_CompletionStatus

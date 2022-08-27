@@ -193,7 +193,7 @@ main() {
             ) {.name = prb_STR("freetype lib"),
                .cmds = &libCmd,
                .cmdCount = 1,
-               .watch = objOutputs, // TODO(khvorov) add pdb
+               .watch = objOutputs,  // TODO(khvorov) add pdb
                .watchCount = prb_arrayLength(objOutputs),
                .outputs = &freetypeLibFile,
                .outputsCount = 1}
@@ -207,8 +207,7 @@ main() {
     //
 
     prb_String sdlDownloadDir = prb_pathJoin2(rootDir, prb_STR("sdl"));
-    prb_String sdlIncludeFlag =
-        prb_stringJoin2(prb_STR("-I"), prb_pathJoin2(sdlDownloadDir, prb_STR("include")));
+    prb_String sdlIncludeFlag = prb_stringJoin2(prb_STR("-I"), prb_pathJoin2(sdlDownloadDir, prb_STR("include")));
 
 #if prb_PLATFORM == prb_PLATFORM_WINDOWS
     prb_String sdlLibFile = prb_pathJoin2(compileOutDir, prb_STR("sdl.lib"));
@@ -252,31 +251,31 @@ main() {
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/*.c")),
-            #if prb_PLATFORM == prb_PLATFORM_WINDOWS
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/dummy/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/disk/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/winmm/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/directsound/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/wasapi/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/core/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/filesystem/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/haptic/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/hidapi/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/joystick/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/video/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/loadso/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/locale/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/main/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/misc/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/direct3d/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/direct3d12/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/direct3d11/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/power/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/sensor/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/windows/*.c")),
-                prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/windows/*.c")),
-            #endif
+#if prb_PLATFORM == prb_PLATFORM_WINDOWS
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/dummy/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/disk/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/winmm/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/directsound/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/wasapi/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/core/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/filesystem/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/haptic/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/hidapi/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/joystick/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/video/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/loadso/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/locale/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/main/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/misc/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/direct3d/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/direct3d12/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/direct3d11/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/power/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/sensor/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/windows/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/windows/*.c")),
+#endif
         };
 
         prb_String objDir = prb_pathJoin2(compileOutDir, prb_STR("sdl"));
@@ -316,7 +315,7 @@ main() {
             ) {.name = prb_STR("sdl compile"),
                .cmds = &compileCmd,
                .cmdCount = 1,
-               .watch = compileSources, // TODO(khvorov) add pdb
+               .watch = compileSources,  // TODO(khvorov) add pdb
                .watchCount = prb_arrayLength(compileSources),
                .outputs = objOutputs,
                .outputsCount = prb_arrayLength(objOutputs)}
@@ -380,11 +379,12 @@ main() {
         );
 
 #if prb_PLATFORM == prb_PLATFORM_WINDOWS
-        cmd = prb_stringJoin2(cmd, prb_STR(
-            " -link -incremental:no -subsystem:windows " 
-            "Ole32.lib Advapi32.lib Winmm.lib User32.lib Gdi32.lib OleAut32.lib "
-            "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
-        ));
+        cmd = prb_stringJoin2(
+            cmd,
+            prb_STR(" -link -incremental:no -subsystem:windows "
+                    "Ole32.lib Advapi32.lib Winmm.lib User32.lib Gdi32.lib OleAut32.lib "
+                    "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib ")
+        );
 #endif
 
         prb_StepHandle exeCompileHandle = prb_addStep(compile, &(Compile) {.cmds = &cmd, .cmdCount = 1});
