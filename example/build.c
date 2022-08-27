@@ -221,32 +221,59 @@ main() {
             &(GitClone) {.url = prb_STR("https://github.com/libsdl-org/SDL"), .dest = sdlDownloadDir}
         );
 
-        // TODO(khvorov) Disable sdl dynamic api
-
         prb_String compileSources[] = {
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/atomic/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/dynapi/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/generic/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/events/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/file/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/haptic/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/joystick/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/joystick/dummy/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/joystick/hidapi/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/joystick/virtual/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/hidapi/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/stdlib/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/libm/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/locale/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/video/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/video/dummy/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/video/yuv2rgb/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/misc/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/power/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/software/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/sensor/*.c")),
+            prb_pathJoin2(sdlDownloadDir, prb_STR("src/sensor/dummy/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/cpuinfo/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/*.c")),
             prb_pathJoin2(sdlDownloadDir, prb_STR("src/*.c")),
             #if prb_PLATFORM == prb_PLATFORM_WINDOWS
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/dummy/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/disk/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/winmm/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/directsound/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/audio/wasapi/*.c")),
                 prb_pathJoin2(sdlDownloadDir, prb_STR("src/core/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/filesystem/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/haptic/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/hidapi/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/joystick/windows/*.c")),
                 prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/windows/*.c")),
                 prb_pathJoin2(sdlDownloadDir, prb_STR("src/video/windows/*.c")),
                 prb_pathJoin2(sdlDownloadDir, prb_STR("src/loadso/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/locale/windows/*.c")),
                 prb_pathJoin2(sdlDownloadDir, prb_STR("src/main/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/misc/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/direct3d/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/direct3d12/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/render/direct3d11/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/power/windows/*.c")),
+                prb_pathJoin2(sdlDownloadDir, prb_STR("src/sensor/windows/*.c")),
                 prb_pathJoin2(sdlDownloadDir, prb_STR("src/timer/windows/*.c")),
                 prb_pathJoin2(sdlDownloadDir, prb_STR("src/thread/windows/*.c")),
             #endif
@@ -353,7 +380,11 @@ main() {
         );
 
 #if prb_PLATFORM == prb_PLATFORM_WINDOWS
-        cmd = prb_stringJoin2(cmd, prb_STR(" -link -incremental:no -subsystem:windows Ole32.lib Advapi32.lib Winmm.lib User32.lib Gdi32.lib OleAut32.lib Imm32.lib Shell32.lib Version.lib"));
+        cmd = prb_stringJoin2(cmd, prb_STR(
+            " -link -incremental:no -subsystem:windows " 
+            "Ole32.lib Advapi32.lib Winmm.lib User32.lib Gdi32.lib OleAut32.lib "
+            "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
+        ));
 #endif
 
         prb_StepHandle exeCompileHandle = prb_addStep(compile, &(Compile) {.cmds = &cmd, .cmdCount = 1});
