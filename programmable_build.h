@@ -333,6 +333,8 @@ prb_getLastEntryInPath(prb_String path) {
     return result;
 }
 
+// TODO(khvorov) Better string building
+
 prb_String
 prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
     prb_assert(sep.ptr && sep.len > 0 && stringsCount >= 0);
@@ -513,6 +515,8 @@ prb_execCmd(prb_String cmd) {
 
     return cmdStatus;
 }
+
+// TODO(khvorov) Better logging
 
 void
 prb_logMessage(prb_String msg) {
