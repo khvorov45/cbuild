@@ -8,6 +8,7 @@
 int
 SDL_main(int argc, char* argv[]) {
     if (SDL_Init(SDL_INIT_VIDEO) == 0) {
+        // TODO(khvorov) Actually do something here
         printf("sdl loaded successfully\n");
 
         FT_Library ftLib;
