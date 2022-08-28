@@ -88,6 +88,7 @@ extern void __cdecl __debugbreak(void);
 #define prb_max(a, b) (((a) > (b)) ? (a) : (b))
 #define prb_min(a, b) (((a) < (b)) ? (a) : (b))
 #define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
+#define prb_newArray(len, type) (type*)prb_allocAndZero((len) * sizeof(type))
 #define prb_STR(str) \
     (prb_String) { \
         .ptr = (str), .len = (int32_t)prb_strlen(str) \
@@ -98,10 +99,20 @@ typedef struct prb_String {
     int32_t len;
 } prb_String;
 
+typedef struct prb_StringArray {
+    prb_String* ptr;
+    int32_t len;
+} prb_StringArray;
+
 typedef struct prb_StringBuilder {
     prb_String string;
     int32_t written;
 } prb_StringBuilder;
+
+typedef struct prb_StringArrayBuilder {
+    prb_StringArray arr;
+    int32_t written;
+} prb_StringArrayBuilder;
 
 typedef struct prb_StepHandle {
     int32_t index;
@@ -145,18 +156,22 @@ void prb_createDirIfNotExists(prb_String path);
 bool prb_charIsSep(char ch);
 prb_StringBuilder prb_createStringBuilder(int32_t len);
 void prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source);
+prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
+void prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
 prb_String prb_stringCopy(prb_String source, int32_t from, int32_t to);
 prb_String prb_getCurrentWorkingDir(void);
 prb_String prb_getParentDir(prb_String path);
 prb_String prb_getLastEntryInPath(prb_String path);
 uint64_t prb_getLastModifiedFromPattern(prb_String pattern);
-uint64_t prb_getLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
+uint64_t prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
+uint64_t prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 prb_String prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
 prb_String prb_stringJoin2(prb_String str1, prb_String str2);
 prb_String prb_stringJoin3(prb_String str1, prb_String str2, prb_String str3);
 prb_String prb_stringJoin4(prb_String str1, prb_String str2, prb_String str3, prb_String str4);
 prb_String prb_pathJoin2(prb_String path1, prb_String path2);
 prb_String prb_pathJoin3(prb_String path1, prb_String path2, prb_String path3);
+prb_StringArray prb_stringArrayJoin2(prb_StringArray arr1, prb_StringArray arr2);
 prb_CompletionStatus prb_execCmd(prb_String cmd);
 void prb_logMessage(prb_String msg);
 void prb_logMessageLn(prb_String msg);
@@ -391,6 +406,28 @@ prb_pathJoin3(prb_String path1, prb_String path2, prb_String path3) {
     return result;
 }
 
+prb_StringArrayBuilder
+prb_createStringArrayBuilder(int32_t len) {
+    prb_String* ptr = prb_newArray(len, prb_String);
+    prb_StringArrayBuilder builder = {.arr = (prb_StringArray) {ptr, len}};
+    return builder;
+}
+
+void
+prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr) {
+    prb_assert(builder->arr.len >= arr.len + builder->written);
+    prb_memcpy(builder->arr.ptr + builder->written, arr.ptr, arr.len * sizeof(prb_String));
+    builder->written += arr.len;
+}
+
+prb_StringArray
+prb_stringArrayJoin2(prb_StringArray arr1, prb_StringArray arr2) {
+    prb_StringArrayBuilder builder = prb_createStringArrayBuilder(arr1.len + arr2.len);
+    prb_stringArrayBuilderCopy(&builder, arr1);
+    prb_stringArrayBuilderCopy(&builder, arr2);
+    return builder.arr;
+}
+
 //
 // SECTION Platform-specific stuff
 //
@@ -535,10 +572,19 @@ prb_getLastModifiedFromPattern(prb_String pattern) {
 }
 
 uint64_t
-prb_getLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
+prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
     uint64_t result = 0;
     for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
         result = prb_max(result, prb_getLastModifiedFromPattern(patterns[patternIndex]));
+    }
+    return result;
+}
+
+uint64_t
+prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
+    uint64_t result = UINT64_MAX;
+    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
+        result = prb_min(result, prb_getLastModifiedFromPattern(patterns[patternIndex]));
     }
     return result;
 }

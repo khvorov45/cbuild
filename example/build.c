@@ -35,8 +35,8 @@ compile(void* dataInit) {
     Compile* data = (Compile*)dataInit;
     prb_CompletionStatus status = prb_CompletionStatus_Success;
 
-    uint64_t sourceLastMod = prb_getLastModifiedFromPatterns(data->watch, data->watchCount);
-    uint64_t outputsLastMod = prb_getLastModifiedFromPatterns(data->outputs, data->outputsCount);
+    uint64_t sourceLastMod = prb_getLatestLastModifiedFromPatterns(data->watch, data->watchCount);
+    uint64_t outputsLastMod = prb_getEarliestLastModifiedFromPatterns(data->outputs, data->outputsCount);
     if (sourceLastMod > outputsLastMod || data->watchCount == 0 || data->outputsCount == 0) {
         for (int32_t cmdIndex = 0; cmdIndex < data->cmdCount; cmdIndex++) {
             prb_String cmd = data->cmds[cmdIndex];
@@ -143,6 +143,7 @@ main() {
         prb_createDirIfNotExists(objDir);
 
         prb_String objOutputs[] = {prb_pathJoin2(objDir, prb_STR("*.obj"))};
+        prb_String pdbPath = prb_pathJoin2(compileOutDir, prb_STR("freetype.pdb"));
 
         prb_String compileFlags[] = {
             freetypeIncludeFlag,
@@ -151,7 +152,7 @@ main() {
 #ifdef prb_PLATFORM_WINDOWS
             prb_STR("-Zi"),
             prb_stringJoin2(prb_STR("/Fo"), prb_stringJoin2(objDir, prb_STR("/"))),
-            prb_stringJoin2(prb_STR("/Fd"), prb_pathJoin2(compileOutDir, prb_STR("freetype.pdb"))),
+            prb_stringJoin2(prb_STR("/Fd"), pdbPath),
 #endif
         };
 
@@ -161,6 +162,11 @@ main() {
             prb_stringsJoin(compileSources, prb_arrayLength(compileSources), prb_STR(" "))
         );
 
+        prb_StringArray compileOutputs = {objOutputs, prb_arrayLength(objOutputs)};
+#ifdef prb_PLATFORM_WINDOWS
+        compileOutputs = prb_stringArrayJoin2(compileOutputs, (prb_StringArray) {&pdbPath, 1});
+#endif
+
         prb_StepHandle compileHandle = prb_addStep(
             compile,
             &(Compile
@@ -169,8 +175,8 @@ main() {
                .cmdCount = 1,
                .watch = compileSources,
                .watchCount = prb_arrayLength(compileSources),
-               .outputs = objOutputs,
-               .outputsCount = prb_arrayLength(objOutputs)}
+               .outputs = compileOutputs.ptr,
+               .outputsCount = compileOutputs.len}
         );
 
         prb_setDependency(compileHandle, downloadHandle);
@@ -193,7 +199,7 @@ main() {
             ) {.name = prb_STR("freetype lib"),
                .cmds = &libCmd,
                .cmdCount = 1,
-               .watch = objOutputs,  // TODO(khvorov) add pdb
+               .watch = objOutputs,
                .watchCount = prb_arrayLength(objOutputs),
                .outputs = &freetypeLibFile,
                .outputsCount = 1}
@@ -282,6 +288,7 @@ main() {
         prb_createDirIfNotExists(objDir);
 
         prb_String objOutputs[] = {prb_pathJoin2(objDir, prb_STR("*.obj"))};
+        prb_String pdbPath = prb_pathJoin2(compileOutDir, prb_STR("sdl.pdb"));
 
         prb_String compileFlags[] = {
             sdlIncludeFlag,
@@ -299,7 +306,7 @@ main() {
 #ifdef prb_PLATFORM_WINDOWS
             prb_STR("-Zi"),
             prb_stringJoin2(prb_STR("/Fo"), prb_stringJoin2(objDir, prb_STR("/"))),
-            prb_stringJoin2(prb_STR("/Fd"), prb_pathJoin2(compileOutDir, prb_STR("sdl.pdb"))),
+            prb_stringJoin2(prb_STR("/Fd"), pdbPath),
 #endif
         };
 
@@ -309,16 +316,21 @@ main() {
             prb_stringsJoin(compileSources, prb_arrayLength(compileSources), prb_STR(" "))
         );
 
+        prb_StringArray compileOutputs = {objOutputs, prb_arrayLength(objOutputs)};
+#ifdef prb_PLATFORM_WINDOWS
+        compileOutputs = prb_stringArrayJoin2(compileOutputs, (prb_StringArray) {&pdbPath, 1});
+#endif
+
         prb_StepHandle compileHandle = prb_addStep(
             compile,
             &(Compile
             ) {.name = prb_STR("sdl compile"),
                .cmds = &compileCmd,
                .cmdCount = 1,
-               .watch = compileSources,  // TODO(khvorov) add pdb
+               .watch = compileSources,
                .watchCount = prb_arrayLength(compileSources),
-               .outputs = objOutputs,
-               .outputsCount = prb_arrayLength(objOutputs)}
+               .outputs = compileOutputs.ptr,
+               .outputsCount = compileOutputs.len}
         );
 
         prb_setDependency(compileHandle, downloadHandle);
