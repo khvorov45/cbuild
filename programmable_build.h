@@ -19,11 +19,6 @@
     #define prb_MAX_DEPENDENCIES_PER_STEP 4
 #endif
 
-#ifndef prb_strlen
-    #include <string.h>
-    #define prb_strlen strlen
-#endif
-
 #ifndef prb_debugbreak
 // Taken from SDL
 // https://github.com/libsdl-org/SDL/blob/main/include/SDL_assert.h
@@ -73,11 +68,6 @@ extern void __cdecl __debugbreak(void);
                 prb_debugbreak(); \
             } \
         } while (0)
-#endif
-
-#ifndef prb_memcpy
-    #include <stdlib.h>
-    #define prb_memcpy memcpy
 #endif
 
 #ifndef prb_allocAndZero
@@ -150,6 +140,8 @@ void prb_setDependency(prb_StepHandle dependent, prb_StepHandle dependency);
 void prb_run(void);
 
 // SECTION Helpers
+size_t prb_strlen(const char* string);
+void* prb_memcpy(void* restrict dest, const void* restrict src, size_t n);
 bool prb_directoryExists(prb_String path);
 bool prb_directoryIsEmpty(prb_String path);
 void prb_createDirIfNotExists(prb_String path);
@@ -275,6 +267,24 @@ prb_run(void) {
 //
 // SECTION Helpers
 //
+
+size_t
+prb_strlen(const char* string) {
+    const char* ptr = string;
+    for (; *ptr; ptr++) {}
+    size_t len = ptr - string;
+    return len;
+}
+
+void*
+prb_memcpy(void* restrict dest, const void* restrict src, size_t n) {
+    unsigned char* d = dest;
+    const unsigned char* s = src;
+    for (; n; n--) {
+        *d++ = *s++;
+    }
+    return dest;
+}
 
 bool
 prb_charIsSep(char ch) {
