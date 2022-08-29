@@ -1,88 +1,70 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#if !defined(prb_PLATFORM_WINDOWS) && !defined(prb_PLATFORM_LINUX)
-    #if defined(WIN32) || defined(_WIN32)
-        #define prb_PLATFORM_WINDOWS
-    #elif (defined(linux) || defined(__linux) || defined(__linux__))
-        #define prb_PLATFORM_LINUX
-    #else
-        #error unrecognized platform, define prb_PLATFORM_WINDOWS or prb_PLATFORM_LINUX
-    #endif
+#if defined(WIN32) || defined(_WIN32)
+    #define prb_PLATFORM_WINDOWS
+#elif (defined(linux) || defined(__linux) || defined(__linux__))
+    #define prb_PLATFORM_LINUX
+#else
+    #error unrecognized platform
 #endif
 
-#ifndef prb_MAX_STEPS
-    #define prb_MAX_STEPS 32
-#endif
+#define prb_MAX_STEPS 32
+#define prb_MAX_DEPENDENCIES_PER_STEP 4
 
-#ifndef prb_MAX_DEPENDENCIES_PER_STEP
-    #define prb_MAX_DEPENDENCIES_PER_STEP 4
-#endif
+#define prb_BYTE 1
+#define prb_KILOBYTE 1024 * prb_BYTE
+#define prb_MEGABYTE 1024 * prb_KILOBYTE
+#define prb_GIGABYTE 1024 * prb_MEGABYTE
 
-#ifndef prb_debugbreak
-// Taken from SDL
-// https://github.com/libsdl-org/SDL/blob/main/include/SDL_assert.h
-
-    #ifdef __has_builtin
-        #define _prb_HAS_BUILTIN(x) __has_builtin(x)
-    #else
-        #define _prb_HAS_BUILTIN(x) 0
-    #endif
-
-    #if defined(_MSC_VER)
-/* Don't include intrin.h here because it contains C++ code */
-extern void __cdecl __debugbreak(void);
-        #define prb_debugbreak() __debugbreak()
-    #elif _prb_HAS_BUILTIN(__builtin_debugtrap)
-        #define prb_debugbreak() __builtin_debugtrap()
-    #elif ( \
-        (!defined(__NACL__)) \
-        && ((defined(__GNUC__) || defined(__clang__)) && (defined(__i386__) || defined(__x86_64__))) \
-    )
-        #define prb_debugbreak() __asm__ __volatile__("int $3\n\t")
-    #elif ( \
-        defined(__APPLE__) && (defined(__arm64__) || defined(__aarch64__)) \
-    ) /* this might work on other ARM targets, but this is a known quantity... */
-        #define prb_debugbreak() __asm__ __volatile__("brk #22\n\t")
-    #elif defined(__APPLE__) && defined(__arm__)
-        #define prb_debugbreak() __asm__ __volatile__("bkpt #22\n\t")
-    #elif defined(__386__) && defined(__WATCOMC__)
-        #define prb_debugbreak() \
-            { \
-                _asm { int 0x03 } \
-            }
-    #elif defined(prb_HAVE_SIGNAL_H) && !defined(__WATCOMC__)
-        #include <signal.h>
-        #define prb_debugbreak() raise(SIGTRAP)
-    #else
-        /* How do we trigger breakpoints on this platform? */
-        #define prb_debugbreak()
-    #endif
-
-#endif
-
-#ifndef prb_assert
-    #define prb_assert(condition) \
-        do { \
-            if (!(condition)) { \
-                prb_debugbreak(); \
-            } \
-        } while (0)
-#endif
-
-#ifndef prb_allocAndZero
-    #include <stdlib.h>
-    #define prb_allocAndZero(bytes) calloc(bytes, 1)
-#endif
-
+// clang-format off
 #define prb_max(a, b) (((a) > (b)) ? (a) : (b))
 #define prb_min(a, b) (((a) < (b)) ? (a) : (b))
+#define prb_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
-#define prb_newArray(len, type) (type*)prb_allocAndZero((len) * sizeof(type))
-#define prb_STR(str) \
-    (prb_String) { \
-        .ptr = (str), .len = (int32_t)prb_strlen(str) \
-    }
+#define prb_newArray(len, type) (type*)prb_allocAndZero((len) * sizeof(type), _Alignof(type))
+#define prb_STR(str) (prb_String) { .ptr = (str), .len = (int32_t)prb_strlen(str) }
+#define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x) - 1)) == 0))
+
+// Debug break taken from SDL
+// https://github.com/libsdl-org/SDL/blob/main/include/SDL_assert.h
+#ifdef __has_builtin
+    #define _prb_HAS_BUILTIN(x) __has_builtin(x)
+#else
+    #define _prb_HAS_BUILTIN(x) 0
+#endif
+
+#if defined(_MSC_VER)
+    /* Don't include intrin.h here because it contains C++ code */
+    extern void __cdecl __debugbreak(void);
+    #define prb_debugbreak() __debugbreak()
+#elif _prb_HAS_BUILTIN(__builtin_debugtrap)
+    #define prb_debugbreak() __builtin_debugtrap()
+#elif ((!defined(__NACL__)) && ((defined(__GNUC__) || defined(__clang__)) && (defined(__i386__) || defined(__x86_64__))))
+    #define prb_debugbreak() __asm__ __volatile__("int $3\n\t")
+#elif (defined(__APPLE__) && (defined(__arm64__) || defined(__aarch64__))) /* this might work on other ARM targets, but this is a known quantity... */
+    #define prb_debugbreak() __asm__ __volatile__("brk #22\n\t")
+#elif defined(__APPLE__) && defined(__arm__)
+    #define prb_debugbreak() __asm__ __volatile__("bkpt #22\n\t")
+#elif defined(__386__) && defined(__WATCOMC__)
+    #define prb_debugbreak() { _asm { int 0x03 } }
+#elif defined(prb_HAVE_SIGNAL_H) && !defined(__WATCOMC__)
+    #include <signal.h>
+    #define prb_debugbreak() raise(SIGTRAP)
+#else
+    /* How do we trigger breakpoints on this platform? */
+    #define prb_debugbreak()
+#endif
+
+#define prb_assert(condition) do { if (!(condition)) { prb_debugbreak(); } } while (0)
+// clang-format on
+
+typedef struct prb_Arena {
+    void* base;
+    int32_t reserved;
+    int32_t committed;
+    int32_t used;
+} prb_Arena;
 
 typedef struct prb_String {
     char* ptr;
@@ -135,13 +117,19 @@ typedef enum prb_StepStatus {
 } prb_StepStatus;
 
 // SECTION Core
+void prb_init(void);
 prb_StepHandle prb_addStep(prb_StepProc proc, void* data);
 void prb_setDependency(prb_StepHandle dependent, prb_StepHandle dependency);
 void prb_run(void);
 
 // SECTION Helpers
+// TODO(khvorov) timing helpers
 size_t prb_strlen(const char* string);
 void* prb_memcpy(void* restrict dest, const void* restrict src, size_t n);
+void* prb_vmemReserve(int32_t size);
+void prb_vmemCommit(void* base, int32_t size);
+void prb_alignPtr(void** ptr, int32_t align, int32_t* size);
+void* prb_allocAndZero(int32_t size, int32_t align);
 bool prb_directoryExists(prb_String path);
 bool prb_directoryIsEmpty(prb_String path);
 void prb_createDirIfNotExists(prb_String path);
@@ -171,10 +159,8 @@ int32_t prb_atomicIncrement(int32_t volatile* addend);
 bool prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t compare);
 void prb_sleepMs(int32_t ms);
 
-#ifdef PROGRAMMABLE_BUILD_IMPLEMENTATION
-
 struct {
-    prb_String rootPath;
+    prb_Arena arena;
     prb_Step steps[prb_MAX_STEPS];
     prb_StepStatus stepStatus[prb_MAX_STEPS];
     int32_t stepCount;
@@ -186,6 +172,14 @@ struct {
 //
 // SECTION Core
 //
+
+void
+prb_init(void) {
+    prb_globalBuilder.arena.reserved = 1 * prb_GIGABYTE;
+    prb_globalBuilder.arena.base = prb_vmemReserve(prb_globalBuilder.arena.reserved);
+    prb_globalBuilder.arena.committed = 20 * prb_MEGABYTE;
+    prb_vmemCommit(prb_globalBuilder.arena.base, prb_globalBuilder.arena.committed);
+}
 
 prb_StepHandle
 prb_addStep(prb_StepProc proc, void* data) {
@@ -286,6 +280,42 @@ prb_memcpy(void* restrict dest, const void* restrict src, size_t n) {
     return dest;
 }
 
+void
+prb_alignPtr(void** ptr, int32_t align, int32_t* size) {
+    prb_assert(prb_isPowerOf2(align));
+    void* ptrOg = *ptr;
+    int32_t offBy = ((size_t)ptrOg) & (align - 1);
+    int32_t moveBy = 0;
+    if (offBy > 0) {
+        moveBy = align - offBy;
+    }
+    void* ptrAligned = (uint8_t*)ptrOg + moveBy;
+    *ptr = ptrAligned;
+    *size = *size + moveBy;
+}
+
+void*
+prb_allocAndZero(int32_t size, int32_t align) {
+    void* baseAligned = (uint8_t*)prb_globalBuilder.arena.base + prb_globalBuilder.arena.used;
+    int32_t sizeAligned = size;
+    prb_alignPtr(&baseAligned, align, &sizeAligned);
+
+    int32_t committedAndFree = prb_globalBuilder.arena.committed - prb_globalBuilder.arena.used;
+    if (committedAndFree < sizeAligned) {
+        int32_t reservedAndFree = prb_globalBuilder.arena.reserved - prb_globalBuilder.arena.used;
+        prb_assert(reservedAndFree >= sizeAligned);
+
+        prb_globalBuilder.arena.committed = prb_min(
+            prb_max(prb_globalBuilder.arena.committed * 2, prb_globalBuilder.arena.used + sizeAligned),
+            prb_globalBuilder.arena.reserved
+        );
+        prb_vmemCommit(prb_globalBuilder.arena.base, prb_globalBuilder.arena.committed);
+    }
+
+    prb_globalBuilder.arena.used += sizeAligned;
+    return baseAligned;
+}
+
 bool
 prb_charIsSep(char ch) {
     bool result = ch == '/' || ch == '\\';
@@ -295,7 +325,7 @@ prb_charIsSep(char ch) {
 prb_StringBuilder
 prb_createStringBuilder(int32_t len) {
     prb_assert(len > 0);
-    prb_StringBuilder result = {.string = {prb_allocAndZero(len + 1), len}};
+    prb_StringBuilder result = {.string = {prb_allocAndZero(len + 1, 1), len}};
     return result;
 }
 
@@ -445,12 +475,23 @@ prb_stringArrayJoin2(prb_StringArray arr1, prb_StringArray arr2) {
 // SECTION Platform-specific stuff
 //
 
-    #ifdef prb_PLATFORM_WINDOWS
-        #define WIN32_LEAN_AND_MEAN
-        #include <windows.h>
-        #include <shellapi.h>
+#ifdef prb_PLATFORM_WINDOWS
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+    #include <shellapi.h>
 
-        #pragma comment(lib, "Shell32.lib")
+    #pragma comment(lib, "Shell32.lib")
+
+void*
+prb_vmemReserve(int32_t size) {
+    void* ptr = VirtualAlloc(0, size, MEM_RESERVE, PAGE_READWRITE);
+    return ptr;
+}
+
+void
+prb_vmemCommit(void* base, int32_t size) {
+    VirtualAlloc(base, size, MEM_COMMIT, PAGE_READWRITE);
+}
 
 bool
 prb_directoryExists(prb_String path) {
@@ -604,6 +645,4 @@ prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCo
     return result;
 }
 
-    #endif  // prb_PLATFORM_WINDOWS
-
-#endif  // PROGRAMMABLE_BUILD_IMPLEMENTATION
+#endif  // prb_PLATFORM_WINDOWS

@@ -1,4 +1,3 @@
-#define PROGRAMMABLE_BUILD_IMPLEMENTATION
 #include "../programmable_build.h"
 
 typedef struct GitClone {
@@ -52,6 +51,8 @@ compile(void* dataInit) {
 
 int
 main() {
+    prb_init();
+
     prb_String rootDir = prb_getParentDir(prb_STR(__FILE__));
 
     prb_String compileOutDir = prb_pathJoin2(rootDir, prb_STR("build-debug"));
