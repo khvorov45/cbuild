@@ -62,8 +62,7 @@
 
 typedef struct prb_Arena {
     void* base;
-    int32_t reserved;
-    int32_t committed;
+    int32_t size;
     int32_t used;
 } prb_Arena;
 
@@ -127,8 +126,7 @@ void prb_run(void);
 // TODO(khvorov) timing helpers
 size_t prb_strlen(const char* string);
 void* prb_memcpy(void* restrict dest, const void* restrict src, size_t n);
-void* prb_vmemReserve(int32_t size);
-void prb_vmemCommit(void* base, int32_t size);
+void* prb_vmemAllocate(int32_t size);
 void prb_alignPtr(void** ptr, int32_t align, int32_t* size);
 void* prb_allocAndZero(int32_t size, int32_t align);
 bool prb_directoryExists(prb_String path);
@@ -176,10 +174,8 @@ struct {
 
 void
 prb_init(void) {
-    prb_globalBuilder.arena.reserved = 1 * prb_GIGABYTE;
-    prb_globalBuilder.arena.base = prb_vmemReserve(prb_globalBuilder.arena.reserved);
-    prb_globalBuilder.arena.committed = 20 * prb_MEGABYTE;
-    prb_vmemCommit(prb_globalBuilder.arena.base, prb_globalBuilder.arena.committed);
+    prb_globalBuilder.arena.size = 1 * prb_GIGABYTE;
+    prb_globalBuilder.arena.base = prb_vmemAllocate(prb_globalBuilder.arena.size);
 }
 
 prb_StepHandle
@@ -301,17 +297,8 @@ prb_allocAndZero(int32_t size, int32_t align) {
     int32_t sizeAligned = size;
     prb_alignPtr(&baseAligned, align, &sizeAligned);
 
-    int32_t committedAndFree = prb_globalBuilder.arena.committed - prb_globalBuilder.arena.used;
-    if (committedAndFree < sizeAligned) {
-        int32_t reservedAndFree = prb_globalBuilder.arena.reserved - prb_globalBuilder.arena.used;
-        prb_assert(reservedAndFree >= sizeAligned);
-
-        prb_globalBuilder.arena.committed = prb_min(
-            prb_max(prb_globalBuilder.arena.committed * 2, prb_globalBuilder.arena.used + sizeAligned),
-            prb_globalBuilder.arena.reserved
-        );
-        prb_vmemCommit(prb_globalBuilder.arena.base, prb_globalBuilder.arena.committed);
-    }
+    int32_t sizeFree = prb_globalBuilder.arena.size - prb_globalBuilder.arena.used;
+    prb_assert(sizeFree >= sizeAligned);
 
     prb_globalBuilder.arena.used += sizeAligned;
     return baseAligned;
@@ -510,14 +497,9 @@ prb_logMessageLn(prb_String msg) {
     #pragma comment(lib, "Shell32.lib")
 
 void*
-prb_vmemReserve(int32_t size) {
-    void* ptr = VirtualAlloc(0, size, MEM_RESERVE, PAGE_READWRITE);
+prb_vmemAllocate(int32_t size) {
+    void* ptr = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     return ptr;
-}
-
-void
-prb_vmemCommit(void* base, int32_t size) {
-    VirtualAlloc(base, size, MEM_COMMIT, PAGE_READWRITE);
 }
 
 bool
@@ -602,12 +584,6 @@ prb_logMessage(prb_String msg) {
     WriteFile(out, msg.ptr, msg.len, 0, 0);
 }
 
-void
-prb_logMessageLn(prb_String msg) {
-    prb_logMessage(msg);
-    prb_logMessage(prb_STR("\n"));
-}
-
 int32_t
 prb_atomicIncrement(int32_t volatile* addend) {
     int32_t result = InterlockedAdd((long volatile*)addend, 1);
@@ -654,37 +630,16 @@ prb_getLastModifiedFromPattern(prb_String pattern) {
     return result;
 }
 
-uint64_t
-prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
-    uint64_t result = 0;
-    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
-        result = prb_max(result, prb_getLastModifiedFromPattern(patterns[patternIndex]));
-    }
-    return result;
-}
-
-uint64_t
-prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
-    uint64_t result = UINT64_MAX;
-    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
-        result = prb_min(result, prb_getLastModifiedFromPattern(patterns[patternIndex]));
-    }
-    return result;
-}
-
 #elif defined(prb_PLATFORM_LINUX)
     #include <linux/limits.h>
     #include <sys/mman.h>
 
 void*
-prb_vmemReserve(int32_t size) {
+prb_vmemAllocate(int32_t size) {
     void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     prb_assert(ptr != MAP_FAILED);
     return ptr;
 }
-
-void
-prb_vmemCommit(void* base, int32_t size) {}
 
 bool
 prb_directoryExists(prb_String path) {
