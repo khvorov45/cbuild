@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 
 #if defined(WIN32) || defined(_WIN32)
@@ -471,6 +472,32 @@ prb_stringArrayJoin2(prb_StringArray arr1, prb_StringArray arr2) {
     return builder.arr;
 }
 
+uint64_t
+prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
+    uint64_t result = 0;
+    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
+        result = prb_max(result, prb_getLastModifiedFromPattern(patterns[patternIndex]));
+    }
+    return result;
+}
+
+uint64_t
+prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
+    uint64_t result = UINT64_MAX;
+    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
+        result = prb_min(result, prb_getLastModifiedFromPattern(patterns[patternIndex]));
+    }
+    return result;
+}
+
+// TODO(khvorov) Better logging
+
+void
+prb_logMessageLn(prb_String msg) {
+    prb_logMessage(msg);
+    prb_logMessage(prb_STR("\n"));
+}
+
 //
 // SECTION Platform-specific stuff
 //
@@ -645,4 +672,90 @@ prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCo
     return result;
 }
 
-#endif  // prb_PLATFORM_WINDOWS
+#elif defined(prb_PLATFORM_LINUX)
+    #include <linux/limits.h>
+    #include <sys/mman.h>
+
+void*
+prb_vmemReserve(int32_t size) {
+    void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    prb_assert(ptr != MAP_FAILED);
+    return ptr;
+}
+
+void
+prb_vmemCommit(void* base, int32_t size) {}
+
+bool
+prb_directoryExists(prb_String path) {
+    prb_assert(path.ptr && path.len > 0);
+    bool result = false;
+    prb_assert(!"unimplemented");
+    return result;
+}
+
+void
+prb_createDirIfNotExists(prb_String path) {
+    prb_assert(!"unimplemented");
+}
+
+bool
+prb_directoryIsEmpty(prb_String path) {
+    prb_assert(prb_directoryExists(path));
+    bool result = true;
+    prb_assert(!"unimplemented");
+    return result;
+}
+
+void
+prb_clearDirectory(prb_String path) {
+    prb_assert(!"unimplemented");
+}
+
+prb_CompletionStatus
+prb_execCmd(prb_String cmd) {
+    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
+    prb_assert(!"unimplemented");
+    return cmdStatus;
+}
+
+void
+prb_logMessage(prb_String msg) {
+    prb_assert(!"unimplemented");
+}
+
+int32_t
+prb_atomicIncrement(int32_t volatile* addend) {
+    prb_assert(!"unimplemented");
+    int32_t result = 0;
+    return result;
+}
+
+bool
+prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t compare) {
+    prb_assert(!"unimplemented");
+    int32_t initValue = 0;
+    bool result = initValue == compare;
+    return result;
+}
+
+void
+prb_sleepMs(int32_t ms) {
+    prb_assert(!"unimplemented");
+}
+
+prb_String
+prb_getCurrentWorkingDir(void) {
+    prb_StringBuilder builder = prb_createStringBuilder(PATH_MAX);
+    prb_assert(!"unimplemented");
+    return builder.string;
+}
+
+uint64_t
+prb_getLastModifiedFromPattern(prb_String pattern) {
+    uint64_t result = 0;
+    prb_assert(!"unimplemented");
+    return result;
+}
+
+#endif  // prb_PLATFORM

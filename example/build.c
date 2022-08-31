@@ -61,6 +61,11 @@ main() {
 #ifdef prb_PLATFORM_WINDOWS
     prb_String compileCmdStart = prb_STR("cl /nologo /diagnostics:column /FC ");
     prb_String staticLibCmdStart = prb_STR("lib /nologo ");
+    prb_String staticLibFileExt = prb_STR("lib");
+#elif defined(prb_PLATFORM_LINUX)
+    prb_String compileCmdStart = prb_STR("gcc -Wall -Wextra -g ");
+    prb_String staticLibCmdStart = prb_STR("ar rcs ");
+    prb_String staticLibFileExt = prb_STR("a");
 #endif
 
     //
@@ -71,9 +76,7 @@ main() {
     prb_String freetypeIncludeFlag =
         prb_stringJoin2(prb_STR("-I"), prb_pathJoin2(freetypeDownloadDir, prb_STR("include")));
 
-#ifdef prb_PLATFORM_WINDOWS
-    prb_String freetypeLibFile = prb_pathJoin2(compileOutDir, prb_STR("freetype.lib"));
-#endif
+    prb_String freetypeLibFile = prb_pathJoin2(compileOutDir, prb_stringJoin2(prb_STR("freetype."), staticLibFileExt));
 
     prb_StepHandle freetypeFinalHandle;
     {
@@ -144,7 +147,10 @@ main() {
         prb_createDirIfNotExists(objDir);
 
         prb_String objOutputs[] = {prb_pathJoin2(objDir, prb_STR("*.obj"))};
+
+#ifdef prb_PLATFORM_WINDOWS
         prb_String pdbPath = prb_pathJoin2(compileOutDir, prb_STR("freetype.pdb"));
+#endif
 
         prb_String compileFlags[] = {
             freetypeIncludeFlag,
@@ -154,6 +160,8 @@ main() {
             prb_STR("-Zi"),
             prb_stringJoin2(prb_STR("/Fo"), prb_stringJoin2(objDir, prb_STR("/"))),
             prb_stringJoin2(prb_STR("/Fd"), pdbPath),
+#elif defined(prb_PLATFORM_LINUX)
+            prb_stringJoin2(prb_STR("-o "), prb_stringJoin2(objDir, prb_STR("/"))),
 #endif
         };
 
@@ -185,6 +193,8 @@ main() {
         prb_String libFlags[] = {
 #ifdef prb_PLATFORM_WINDOWS
             prb_stringJoin2(prb_STR("-out:"), freetypeLibFile),
+#elif defined(prb_PLATFORM_LINUX)
+            freetypeLibFile,
 #endif
         };
 
@@ -216,9 +226,7 @@ main() {
     prb_String sdlDownloadDir = prb_pathJoin2(rootDir, prb_STR("sdl"));
     prb_String sdlIncludeFlag = prb_stringJoin2(prb_STR("-I"), prb_pathJoin2(sdlDownloadDir, prb_STR("include")));
 
-#ifdef prb_PLATFORM_WINDOWS
-    prb_String sdlLibFile = prb_pathJoin2(compileOutDir, prb_STR("sdl.lib"));
-#endif
+    prb_String sdlLibFile = prb_pathJoin2(compileOutDir, prb_stringJoin2(prb_STR("sdl."), staticLibFileExt));
 
     prb_StepHandle sdlFinalHandle;
     {
@@ -289,7 +297,10 @@ main() {
         prb_createDirIfNotExists(objDir);
 
         prb_String objOutputs[] = {prb_pathJoin2(objDir, prb_STR("*.obj"))};
+
+#ifdef prb_PLATFORM_WINDOWS
         prb_String pdbPath = prb_pathJoin2(compileOutDir, prb_STR("sdl.pdb"));
+#endif
 
         prb_String compileFlags[] = {
             sdlIncludeFlag,
@@ -339,6 +350,8 @@ main() {
         prb_String libFlags[] = {
 #ifdef prb_PLATFORM_WINDOWS
             prb_stringJoin2(prb_STR("-out:"), sdlLibFile),
+#elif defined(prb_PLATFORM_LINUX)
+            sdlLibFile
 #endif
         };
 
