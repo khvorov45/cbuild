@@ -79,6 +79,9 @@ main() {
     prb_String freetypeLibFile = prb_pathJoin2(compileOutDir, prb_stringJoin2(prb_STR("freetype."), staticLibFileExt));
 
     prb_StepHandle freetypeFinalHandle;
+    // TODO(khvorov) Sort out pointers to compound literals. When they are scoped, 
+    // gcc will reuse the stack space, so can't rely on them being always on the stack in general
+    // probably.
     {
         prb_StepHandle downloadHandle = prb_addStep(
             gitClone,

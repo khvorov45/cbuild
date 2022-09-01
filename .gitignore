@@ -9,3 +9,4 @@
 /example/build-*
 /msvc.env
 /*.rdbg
+*.bin

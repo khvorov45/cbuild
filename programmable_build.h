@@ -631,8 +631,10 @@ prb_getLastModifiedFromPattern(prb_String pattern) {
 }
 
 #elif defined(prb_PLATFORM_LINUX)
+    #include <stdatomic.h>
     #include <linux/limits.h>
     #include <sys/mman.h>
+    #include <sys/stat.h>
 
 void*
 prb_vmemAllocate(int32_t size) {
@@ -644,14 +646,19 @@ prb_vmemAllocate(int32_t size) {
 bool
 prb_directoryExists(prb_String path) {
     prb_assert(path.ptr && path.len > 0);
+    struct stat statBuf = {0};
     bool result = false;
-    prb_assert(!"unimplemented");
+    if (stat(path.ptr, &statBuf) == 0) {
+        result = S_ISDIR(statBuf.st_mode);
+    }
     return result;
 }
 
 void
 prb_createDirIfNotExists(prb_String path) {
-    prb_assert(!"unimplemented");
+    if (mkdir(path.ptr, S_IRWXU | S_IRWXG | S_IRWXO) == -1) {
+        prb_assert(prb_directoryExists(path));
+    }
 }
 
 bool
@@ -688,9 +695,8 @@ prb_atomicIncrement(int32_t volatile* addend) {
 
 bool
 prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t compare) {
-    prb_assert(!"unimplemented");
-    int32_t initValue = 0;
-    bool result = initValue == compare;
+    int32_t compareCopy = compare;
+    bool result = atomic_compare_exchange_strong((_Atomic int32_t*)dest, &compareCopy, exchange);
     return result;
 }
 
