@@ -66,6 +66,7 @@ typedef struct prb_Arena {
     int32_t used;
 } prb_Arena;
 
+// Assume: null-terminated, permanently allocated, immutable.
 typedef struct prb_String {
     char* ptr;
     int32_t len;
@@ -77,7 +78,8 @@ typedef struct prb_StringArray {
 } prb_StringArray;
 
 typedef struct prb_StringBuilder {
-    prb_String string;
+    char* ptr;
+    int32_t capacity;
     int32_t written;
 } prb_StringBuilder;
 
@@ -313,15 +315,23 @@ prb_charIsSep(char ch) {
 prb_StringBuilder
 prb_createStringBuilder(int32_t len) {
     prb_assert(len > 0);
-    prb_StringBuilder result = {.string = {prb_allocAndZero(len + 1, 1), len}};
+    // NOTE(khvorov) +1 is for the null terminator
+    prb_StringBuilder result = {.ptr = prb_allocAndZero(len + 1, 1), .capacity = len};
     return result;
 }
 
 void
 prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source) {
-    prb_assert(source.len <= builder->string.len - builder->written);
-    prb_memcpy(builder->string.ptr + builder->written, source.ptr, source.len);
+    prb_assert(source.len <= builder->capacity - builder->written);
+    prb_memcpy(builder->ptr + builder->written, source.ptr, source.len);
     builder->written += source.len;
+}
+
+prb_String
+prb_stringBuilderGetString(prb_StringBuilder* builder) {
+    prb_assert(builder->written == builder->capacity);
+    prb_String result = {.ptr = builder->ptr, .len = builder->written};
+    return result;
 }
 
 prb_String
@@ -330,7 +340,8 @@ prb_stringCopy(prb_String source, int32_t from, int32_t to) {
     int32_t len = to - from + 1;
     prb_StringBuilder builder = prb_createStringBuilder(len);
     prb_stringBuilderWrite(&builder, (prb_String) {source.ptr + from, len});
-    return builder.string;
+    prb_String result = prb_stringBuilderGetString(&builder);
+    return result;
 }
 
 int32_t
@@ -380,7 +391,8 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
         prb_stringBuilderWrite(&builder, sep);
     }
 
-    return builder.string;
+    prb_String result = prb_stringBuilderGetString(&builder);
+    return result;
 }
 
 prb_String
@@ -389,7 +401,8 @@ prb_stringJoin2(prb_String str1, prb_String str2) {
     prb_StringBuilder builder = prb_createStringBuilder(str1.len + str2.len);
     prb_stringBuilderWrite(&builder, str1);
     prb_stringBuilderWrite(&builder, str2);
-    return builder.string;
+    prb_String result = prb_stringBuilderGetString(&builder);
+    return result;
 }
 
 prb_String
@@ -399,7 +412,8 @@ prb_stringJoin3(prb_String str1, prb_String str2, prb_String str3) {
     prb_stringBuilderWrite(&builder, str1);
     prb_stringBuilderWrite(&builder, str2);
     prb_stringBuilderWrite(&builder, str3);
-    return builder.string;
+    prb_String result = prb_stringBuilderGetString(&builder);
+    return result;
 }
 
 prb_String
@@ -412,7 +426,8 @@ prb_stringJoin4(prb_String str1, prb_String str2, prb_String str3, prb_String st
     prb_stringBuilderWrite(&builder, str2);
     prb_stringBuilderWrite(&builder, str3);
     prb_stringBuilderWrite(&builder, str4);
-    return builder.string;
+    prb_String result = prb_stringBuilderGetString(&builder);
+    return result;
 }
 
 prb_String
@@ -428,7 +443,8 @@ prb_pathJoin2(prb_String path1, prb_String path2) {
         prb_stringBuilderWrite(&builder, prb_STR("/"));
     }
     prb_stringBuilderWrite(&builder, path2);
-    return builder.string;
+    prb_String result = prb_stringBuilderGetString(&builder);
+    return result;
 }
 
 prb_String
@@ -635,6 +651,7 @@ prb_getLastModifiedFromPattern(prb_String pattern) {
     #include <linux/limits.h>
     #include <sys/mman.h>
     #include <sys/stat.h>
+    #include <unistd.h>
 
 void*
 prb_vmemAllocate(int32_t size) {
@@ -707,9 +724,12 @@ prb_sleepMs(int32_t ms) {
 
 prb_String
 prb_getCurrentWorkingDir(void) {
-    prb_StringBuilder builder = prb_createStringBuilder(PATH_MAX);
-    prb_assert(!"unimplemented");
-    return builder.string;
+    int32_t maxLen = PATH_MAX + 1;
+    char* ptr = prb_allocAndZero(maxLen, 1);
+    prb_assert(getcwd(ptr, maxLen));
+    int32_t len = prb_strlen(ptr);
+    prb_String result = {ptr, len};
+    return result;
 }
 
 uint64_t
