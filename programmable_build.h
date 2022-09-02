@@ -137,6 +137,7 @@ void prb_createDirIfNotExists(prb_String path);
 bool prb_charIsSep(char ch);
 prb_StringBuilder prb_createStringBuilder(int32_t len);
 void prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source);
+prb_String prb_stringBuilderGetString(prb_StringBuilder* builder);
 prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
 void prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
 prb_String prb_stringCopy(prb_String source, int32_t from, int32_t to);
