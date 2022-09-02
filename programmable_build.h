@@ -23,7 +23,7 @@
 #define prb_min(a, b) (((a) < (b)) ? (a) : (b))
 #define prb_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
-#define prb_allocArray(len, type) (type*)prb_allocAndZero((len) * sizeof(type), _Alignof(type))
+#define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), _Alignof(type))
 #define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), _Alignof(type))
 #define prb_STR(str) (prb_String) { .ptr = (str), .len = (int32_t)prb_strlen(str) }
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x) - 1)) == 0))
@@ -90,7 +90,8 @@ typedef struct prb_StringBuilder {
 } prb_StringBuilder;
 
 typedef struct prb_StringArrayBuilder {
-    prb_StringArray arr;
+    prb_String* ptr;
+    int32_t capacity;
     int32_t written;
 } prb_StringArrayBuilder;
 
@@ -462,16 +463,22 @@ prb_pathJoin3(prb_String path1, prb_String path2, prb_String path3) {
 
 prb_StringArrayBuilder
 prb_createStringArrayBuilder(int32_t len) {
-    prb_String* ptr = prb_allocArray(len, prb_String);
-    prb_StringArrayBuilder builder = {.arr = (prb_StringArray) {ptr, len}};
+    prb_StringArrayBuilder builder = {.ptr = prb_allocArray(prb_String, len), .capacity = len};
     return builder;
 }
 
 void
 prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr) {
-    prb_assert(builder->arr.len >= arr.len + builder->written);
-    prb_memcpy(builder->arr.ptr + builder->written, arr.ptr, arr.len * sizeof(prb_String));
+    prb_assert(builder->capacity >= arr.len + builder->written);
+    prb_memcpy(builder->ptr + builder->written, arr.ptr, arr.len * sizeof(prb_String));
     builder->written += arr.len;
+}
+
+prb_StringArray
+prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder) {
+    prb_assert(builder->capacity == builder->written);
+    prb_StringArray result = {builder->ptr, builder->written};
+    return result;
 }
 
 prb_StringArray
@@ -479,7 +486,8 @@ prb_stringArrayJoin2(prb_StringArray arr1, prb_StringArray arr2) {
     prb_StringArrayBuilder builder = prb_createStringArrayBuilder(arr1.len + arr2.len);
     prb_stringArrayBuilderCopy(&builder, arr1);
     prb_stringArrayBuilderCopy(&builder, arr2);
-    return builder.arr;
+    prb_StringArray result = prb_stringArrayBuilderGetArray(&builder);
+    return result;
 }
 
 uint64_t
@@ -598,8 +606,6 @@ prb_execCmd(prb_String cmd) {
 
     return cmdStatus;
 }
-
-// TODO(khvorov) Better logging
 
 void
 prb_logMessage(prb_String msg) {
