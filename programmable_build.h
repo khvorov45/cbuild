@@ -23,9 +23,15 @@
 #define prb_min(a, b) (((a) < (b)) ? (a) : (b))
 #define prb_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
-#define prb_newArray(len, type) (type*)prb_allocAndZero((len) * sizeof(type), _Alignof(type))
+#define prb_allocArray(len, type) (type*)prb_allocAndZero((len) * sizeof(type), _Alignof(type))
+#define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), _Alignof(type))
 #define prb_STR(str) (prb_String) { .ptr = (str), .len = (int32_t)prb_strlen(str) }
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x) - 1)) == 0))
+
+#define prb_addStep(handleName, proc, dataType, dataLiteral...) \
+    dataType* handleName##Data = prb_allocStruct(dataType); \
+    *handleName##Data = (dataType)dataLiteral; \
+    prb_StepHandle handleName = prb_addStep_(proc, handleName##Data);
 
 // Debug break taken from SDL
 // https://github.com/libsdl-org/SDL/blob/main/include/SDL_assert.h
@@ -120,7 +126,7 @@ typedef enum prb_StepStatus {
 
 // SECTION Core
 void prb_init(void);
-prb_StepHandle prb_addStep(prb_StepProc proc, void* data);
+prb_StepHandle prb_addStep_(prb_StepProc proc, void* data);
 void prb_setDependency(prb_StepHandle dependent, prb_StepHandle dependency);
 void prb_run(void);
 
@@ -182,7 +188,7 @@ prb_init(void) {
 }
 
 prb_StepHandle
-prb_addStep(prb_StepProc proc, void* data) {
+prb_addStep_(prb_StepProc proc, void* data) {
     prb_StepHandle handle = {prb_globalBuilder.stepCount++};
     prb_globalBuilder.steps[handle.index] = (prb_Step) {proc, data};
     return handle;
@@ -456,7 +462,7 @@ prb_pathJoin3(prb_String path1, prb_String path2, prb_String path3) {
 
 prb_StringArrayBuilder
 prb_createStringArrayBuilder(int32_t len) {
-    prb_String* ptr = prb_newArray(len, prb_String);
+    prb_String* ptr = prb_allocArray(len, prb_String);
     prb_StringArrayBuilder builder = {.arr = (prb_StringArray) {ptr, len}};
     return builder;
 }

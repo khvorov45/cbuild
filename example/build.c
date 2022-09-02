@@ -79,13 +79,12 @@ main() {
     prb_String freetypeLibFile = prb_pathJoin2(compileOutDir, prb_stringJoin2(prb_STR("freetype."), staticLibFileExt));
 
     prb_StepHandle freetypeFinalHandle;
-    // TODO(khvorov) Sort out pointers to compound literals. When they are scoped, 
-    // gcc will reuse the stack space, so can't rely on them being always on the stack in general
-    // probably.
     {
-        prb_StepHandle downloadHandle = prb_addStep(
+        prb_addStep(
+            downloadHandle,
             gitClone,
-            &(GitClone) {.url = prb_STR("https://github.com/freetype/freetype"), .dest = freetypeDownloadDir}
+            GitClone,
+            {.url = prb_STR("https://github.com/freetype/freetype"), .dest = freetypeDownloadDir}
         );
 
         prb_String compileSources[] = {
@@ -179,16 +178,17 @@ main() {
         compileOutputs = prb_stringArrayJoin2(compileOutputs, (prb_StringArray) {&pdbPath, 1});
 #endif
 
-        prb_StepHandle compileHandle = prb_addStep(
+        prb_addStep(
+            compileHandle,
             compile,
-            &(Compile
-            ) {.name = prb_STR("freetype compile"),
-               .cmds = &compileCmd,
-               .cmdCount = 1,
-               .watch = compileSources,
-               .watchCount = prb_arrayLength(compileSources),
-               .outputs = compileOutputs.ptr,
-               .outputsCount = compileOutputs.len}
+            Compile,
+            {.name = prb_STR("freetype compile"),
+             .cmds = &compileCmd,
+             .cmdCount = 1,
+             .watch = compileSources,
+             .watchCount = prb_arrayLength(compileSources),
+             .outputs = compileOutputs.ptr,
+             .outputsCount = compileOutputs.len}
         );
 
         prb_setDependency(compileHandle, downloadHandle);
@@ -207,17 +207,19 @@ main() {
             prb_stringsJoin(objOutputs, prb_arrayLength(objOutputs), prb_STR(" "))
         );
 
-        freetypeFinalHandle = prb_addStep(
+        prb_addStep(
+            freetypeLibHandle,
             compile,
-            &(Compile
-            ) {.name = prb_STR("freetype lib"),
-               .cmds = &libCmd,
-               .cmdCount = 1,
-               .watch = objOutputs,
-               .watchCount = prb_arrayLength(objOutputs),
-               .outputs = &freetypeLibFile,
-               .outputsCount = 1}
+            Compile,
+            {.name = prb_STR("freetype lib"),
+             .cmds = &libCmd,
+             .cmdCount = 1,
+             .watch = objOutputs,
+             .watchCount = prb_arrayLength(objOutputs),
+             .outputs = &freetypeLibFile,
+             .outputsCount = 1}
         );
+        freetypeFinalHandle = freetypeLibHandle;
 
         prb_setDependency(freetypeFinalHandle, compileHandle);
     }
@@ -233,9 +235,11 @@ main() {
 
     prb_StepHandle sdlFinalHandle;
     {
-        prb_StepHandle downloadHandle = prb_addStep(
+        prb_addStep(
+            downloadHandle,
             gitClone,
-            &(GitClone) {.url = prb_STR("https://github.com/libsdl-org/SDL"), .dest = sdlDownloadDir}
+            GitClone,
+            {.url = prb_STR("https://github.com/libsdl-org/SDL"), .dest = sdlDownloadDir}
         );
 
         prb_String compileSources[] = {
@@ -336,16 +340,17 @@ main() {
         compileOutputs = prb_stringArrayJoin2(compileOutputs, (prb_StringArray) {&pdbPath, 1});
 #endif
 
-        prb_StepHandle compileHandle = prb_addStep(
+        prb_addStep(
+            compileHandle,
             compile,
-            &(Compile
-            ) {.name = prb_STR("sdl compile"),
-               .cmds = &compileCmd,
-               .cmdCount = 1,
-               .watch = compileSources,
-               .watchCount = prb_arrayLength(compileSources),
-               .outputs = compileOutputs.ptr,
-               .outputsCount = compileOutputs.len}
+            Compile,
+            {.name = prb_STR("sdl compile"),
+             .cmds = &compileCmd,
+             .cmdCount = 1,
+             .watch = compileSources,
+             .watchCount = prb_arrayLength(compileSources),
+             .outputs = compileOutputs.ptr,
+             .outputsCount = compileOutputs.len}
         );
 
         prb_setDependency(compileHandle, downloadHandle);
@@ -364,17 +369,19 @@ main() {
             prb_stringsJoin(objOutputs, prb_arrayLength(objOutputs), prb_STR(" "))
         );
 
-        sdlFinalHandle = prb_addStep(
+        prb_addStep(
+            sdlLibHandle,
             compile,
-            &(Compile
-            ) {.name = prb_STR("sdl lib"),
-               .cmds = &libCmd,
-               .cmdCount = 1,
-               .watch = objOutputs,
-               .watchCount = prb_arrayLength(objOutputs),
-               .outputs = &sdlLibFile,
-               .outputsCount = 1}
+            Compile,
+            {.name = prb_STR("sdl lib"),
+             .cmds = &libCmd,
+             .cmdCount = 1,
+             .watch = objOutputs,
+             .watchCount = prb_arrayLength(objOutputs),
+             .outputs = &sdlLibFile,
+             .outputsCount = 1}
         );
+        sdlFinalHandle = sdlLibHandle;
 
         prb_setDependency(sdlFinalHandle, compileHandle);
     }
@@ -416,7 +423,7 @@ main() {
         );
 #endif
 
-        prb_StepHandle exeCompileHandle = prb_addStep(compile, &(Compile) {.cmds = &cmd, .cmdCount = 1});
+        prb_addStep(exeCompileHandle, compile, Compile, {.cmds = &cmd, .cmdCount = 1});
 
         prb_setDependency(exeCompileHandle, freetypeFinalHandle);
         prb_setDependency(exeCompileHandle, sdlFinalHandle);
