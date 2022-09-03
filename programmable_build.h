@@ -604,7 +604,7 @@ prb_vfmt(char* fmt, va_list args) {
         fmt,
         args
     );
-    prb_globalBuilder.arena.used += result.len;
+    prb_globalBuilder.arena.used += result.len + 1;  // NOTE(khvorov) Null terminator
     return result;
 }
 
@@ -772,7 +772,9 @@ prb_getLastModifiedFromPattern(prb_String pattern) {
     #include <linux/limits.h>
     #include <sys/mman.h>
     #include <sys/stat.h>
+    #include <sys/wait.h>
     #include <unistd.h>
+    #include <spawn.h>
 
 void*
 prb_vmemAllocate(int32_t size) {
@@ -814,8 +816,41 @@ prb_clearDirectory(prb_String path) {
 
 prb_CompletionStatus
 prb_execCmd(prb_String cmd) {
+    // NOTE(khvorov) Need to split cmd into an args array (lol wtf linux)
+    int32_t spacesCount = 0;
+    int32_t* spacesIndices = prb_allocStruct(int32_t);
+    prb_globalBuilder.arena.used -= sizeof(int32_t);
+    for (int32_t strIndex = 0; strIndex < cmd.len; strIndex++) {
+        char ch = cmd.ptr[strIndex];
+        if (ch == ' ') {
+            *(spacesIndices + spacesCount++) = strIndex;
+        }
+    }
+    prb_globalBuilder.arena.used += spacesCount * sizeof(int32_t);
+
+    // NOTE(khvorov) args array needs to have a null at the end
+    int32_t argCount = spacesCount + 1;
+    char** args = prb_allocArray(char*, argCount + 1);
+
+    for (int32_t argIndex = 0; argIndex < argCount; argIndex++) {
+        int32_t spaceBefore = argIndex == 0 ? -1 : spacesIndices[argIndex - 1];
+        int32_t spaceAfter = argIndex == spacesCount ? cmd.len + 1 : spacesIndices[argIndex];
+        char* argStart = cmd.ptr + spaceBefore + 1;
+        int32_t argLen = spaceAfter - spaceBefore - 1;
+        prb_String argString = prb_stringCopy((prb_String) {argStart, argLen}, 0, argLen - 1);
+        args[argIndex] = argString.ptr;
+    }
+
     prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
-    prb_assert(!"unimplemented");
+    pid_t pid;
+    int32_t spawnResult = posix_spawnp(&pid, args[0], 0, 0, args, 0);
+    if (spawnResult == 0) {
+        int32_t status;
+        pid_t waitResult = waitpid(pid, &status, 0);
+        if (waitResult == pid) {
+            cmdStatus = prb_CompletionStatus_Success;
+        }
+    }
     return cmdStatus;
 }
 
