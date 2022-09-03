@@ -155,12 +155,7 @@ prb_String prb_getLastEntryInPath(prb_String path);
 uint64_t prb_getLastModifiedFromPattern(prb_String pattern);
 uint64_t prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 uint64_t prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
-prb_String prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
-prb_String prb_stringJoin2(prb_String str1, prb_String str2);
-prb_String prb_stringJoin3(prb_String str1, prb_String str2, prb_String str3);
-prb_String prb_stringJoin4(prb_String str1, prb_String str2, prb_String str3, prb_String str4);
-prb_String prb_pathJoin2(prb_String path1, prb_String path2);
-prb_String prb_pathJoin3(prb_String path1, prb_String path2, prb_String path3);
+prb_String prb_pathJoin(prb_String path1, prb_String path2);
 prb_StringArray prb_stringArrayJoin2(prb_StringArray arr1, prb_StringArray arr2);
 prb_CompletionStatus prb_execCmd(prb_String cmd);
 prb_String prb_fmtCustomBuffer(void* buf, int32_t bufSize, char* fmt, ...);
@@ -479,42 +474,7 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
 }
 
 prb_String
-prb_stringJoin2(prb_String str1, prb_String str2) {
-    prb_assert(str1.ptr && str1.len > 0 && str2.ptr && str2.len > 0);
-    prb_StringBuilder builder = prb_createStringBuilder(str1.len + str2.len);
-    prb_stringBuilderWrite(&builder, str1);
-    prb_stringBuilderWrite(&builder, str2);
-    prb_String result = prb_stringBuilderGetString(&builder);
-    return result;
-}
-
-prb_String
-prb_stringJoin3(prb_String str1, prb_String str2, prb_String str3) {
-    prb_assert(str1.ptr && str1.len > 0 && str2.ptr && str2.len > 0 && str3.ptr && str3.len > 0);
-    prb_StringBuilder builder = prb_createStringBuilder(str1.len + str2.len + str3.len);
-    prb_stringBuilderWrite(&builder, str1);
-    prb_stringBuilderWrite(&builder, str2);
-    prb_stringBuilderWrite(&builder, str3);
-    prb_String result = prb_stringBuilderGetString(&builder);
-    return result;
-}
-
-prb_String
-prb_stringJoin4(prb_String str1, prb_String str2, prb_String str3, prb_String str4) {
-    prb_assert(
-        str1.ptr && str1.len > 0 && str2.ptr && str2.len > 0 && str3.ptr && str3.len > 0 && str4.ptr && str4.len > 0
-    );
-    prb_StringBuilder builder = prb_createStringBuilder(str1.len + str2.len + str3.len + str4.len);
-    prb_stringBuilderWrite(&builder, str1);
-    prb_stringBuilderWrite(&builder, str2);
-    prb_stringBuilderWrite(&builder, str3);
-    prb_stringBuilderWrite(&builder, str4);
-    prb_String result = prb_stringBuilderGetString(&builder);
-    return result;
-}
-
-prb_String
-prb_pathJoin2(prb_String path1, prb_String path2) {
+prb_pathJoin(prb_String path1, prb_String path2) {
     prb_assert(path1.ptr && path1.len > 0 && path2.ptr && path2.len > 0);
     char path1LastChar = path1.ptr[path1.len - 1];
     bool path1EndsOnSep = prb_charIsSep(path1LastChar);
@@ -527,12 +487,6 @@ prb_pathJoin2(prb_String path1, prb_String path2) {
     }
     prb_stringBuilderWrite(&builder, path2);
     prb_String result = prb_stringBuilderGetString(&builder);
-    return result;
-}
-
-prb_String
-prb_pathJoin3(prb_String path1, prb_String path2, prb_String path3) {
-    prb_String result = prb_pathJoin2(prb_pathJoin2(path1, path2), path3);
     return result;
 }
 
