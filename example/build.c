@@ -20,11 +20,10 @@ gitClone(void* dataInit) {
     GitClone* data = (GitClone*)dataInit;
     prb_CompletionStatus status = prb_CompletionStatus_Success;
     if (!prb_directoryExists(data->dest) || prb_directoryIsEmpty(data->dest)) {
-        prb_String cmd = prb_stringJoin4(prb_STR("git clone "), data->url, prb_STR(" "), data->dest);
-        prb_logMessageLn(cmd);
+        prb_String cmd = prb_fmtAndPrintln("git clone %s %s", data->url.ptr, data->dest.ptr);
         status = prb_execCmd(cmd);
     } else {
-        prb_logMessageLn(prb_stringJoin2(prb_STR("skip git clone "), prb_getLastEntryInPath(data->dest)));
+        prb_fmtAndPrintln("skip git clone %s", prb_getLastEntryInPath(data->dest).ptr);
     }
     return status;
 }
@@ -39,11 +38,11 @@ compile(void* dataInit) {
     if (sourceLastMod > outputsLastMod || data->watchCount == 0 || data->outputsCount == 0) {
         for (int32_t cmdIndex = 0; cmdIndex < data->cmdCount; cmdIndex++) {
             prb_String cmd = data->cmds[cmdIndex];
-            prb_logMessageLn(cmd);
+            prb_fmtAndPrintln("%s", cmd.ptr);
             status = prb_execCmd(cmd);
         }
     } else {
-        prb_logMessageLn(prb_stringJoin2(prb_STR("skip "), data->name));
+        prb_fmtAndPrintln("skip %s", data->name.ptr);
     }
 
     return status;
