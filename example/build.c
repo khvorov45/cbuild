@@ -79,7 +79,7 @@ main() {
     prb_StepHandle freetypeFinalHandle;
     {
         prb_addStep(
-            downloadHandle,
+            prb_DependOn_Nothing,
             gitClone,
             GitClone,
             {.url = prb_STR("https://github.com/freetype/freetype"), .dest = freetypeDownloadDir}
@@ -178,7 +178,7 @@ main() {
 #endif
 
         prb_addStep(
-            compileHandle,
+            prb_DependOn_LastAdded,
             compile,
             Compile,
             {.name = prb_STR("freetype compile"),
@@ -189,8 +189,6 @@ main() {
              .outputs = compileOutputs.ptr,
              .outputsCount = compileOutputs.len}
         );
-
-        prb_setDependency(compileHandle, downloadHandle);
 
         prb_String libFlags[] = {
 #ifdef prb_PLATFORM_WINDOWS
@@ -208,7 +206,7 @@ main() {
         );
 
         prb_addStep(
-            freetypeLibHandle,
+            prb_DependOn_LastAdded,
             compile,
             Compile,
             {.name = prb_STR("freetype lib"),
@@ -219,9 +217,7 @@ main() {
              .outputs = &freetypeLibFile,
              .outputsCount = 1}
         );
-        freetypeFinalHandle = freetypeLibHandle;
-
-        prb_setDependency(freetypeFinalHandle, compileHandle);
+        freetypeFinalHandle = prb_getLastAddedStep();
     }
 
     //
@@ -236,7 +232,7 @@ main() {
     prb_StepHandle sdlFinalHandle;
     {
         prb_addStep(
-            downloadHandle,
+            prb_DependOn_Nothing,
             gitClone,
             GitClone,
             {.url = prb_STR("https://github.com/libsdl-org/SDL"), .dest = sdlDownloadDir}
@@ -342,7 +338,7 @@ main() {
 #endif
 
         prb_addStep(
-            compileHandle,
+            prb_DependOn_LastAdded,
             compile,
             Compile,
             {.name = prb_STR("sdl compile"),
@@ -353,8 +349,6 @@ main() {
              .outputs = compileOutputs.ptr,
              .outputsCount = compileOutputs.len}
         );
-
-        prb_setDependency(compileHandle, downloadHandle);
 
         prb_String libFlags[] = {
 #ifdef prb_PLATFORM_WINDOWS
@@ -372,7 +366,7 @@ main() {
         );
 
         prb_addStep(
-            sdlLibHandle,
+            prb_DependOn_LastAdded,
             compile,
             Compile,
             {.name = prb_STR("sdl lib"),
@@ -383,9 +377,7 @@ main() {
              .outputs = &sdlLibFile,
              .outputsCount = 1}
         );
-        sdlFinalHandle = sdlLibHandle;
-
-        prb_setDependency(sdlFinalHandle, compileHandle);
+        sdlFinalHandle = prb_getLastAddedStep();
     }
 
     //
@@ -426,8 +418,8 @@ main() {
         );
 #endif
 
-        prb_addStep(exeCompileHandle, compile, Compile, {.cmds = &cmd, .cmdCount = 1});
-
+        prb_addStep(prb_DependOn_Nothing, compile, Compile, {.cmds = &cmd, .cmdCount = 1});
+        prb_StepHandle exeCompileHandle = prb_getLastAddedStep();
         prb_setDependency(exeCompileHandle, freetypeFinalHandle);
         prb_setDependency(exeCompileHandle, sdlFinalHandle);
     }
