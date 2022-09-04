@@ -804,6 +804,8 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
             result = prb_min(result, thisLastMod);
         }
         FindClose(firstHandle);
+    } else {
+        result = 0;
     }
 
     return result;
@@ -871,22 +873,23 @@ prb_execCmd(prb_String cmd) {
     for (int32_t strIndex = 0; strIndex < cmd.len; strIndex++) {
         char ch = cmd.ptr[strIndex];
         if (ch == ' ') {
-            *(spacesIndices + spacesCount++) = strIndex;
+            spacesIndices[spacesCount++] = strIndex;
         }
     }
     prb_globalBuilder.arena.used += spacesCount * sizeof(int32_t);
 
+    int32_t argCount = 0;
     // NOTE(khvorov) args array needs to have a null at the end
-    int32_t argCount = spacesCount + 1;
-    char** args = prb_allocArray(char*, argCount + 1);
-
-    for (int32_t argIndex = 0; argIndex < argCount; argIndex++) {
-        int32_t spaceBefore = argIndex == 0 ? -1 : spacesIndices[argIndex - 1];
-        int32_t spaceAfter = argIndex == spacesCount ? cmd.len + 1 : spacesIndices[argIndex];
+    char** args = prb_allocArray(char*, spacesCount + 1 + 1);
+    for (int32_t spaceIndex = 0; spaceIndex <= spacesCount; spaceIndex++) {
+        int32_t spaceBefore = spaceIndex == 0 ? -1 : spacesIndices[spaceIndex - 1];
+        int32_t spaceAfter = spaceIndex == spacesCount ? cmd.len + 1 : spacesIndices[spaceIndex];
         char* argStart = cmd.ptr + spaceBefore + 1;
         int32_t argLen = spaceAfter - spaceBefore - 1;
-        prb_String argString = prb_stringCopy((prb_String) {argStart, argLen}, 0, argLen - 1);
-        args[argIndex] = argString.ptr;
+        if (argLen > 0) {
+            prb_String argString = prb_stringCopy((prb_String) {argStart, argLen}, 0, argLen - 1);
+            args[argCount++] = argString.ptr;
+        }
     }
 
     prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
@@ -895,7 +898,7 @@ prb_execCmd(prb_String cmd) {
     if (spawnResult == 0) {
         int32_t status;
         pid_t waitResult = waitpid(pid, &status, 0);
-        if (waitResult == pid) {
+        if (waitResult == pid && status == 0) {
             cmdStatus = prb_CompletionStatus_Success;
         }
     }
@@ -969,6 +972,8 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
                 result = prb_min(result, thisLastMod);
             }
         }
+    } else {
+        result = 0;
     }
     globfree(&globResult);
     return result;
