@@ -887,8 +887,7 @@ prb_writeToStdout(prb_String msg) {
 
 int32_t
 prb_atomicIncrement(int32_t volatile* addend) {
-    prb_assert(!"unimplemented");
-    int32_t result = 0;
+    int32_t result = atomic_fetch_add(addend, 1);
     return result;
 }
 
