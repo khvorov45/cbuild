@@ -162,7 +162,8 @@ prb_String prb_stringCopy(prb_String source, int32_t from, int32_t to);
 prb_String prb_getCurrentWorkingDir(void);
 prb_String prb_getParentDir(prb_String path);
 prb_String prb_getLastEntryInPath(prb_String path);
-uint64_t prb_getLastModifiedFromPattern(prb_String pattern);
+uint64_t prb_getLatestLastModifiedFromPattern(prb_String pattern);
+uint64_t prb_getEarliestLastModifiedFromPattern(prb_String pattern);
 uint64_t prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 uint64_t prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 prb_String prb_pathJoin(prb_String path1, prb_String path2);
@@ -561,7 +562,7 @@ uint64_t
 prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
     uint64_t result = 0;
     for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
-        result = prb_max(result, prb_getLastModifiedFromPattern(patterns[patternIndex]));
+        result = prb_max(result, prb_getLatestLastModifiedFromPattern(patterns[patternIndex]));
     }
     return result;
 }
@@ -570,7 +571,7 @@ uint64_t
 prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
     uint64_t result = UINT64_MAX;
     for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
-        result = prb_min(result, prb_getLastModifiedFromPattern(patterns[patternIndex]));
+        result = prb_min(result, prb_getEarliestLastModifiedFromPattern(patterns[patternIndex]));
     }
     return result;
 }
@@ -767,7 +768,7 @@ prb_getCurrentWorkingDir(void) {
 }
 
 uint64_t
-prb_getLastModifiedFromPattern(prb_String pattern) {
+prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     uint64_t result = 0;
 
     WIN32_FIND_DATAA findData;
@@ -787,6 +788,27 @@ prb_getLastModifiedFromPattern(prb_String pattern) {
     return result;
 }
 
+uint64_t
+prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
+    uint64_t result = UINT64_MAX;
+
+    WIN32_FIND_DATAA findData;
+    HANDLE firstHandle = FindFirstFileA(pattern.ptr, &findData);
+    if (firstHandle != INVALID_HANDLE_VALUE) {
+        uint64_t thisLastMod =
+            ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+        result = prb_min(result, thisLastMod);
+        while (FindNextFileA(firstHandle, &findData)) {
+            thisLastMod =
+                ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+            result = prb_min(result, thisLastMod);
+        }
+        FindClose(firstHandle);
+    }
+
+    return result;
+}
+
 #elif defined(prb_PLATFORM_LINUX)
     #include <stdatomic.h>
     #include <linux/limits.h>
@@ -796,6 +818,7 @@ prb_getLastModifiedFromPattern(prb_String pattern) {
     #include <unistd.h>
     #include <spawn.h>
     #include <dirent.h>
+    #include <glob.h>
 
 void*
 prb_vmemAllocate(int32_t size) {
@@ -914,9 +937,40 @@ prb_getCurrentWorkingDir(void) {
 }
 
 uint64_t
-prb_getLastModifiedFromPattern(prb_String pattern) {
+prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     uint64_t result = 0;
-    prb_assert(!"unimplemented");
+    glob_t globResult = {0};
+    if (glob(pattern.ptr, GLOB_NOSORT, 0, &globResult) == 0) {
+        prb_assert(globResult.gl_pathc <= INT32_MAX);
+        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
+            char* path = globResult.gl_pathv[resultIndex];
+            struct stat statBuf = {0};
+            if (stat(path, &statBuf) == 0) {
+                uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
+                result = prb_max(result, thisLastMod);
+            }
+        }
+    }
+    globfree(&globResult);
+    return result;
+}
+
+uint64_t
+prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
+    uint64_t result = UINT64_MAX;
+    glob_t globResult = {0};
+    if (glob(pattern.ptr, GLOB_NOSORT, 0, &globResult) == 0) {
+        prb_assert(globResult.gl_pathc <= INT32_MAX);
+        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
+            char* path = globResult.gl_pathv[resultIndex];
+            struct stat statBuf = {0};
+            if (stat(path, &statBuf) == 0) {
+                uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
+                result = prb_min(result, thisLastMod);
+            }
+        }
+    }
+    globfree(&globResult);
     return result;
 }
 
