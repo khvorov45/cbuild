@@ -26,6 +26,7 @@
 #define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
 #define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), _Alignof(type))
 #define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), _Alignof(type))
+#define prb_globalArenaAlignTo(type) (type*)prb_globalArenaAlignTo_(_Alignof(type))
 #define prb_STR(str) (prb_String) { .ptr = (str), .len = (int32_t)prb_strlen(str) }
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x) - 1)) == 0))
 
@@ -145,6 +146,9 @@ void* prb_memcpy(void* restrict dest, const void* restrict src, size_t n);
 void* prb_vmemAllocate(int32_t size);
 void prb_alignPtr(void** ptr, int32_t align, int32_t* size);
 void* prb_allocAndZero(int32_t size, int32_t align);
+void* prb_globalArenaCurrentFreePtr(void);
+int32_t prb_globalArenaCurrentFreeSize(void);
+void* prb_globalArenaAlignTo_(int32_t align);
 bool prb_directoryExists(prb_String path);
 bool prb_directoryIsEmpty(prb_String path);
 void prb_createDirIfNotExists(prb_String path);
@@ -244,6 +248,7 @@ STBSP__PUBLICDEC int STB_SPRINTF_DECORATE(vsprintfcb
 )(STBSP_SPRINTFCB* callback, void* user, char* buf, char const* fmt, va_list va);
 STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char period);
 
+// SECTION Global state
 struct {
     prb_Arena arena;
     prb_Step steps[prb_MAX_STEPS];
@@ -391,15 +396,30 @@ prb_alignPtr(void** ptr, int32_t align, int32_t* size) {
 
 void*
 prb_allocAndZero(int32_t size, int32_t align) {
-    void* baseAligned = (uint8_t*)prb_globalBuilder.arena.base + prb_globalBuilder.arena.used;
-    int32_t sizeAligned = size;
-    prb_alignPtr(&baseAligned, align, &sizeAligned);
+    void* result = prb_globalArenaAlignTo_(align);
+    prb_assert(prb_globalArenaCurrentFreeSize() >= size);
+    prb_globalBuilder.arena.used += size;
+    return result;
+}
 
-    int32_t sizeFree = prb_globalBuilder.arena.size - prb_globalBuilder.arena.used;
-    prb_assert(sizeFree >= sizeAligned);
+void*
+prb_globalArenaCurrentFreePtr(void) {
+    void* result = (uint8_t*)prb_globalBuilder.arena.base + prb_globalBuilder.arena.used;
+    return result;
+}
 
-    prb_globalBuilder.arena.used += sizeAligned;
-    return baseAligned;
+int32_t
+prb_globalArenaCurrentFreeSize(void) {
+    int32_t result = prb_globalBuilder.arena.size - prb_globalBuilder.arena.used;
+    return result;
+}
+
+void*
+prb_globalArenaAlignTo_(int32_t align) {
+    prb_alignPtr(&prb_globalBuilder.arena.base, align, &prb_globalBuilder.arena.used);
+    prb_assert(prb_globalBuilder.arena.used <= prb_globalBuilder.arena.size);
+    void* result = prb_globalArenaCurrentFreePtr();
+    return result;
 }
 
 bool
@@ -775,6 +795,7 @@ prb_getLastModifiedFromPattern(prb_String pattern) {
     #include <sys/wait.h>
     #include <unistd.h>
     #include <spawn.h>
+    #include <dirent.h>
 
 void*
 prb_vmemAllocate(int32_t size) {
@@ -803,9 +824,14 @@ prb_createDirIfNotExists(prb_String path) {
 
 bool
 prb_directoryIsEmpty(prb_String path) {
-    prb_assert(prb_directoryExists(path));
     bool result = true;
-    prb_assert(!"unimplemented");
+    DIR* pathHandle = opendir(path.ptr);
+    prb_assert(pathHandle);
+    struct dirent* entry = readdir(pathHandle);
+    if (entry) {
+        result = false;
+    }
+    closedir(pathHandle);
     return result;
 }
 
@@ -818,8 +844,7 @@ prb_CompletionStatus
 prb_execCmd(prb_String cmd) {
     // NOTE(khvorov) Need to split cmd into an args array (lol wtf linux)
     int32_t spacesCount = 0;
-    int32_t* spacesIndices = prb_allocStruct(int32_t);
-    prb_globalBuilder.arena.used -= sizeof(int32_t);
+    int32_t* spacesIndices = prb_globalArenaAlignTo(int32_t);
     for (int32_t strIndex = 0; strIndex < cmd.len; strIndex++) {
         char ch = cmd.ptr[strIndex];
         if (ch == ' ') {
