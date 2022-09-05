@@ -24,7 +24,7 @@ prb_CompletionStatus
 gitClone(void* dataInit) {
     GitClone* data = (GitClone*)dataInit;
     prb_CompletionStatus status = prb_CompletionStatus_Success;
-    if (!prb_directoryExists(data->dest) || prb_directoryIsEmpty(data->dest)) {
+    if (!prb_isDirectory(data->dest) || prb_directoryIsEmpty(data->dest)) {
         prb_String cmd = prb_fmtAndPrintln("git clone %s %s", data->url.ptr, data->dest.ptr);
         status = prb_execCmd(cmd);
     } else {

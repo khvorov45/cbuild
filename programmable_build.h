@@ -149,9 +149,13 @@ void* prb_allocAndZero(int32_t size, int32_t align);
 void* prb_globalArenaCurrentFreePtr(void);
 int32_t prb_globalArenaCurrentFreeSize(void);
 void* prb_globalArenaAlignTo_(int32_t align);
-bool prb_directoryExists(prb_String path);
+bool prb_isDirectory(prb_String path);
 bool prb_directoryIsEmpty(prb_String path);
 void prb_createDirIfNotExists(prb_String path);
+void prb_removeFileOrDirectoryIfExists(prb_String path);
+void prb_removeFileIfExists(prb_String path);
+void prb_removeDirectoryIfExists(prb_String path);
+void prb_clearDirectory(prb_String path);
 bool prb_charIsSep(char ch);
 prb_StringBuilder prb_createStringBuilder(int32_t len);
 void prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source);
@@ -489,7 +493,20 @@ prb_getLastEntryInPath(prb_String path) {
     return result;
 }
 
-// TODO(khvorov) Better string building
+void
+prb_removeFileOrDirectoryIfExists(prb_String path) {
+    if (prb_isDirectory(path)) {
+        prb_removeDirectoryIfExists(path);
+    } else {
+        prb_removeFileIfExists(path);
+    }
+}
+
+void
+prb_clearDirectory(prb_String path) {
+    prb_removeFileOrDirectoryIfExists(path);
+    prb_createDirIfNotExists(path);
+}
 
 prb_String
 prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
@@ -663,7 +680,7 @@ prb_vmemAllocate(int32_t size) {
 }
 
 bool
-prb_directoryExists(prb_String path) {
+prb_isDirectory(prb_String path) {
     prb_assert(path.ptr && path.len > 0);
     prb_String pathNoTrailingSlash = path;
     char lastChar = path.ptr[path.len - 1];
@@ -686,7 +703,7 @@ prb_createDirIfNotExists(prb_String path) {
 
 bool
 prb_directoryIsEmpty(prb_String path) {
-    prb_assert(prb_directoryExists(path));
+    prb_assert(prb_isDirectory(path));
     prb_String search = prb_pathJoin2(path, prb_STR("*"));
     WIN32_FIND_DATAA findData;
     HANDLE firstHandle = FindFirstFileA(search.ptr, &findData);
@@ -704,17 +721,14 @@ prb_directoryIsEmpty(prb_String path) {
 }
 
 void
-prb_clearDirectory(prb_String path) {
+prb_removeFileOrDirectoryIfExists(prb_String path) {
     prb_StringBuilder doubleNullBuilder = prb_createStringBuilder(path.len + 2);
     prb_stringBuilderWrite(&doubleNullBuilder, path);
-
     SHFileOperationA(&(SHFILEOPSTRUCTA) {
         .wFunc = FO_DELETE,
         .pFrom = doubleNullBuilder.string.ptr,
         .fFlags = FOF_NO_UI,
     });
-
-    prb_createDirIfNotExists(path);
 }
 
 prb_CompletionStatus
@@ -830,7 +844,7 @@ prb_vmemAllocate(int32_t size) {
 }
 
 bool
-prb_directoryExists(prb_String path) {
+prb_isDirectory(prb_String path) {
     prb_assert(path.ptr && path.len > 0);
     struct stat statBuf = {0};
     bool result = false;
@@ -843,7 +857,7 @@ prb_directoryExists(prb_String path) {
 void
 prb_createDirIfNotExists(prb_String path) {
     if (mkdir(path.ptr, S_IRWXU | S_IRWXG | S_IRWXO) == -1) {
-        prb_assert(prb_directoryExists(path));
+        prb_assert(prb_isDirectory(path));
     }
 }
 
@@ -852,17 +866,40 @@ prb_directoryIsEmpty(prb_String path) {
     bool result = true;
     DIR* pathHandle = opendir(path.ptr);
     prb_assert(pathHandle);
-    struct dirent* entry = readdir(pathHandle);
-    if (entry) {
-        result = false;
+    for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
+        bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
+        bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
+        if (!isDot && !isDoubleDot) {
+            result = false;
+            break;
+        }
     }
     closedir(pathHandle);
     return result;
 }
 
 void
-prb_clearDirectory(prb_String path) {
-    prb_assert(!"unimplemented");
+prb_removeDirectoryIfExists(prb_String path) {
+    DIR* pathHandle = opendir(path.ptr);
+    if (pathHandle) {
+        for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
+            bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
+            bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
+            if (!isDot && !isDoubleDot) {
+                prb_String fullpath = prb_pathJoin(path, prb_STR(entry->d_name));
+                prb_removeFileOrDirectoryIfExists(fullpath);
+            }
+        }
+        prb_assert(prb_directoryIsEmpty(path));
+        int32_t rmdirResult = rmdir(path.ptr);
+        prb_assert(rmdirResult == 0);
+    }
+}
+
+void
+prb_removeFileIfExists(prb_String path) {
+    prb_assert(!prb_isDirectory(path));
+    unlink(path.ptr);
 }
 
 prb_CompletionStatus
