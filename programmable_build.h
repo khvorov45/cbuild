@@ -157,15 +157,21 @@ void prb_removeFileIfExists(prb_String path);
 void prb_removeDirectoryIfExists(prb_String path);
 void prb_clearDirectory(prb_String path);
 bool prb_charIsSep(char ch);
+int32_t prb_strFindIndexFromLeft(prb_String str, char ch);
+int32_t prb_strFindIndexFromRight(prb_String str, char ch);
 prb_StringBuilder prb_createStringBuilder(int32_t len);
 void prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source);
 prb_String prb_stringBuilderGetString(prb_StringBuilder* builder);
 prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
 void prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
+prb_StringArray prb_stringArrayFromCstrings(char** cstrings, int32_t cstringsCount);
 prb_String prb_stringCopy(prb_String source, int32_t from, int32_t to);
+prb_String prb_stringFromCstring(char* cstring);
 prb_String prb_getCurrentWorkingDir(void);
 prb_String prb_getParentDir(prb_String path);
 prb_String prb_getLastEntryInPath(prb_String path);
+prb_String prb_replaceExt(prb_String path, prb_String newExt);
+prb_StringArray prb_getAllMatches(prb_String pattern);
 uint64_t prb_getLatestLastModifiedFromPattern(prb_String pattern);
 uint64_t prb_getEarliestLastModifiedFromPattern(prb_String pattern);
 uint64_t prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
@@ -181,7 +187,8 @@ prb_String prb_fmtAndPrint(char* fmt, ...);
 prb_String prb_vfmtAndPrint(char* fmt, va_list args);
 prb_String prb_fmtAndPrintln(char* fmt, ...);
 prb_String prb_vfmtAndPrintln(char* fmt, va_list args);
-void prb_writeToStdout(prb_String str);
+void prb_print(prb_String str);
+void prb_println(prb_String str);
 int32_t prb_atomicIncrement(int32_t volatile* addend);
 bool prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t compare);
 void prb_sleepMs(int32_t ms);
@@ -401,6 +408,7 @@ prb_alignPtr(void** ptr, int32_t align, int32_t* size) {
 
 void*
 prb_allocAndZero(int32_t size, int32_t align) {
+    // TODO(khvorov) Make thread-safe
     void* result = prb_globalArenaAlignTo_(align);
     prb_assert(prb_globalArenaCurrentFreeSize() >= size);
     prb_globalBuilder.arena.used += size;
@@ -430,6 +438,32 @@ prb_globalArenaAlignTo_(int32_t align) {
 bool
 prb_charIsSep(char ch) {
     bool result = ch == '/' || ch == '\\';
+    return result;
+}
+
+int32_t
+prb_strFindIndexFromLeft(prb_String str, char ch) {
+    int32_t result = -1;
+    for (int32_t strIndex = 0; strIndex < str.len; strIndex++) {
+        char testCh = str.ptr[strIndex];
+        if (testCh == ch) {
+            result = strIndex;
+            break;
+        }
+    }
+    return result;
+}
+
+int32_t
+prb_strFindIndexFromRight(prb_String str, char ch) {
+    int32_t result = -1;
+    for (int32_t strIndex = str.len - 1; strIndex >= 0; strIndex--) {
+        char testCh = str.ptr[strIndex];
+        if (testCh == ch) {
+            result = strIndex;
+            break;
+        }
+    }
     return result;
 }
 
@@ -465,6 +499,13 @@ prb_stringCopy(prb_String source, int32_t from, int32_t to) {
     return result;
 }
 
+prb_String
+prb_stringFromCstring(char* cstring) {
+    prb_String temp = prb_STR(cstring);
+    prb_String result = prb_stringCopy(temp, 0, temp.len - 1);
+    return result;
+}
+
 int32_t
 prb_getLastPathSepIndex(prb_String path) {
     prb_assert(path.ptr && path.len > 0);
@@ -490,6 +531,13 @@ prb_String
 prb_getLastEntryInPath(prb_String path) {
     int32_t lastPathSepIndex = prb_getLastPathSepIndex(path);
     prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, lastPathSepIndex + 1, path.len - 1) : path;
+    return result;
+}
+
+prb_String
+prb_replaceExt(prb_String path, prb_String newExt) {
+    int32_t dotIndex = prb_strFindIndexFromRight(path, '.');
+    prb_String result = prb_fmt("%.*s.%s", dotIndex, path.ptr, newExt.ptr);
     return result;
 }
 
@@ -557,6 +605,16 @@ prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr)
     prb_assert(builder->capacity >= arr.len + builder->written);
     prb_memcpy(builder->ptr + builder->written, arr.ptr, arr.len * sizeof(prb_String));
     builder->written += arr.len;
+}
+
+prb_StringArray
+prb_stringArrayFromCstrings(char** cstrings, int32_t cstringsCount) {
+    prb_String* resultBuf = prb_allocArray(prb_String, cstringsCount);
+    for (int32_t cstringIndex = 0; cstringIndex < cstringsCount; cstringIndex++) {
+        resultBuf[cstringIndex] = prb_STR(cstrings[cstringIndex]);
+    }
+    prb_StringArray result = {resultBuf, cstringsCount};
+    return result;
 }
 
 prb_StringArray
@@ -630,7 +688,7 @@ prb_fmtAndPrint(char* fmt, ...) {
 prb_String
 prb_vfmtAndPrint(char* fmt, va_list args) {
     prb_String result = prb_vfmt(fmt, args);
-    prb_writeToStdout(result);
+    prb_print(result);
     return result;
 }
 
@@ -660,6 +718,12 @@ prb_vfmtAndPrintln(char* fmt, va_list args) {
     prb_String result = prb_vfmtAndPrint(fmt, args);
     prb_fmtAndPrint("\n");
     return result;
+}
+
+void
+prb_println(prb_String msg) {
+    prb_print(msg);
+    prb_print(prb_STR("\n"));
 }
 
 //
@@ -751,7 +815,7 @@ prb_execCmd(prb_String cmd) {
 }
 
 void
-prb_writeToStdout(prb_String msg) {
+prb_print(prb_String msg) {
     HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
     WriteFile(out, msg.ptr, msg.len, 0, 0);
 }
@@ -920,7 +984,7 @@ prb_execCmd(prb_String cmd) {
     char** args = prb_allocArray(char*, spacesCount + 1 + 1);
     for (int32_t spaceIndex = 0; spaceIndex <= spacesCount; spaceIndex++) {
         int32_t spaceBefore = spaceIndex == 0 ? -1 : spacesIndices[spaceIndex - 1];
-        int32_t spaceAfter = spaceIndex == spacesCount ? cmd.len + 1 : spacesIndices[spaceIndex];
+        int32_t spaceAfter = spaceIndex == spacesCount ? cmd.len : spacesIndices[spaceIndex];
         char* argStart = cmd.ptr + spaceBefore + 1;
         int32_t argLen = spaceAfter - spaceBefore - 1;
         if (argLen > 0) {
@@ -931,7 +995,7 @@ prb_execCmd(prb_String cmd) {
 
     prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
     pid_t pid;
-    int32_t spawnResult = posix_spawnp(&pid, args[0], 0, 0, args, 0);
+    int32_t spawnResult = posix_spawnp(&pid, args[0], 0, 0, args, __environ);
     if (spawnResult == 0) {
         int32_t status;
         pid_t waitResult = waitpid(pid, &status, 0);
@@ -943,7 +1007,7 @@ prb_execCmd(prb_String cmd) {
 }
 
 void
-prb_writeToStdout(prb_String msg) {
+prb_print(prb_String msg) {
     ssize_t writeResult = write(STDOUT_FILENO, msg.ptr, msg.len);
     prb_assert(writeResult == msg.len);
 }
@@ -1011,6 +1075,23 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
         }
     } else {
         result = 0;
+    }
+    globfree(&globResult);
+    return result;
+}
+
+prb_StringArray
+prb_getAllMatches(prb_String pattern) {
+    prb_StringArray result = {0};
+    glob_t globResult = {0};
+    if (glob(pattern.ptr, GLOB_NOSORT, 0, &globResult) == 0) {
+        prb_assert(globResult.gl_pathc <= INT32_MAX && globResult.gl_pathc > 0);
+        result.len = (int32_t)globResult.gl_pathc;
+        result.ptr = prb_allocArray(prb_String, result.len);
+        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
+            char* path = globResult.gl_pathv[resultIndex];
+            result.ptr[resultIndex] = prb_stringFromCstring(path);
+        }
     }
     globfree(&globResult);
     return result;
