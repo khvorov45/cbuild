@@ -926,7 +926,7 @@ prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t comp
 
 void
 prb_sleepMs(int32_t ms) {
-    prb_assert(!"unimplemented");
+    usleep(ms * 1000);
 }
 
 prb_String
