@@ -43,9 +43,9 @@ compileToObjsInDir(void* dataInit) {
             uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
 
             if (sourceLastMod > outputLastMod) {
-#ifdef prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
                 prb_fmt("/Fo%s/", objDir.ptr);
-#elif defined(prb_PLATFORM_LINUX)
+#elif prb_PLATFORM_LINUX
 
                 prb_String cmd = prb_fmt("%s -c -o %s %s", data->cmdStart.ptr, outputFilepath.ptr, inputFilepath.ptr);
 #endif
@@ -71,9 +71,9 @@ prb_CompletionStatus
 makeStaticLibFromObjsInDir(void* dataInit) {
     MakeStaticLibFromObjsInDir* data = (MakeStaticLibFromObjsInDir*)dataInit;
     prb_String objsPattern = prb_pathJoin(data->objDir, prb_STR("*.obj"));
-#ifdef prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
     prb_String libCmd = prb_fmt("lib /nologo -out:%s %s", data->libFile.ptr, objsPattern.ptr);
-#elif defined(prb_PLATFORM_LINUX)
+#elif prb_PLATFORM_LINUX
     prb_StringArray objsPaths = prb_getAllMatches(objsPattern);
     prb_String objsPathsString = prb_stringsJoin(objsPaths.ptr, objsPaths.len, prb_STR(" "));
     prb_String libCmd = prb_fmt("ar rcs %s %s", data->libFile.ptr, objsPathsString.ptr);
@@ -92,10 +92,23 @@ makeStaticLibFromObjsInDir(void* dataInit) {
     return status;
 }
 
+typedef struct AlwaysRun {
+    prb_String cmd;
+} AlwaysRun;
+
+prb_CompletionStatus
+alwaysRun(void* dataInit) {
+    AlwaysRun* data = (AlwaysRun*)dataInit;
+    prb_println(data->cmd);
+    prb_CompletionStatus status = prb_execCmd(data->cmd);
+    return status;
+}
+
 typedef struct StaticLib {
     prb_StepHandle finalHandle;
     prb_String includeFlag;
     prb_String libFile;
+    prb_String outDir;
 } StaticLib;
 
 StaticLib
@@ -126,7 +139,7 @@ downloadAndCompileStaticLib(
         prb_stringsJoin(extraCompileFlags.ptr, extraCompileFlags.len, prb_STR(" ")).ptr
     );
 
-#ifdef prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
     prb_String pdbPath = prb_pathJoin(compileOutDir, prb_fmt("%s.pdb", name.ptr));
     prb_String pdbOutputFlag = prb_fmt(prb_STR("/Fd%s"), pdbPath.ptr);
     cmdStart = prb_fmt("%s %s", cmdStart, pdbOutputFlag);
@@ -148,9 +161,9 @@ downloadAndCompileStaticLib(
          .inputPatternsCount = compileSourcesCount}
     );
 
-#ifdef prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
     prb_String staticLibFileExt = prb_STR("lib");
-#elif defined(prb_PLATFORM_LINUX)
+#elif prb_PLATFORM_LINUX
     prb_String staticLibFileExt = prb_STR("a");
 #endif
 
@@ -165,7 +178,7 @@ downloadAndCompileStaticLib(
 
     prb_StepHandle finalHandle = prb_getLastAddedStep();
 
-    StaticLib result = {.finalHandle = finalHandle, .includeFlag = includeFlag, .libFile = libFile};
+    StaticLib result = {.finalHandle = finalHandle, .includeFlag = includeFlag, .libFile = libFile, .outDir = objDir};
     return result;
 }
 
@@ -175,12 +188,14 @@ main() {
 
     prb_String rootDir = prb_getParentDir(prb_STR(__FILE__));
 
+    // TODO(khvorov) Release build
+    // TODO(khvorov) Make sure we are not dependent on libc
     prb_String compileOutDir = prb_pathJoin(rootDir, prb_STR("build-debug"));
     prb_createDirIfNotExists(compileOutDir);
 
-#ifdef prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
     prb_String compileCmdStart = prb_STR("cl /nologo /diagnostics:column /FC /Zi ");
-#elif defined(prb_PLATFORM_LINUX)
+#elif prb_PLATFORM_LINUX
     prb_String compileCmdStart = prb_STR("gcc -g ");
 #endif
 
@@ -260,18 +275,10 @@ main() {
 
     char* sdlCompileSources[] = {
         "src/atomic/*.c",
-        "src/audio/*.c",
-        "src/dynapi/*.c",
         "src/thread/*.c",
         "src/thread/generic/*.c",
         "src/events/*.c",
         "src/file/*.c",
-        "src/haptic/*.c",
-        "src/joystick/*.c",
-        "src/joystick/dummy/*.c",
-        "src/joystick/hidapi/*.c",
-        "src/joystick/virtual/*.c",
-        "src/hidapi/*.c",
         "src/stdlib/*.c",
         "src/libm/*.c",
         "src/locale/*.c",
@@ -279,54 +286,51 @@ main() {
         "src/video/*.c",
         "src/video/dummy/*.c",
         "src/video/yuv2rgb/*.c",
-        "src/misc/*.c",
-        "src/power/*.c",
         "src/render/*.c",
         "src/render/software/*.c",
-        "src/sensor/*.c",
-        "src/sensor/dummy/*.c",
         "src/cpuinfo/*.c",
-        "src/timer/*.c",
-        "src/thread/*.c",
         "src/*.c",
-#ifdef prb_PLATFORM_WINDOWS
-        "src/audio/dummy/*.c",
-        "src/audio/disk/*.c",
-        "src/audio/winmm/*.c",
-        "src/audio/directsound/*.c",
-        "src/audio/wasapi/*.c",
-        "src/core/windows/*.c",
+#if prb_PLATFORM_WINDOWS
+        "src/core/windows/windows.c",
         "src/filesystem/windows/*.c",
-        "src/haptic/windows/*.c",
-        "src/hidapi/windows/*.c",
-        "src/joystick/windows/*.c",
         "src/timer/windows/*.c",
+        "src/thread/windows/*.c",
         "src/video/windows/*.c",
         "src/loadso/windows/*.c",
         "src/locale/windows/*.c",
         "src/main/windows/*.c",
-        "src/misc/windows/*.c",
-        "src/render/direct3d/*.c",
-        "src/render/direct3d12/*.c",
-        "src/render/direct3d11/*.c",
-        "src/power/windows/*.c",
-        "src/sensor/windows/*.c",
-        "src/timer/windows/*.c",
-        "src/thread/windows/*.c",
+#elif prb_PLATFORM_LINUX
+        "src/timer/unix/*.c",
+        "src/filesystem/unix/*.c",
+        "src/loadso/dlopen/*.c",
+        "src/video/x11/*.c",
+        "src/core/unix/SDL_poll.c",
 #endif
     };
 
+    // TODO(khvorov) Remove existing static lib before making a new one
+    // TODO(khvorov) Purge sdl dynamic api programmatically
+    // TODO(khvorov) Make a static linux executable
     char* sdlCompileFlags[] = {
-        "-DSDL_AUDIO_DISABLED",
-        "-DSDL_HAPTIC_DISABLED",
-        "-DSDL_HIDAPI_DISABLED",
-        "-DSDL_SENSOR_DISABLED",
-        "-DSDL_JOYSTICK_DISABLED",
+        "-DSDL_AUDIO_DISABLED=1",
+        "-DSDL_HAPTIC_DISABLED=1",
+        "-DSDL_HIDAPI_DISABLED=1",
+        "-DSDL_SENSOR_DISABLED=1",
+        "-DSDL_JOYSTICK_DISABLED=1",
         "-DSDL_VIDEO_RENDER_D3D=0",
         "-DSDL_VIDEO_RENDER_D3D11=0",
         "-DSDL_VIDEO_RENDER_D3D12=0",
         "-DSDL_VIDEO_RENDER_OGL=0",
         "-DSDL_VIDEO_RENDER_OGL_ES2=0",
+#if prb_PLATFORM_LINUX
+        "-DHAVE_STRING_H=1",
+        "-DHAVE_STDIO_H=1",
+        "-DSDL_TIMER_UNIX=1",
+        "-DSDL_FILESYSTEM_UNIX=1",
+        "-DSDL_LOADSO_DLOPEN=1",
+        "-DSDL_VIDEO_DRIVER_X11=1",
+        "-DSDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS=1",
+#endif
     };
 
     StaticLib sdl = downloadAndCompileStaticLib(
@@ -340,52 +344,54 @@ main() {
         rootDir,
         compileOutDir
     );
+    //prb_clearDirectory(sdl.outDir);
+    //prb_removeFileIfExists(sdl.libFile);
 
     //
     // SECTION Main program
     //
 
-#if 0
-    {
-        prb_String flags[] = {
-            freetype.includeFlag,
-            sdl.includeFlag,
-    #ifdef prb_PLATFORM_WINDOWS
-            prb_STR("-Zi"),
-            prb_stringJoin2(prb_STR("-Fo"), prb_pathJoin(compileOutDir, prb_STR("example.obj"))),
-            prb_stringJoin2(prb_STR("-Fe"), prb_pathJoin(compileOutDir, prb_STR("example.exe"))),
-            prb_stringJoin2(prb_STR("-Fd"), prb_pathJoin(compileOutDir, prb_STR("example.pdb"))),
-    #endif
-        };
+    prb_String mainFlags[] = {
+        freetype.includeFlag,
+        sdl.includeFlag,
+#if prb_PLATFORM_WINDOWS
+        prb_STR("-Zi"),
+        prb_stringJoin2(prb_STR("-Fo"), prb_pathJoin(compileOutDir, prb_STR("example.obj"))),
+        prb_stringJoin2(prb_STR("-Fe"), prb_pathJoin(compileOutDir, prb_STR("example.exe"))),
+        prb_stringJoin2(prb_STR("-Fd"), prb_pathJoin(compileOutDir, prb_STR("example.pdb"))),
+#elif prb_PLATFORM_LINUX
+        prb_fmt("-o %s/example.bin", compileOutDir.ptr),
+#endif
+    };
 
-        prb_String files[] = {
-            prb_pathJoin(rootDir, prb_STR("example.c")),
-            freetype.libFile,
-            sdl.libFile,
-        };
+    prb_String mainFiles[] = {
+        prb_pathJoin(rootDir, prb_STR("example.c")),
+        freetype.libFile,
+        sdl.libFile,
+    };
+
+#if prb_PLATFORM_WINDOWS
+    prb_String mainLinkFlags = prb_STR(
+        " -link -incremental:no -subsystem:windows "
+        "Ole32.lib Advapi32.lib Winmm.lib User32.lib Gdi32.lib OleAut32.lib "
+        "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
+    )
+#elif prb_PLATFORM_LINUX
+    prb_String mainLinkFlags = prb_STR("-lX11 -lXext");
+#endif
 
         prb_String cmd = prb_fmt(
-            "%s %s %s",
+            "%s %s %s %s",
             compileCmdStart.ptr,
-            prb_stringsJoin(flags, prb_arrayLength(flags), prb_STR(" ")).ptr,
-            prb_stringsJoin(files, prb_arrayLength(files), prb_STR(" ")).ptr
+            prb_stringsJoin(mainFlags, prb_arrayLength(mainFlags), prb_STR(" ")).ptr,
+            prb_stringsJoin(mainFiles, prb_arrayLength(mainFiles), prb_STR(" ")).ptr,
+            mainLinkFlags.ptr
         );
 
-    #ifdef prb_PLATFORM_WINDOWS
-        cmd = prb_stringJoin2(
-            cmd,
-            prb_STR(" -link -incremental:no -subsystem:windows "
-                    "Ole32.lib Advapi32.lib Winmm.lib User32.lib Gdi32.lib OleAut32.lib "
-                    "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib ")
-        );
-    #endif
-
-        prb_addStep(prb_DependOn_Nothing, compile, Compile, {.cmd = cmd});
-        prb_StepHandle exeCompileHandle = prb_getLastAddedStep();
-        prb_setDependency(exeCompileHandle, freetype.finalHandle);
-        prb_setDependency(exeCompileHandle, sdl.finalHandle);
-    }
-#endif
+    prb_addStep(prb_DependOn_Nothing, alwaysRun, AlwaysRun, {.cmd = cmd});
+    prb_StepHandle exeCompileHandle = prb_getLastAddedStep();
+    prb_setDependency(exeCompileHandle, freetype.finalHandle);
+    prb_setDependency(exeCompileHandle, sdl.finalHandle);
 
     prb_run();
 }

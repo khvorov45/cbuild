@@ -4,9 +4,9 @@
 #include <stdarg.h>
 
 #if defined(WIN32) || defined(_WIN32)
-    #define prb_PLATFORM_WINDOWS
+    #define prb_PLATFORM_WINDOWS 1
 #elif (defined(linux) || defined(__linux) || defined(__linux__))
-    #define prb_PLATFORM_LINUX
+    #define prb_PLATFORM_LINUX 1
 #else
     #error unrecognized platform
 #endif
@@ -730,7 +730,7 @@ prb_println(prb_String msg) {
 // SECTION Platform-specific stuff
 //
 
-#ifdef prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
     #include <shellapi.h>
@@ -889,7 +889,7 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     return result;
 }
 
-#elif defined(prb_PLATFORM_LINUX)
+#elif prb_PLATFORM_LINUX
     #include <stdatomic.h>
     #include <linux/limits.h>
     #include <sys/mman.h>
