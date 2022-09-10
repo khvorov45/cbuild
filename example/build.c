@@ -186,6 +186,7 @@ downloadAndCompileStaticLib(
 int
 main() {
     prb_init();
+    // TODO(khvorov) Argument parsing
 
     prb_String rootDir = prb_getParentDir(prb_STR(__FILE__));
 
@@ -394,5 +395,8 @@ main() {
     prb_setDependency(exeCompileHandle, freetype.finalHandle);
     prb_setDependency(exeCompileHandle, sdl.finalHandle);
 
-    prb_run();
+    prb_CompletionStatus result = prb_run();
+    if (result == prb_CompletionStatus_Success) {
+        prb_printTimings();
+    }
 }

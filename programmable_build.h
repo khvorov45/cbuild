@@ -134,15 +134,20 @@ typedef enum prb_DependOn {
 
 struct prb_ProcessHandle;
 
+typedef struct prb_TimeStart {
+    bool valid;
+    uint64_t time;
+} prb_TimeStart;
+
 // SECTION Core
 void prb_init(void);
 prb_StepHandle prb_addStep_(prb_DependOn dependOn, prb_StepProc proc, void* data);
 prb_StepHandle prb_getLastAddedStep(void);
 void prb_setDependency(prb_StepHandle dependent, prb_StepHandle dependency);
-void prb_run(void);
+prb_CompletionStatus prb_run(void);
+void prb_printTimings(void);
 
 // SECTION Helpers
-// TODO(khvorov) timing helpers
 size_t prb_strlen(const char* string);
 void* prb_memcpy(void* restrict dest, const void* restrict src, size_t n);
 void* prb_vmemAllocate(int32_t size);
@@ -197,6 +202,8 @@ void prb_println(prb_String str);
 int32_t prb_atomicIncrement(int32_t volatile* addend);
 bool prb_atomicCompareExchange(int32_t volatile* dest, int32_t exchange, int32_t compare);
 void prb_sleepMs(int32_t ms);
+prb_TimeStart prb_timeStart(void);
+float prb_getMsFrom(prb_TimeStart timeStart);
 
 // SECTION stb snprintf
 #if defined(__clang__)
@@ -250,10 +257,14 @@ void prb_sleepMs(int32_t ms);
     #define STBSP__NOTUSED(v) (void)sizeof(v)
 #endif
 
-#define STB_SPRINTF_MIN 512  // how many characters per callback
+#ifndef STB_SPRINTF_MIN
+#define STB_SPRINTF_MIN 512 // how many characters per callback
+#endif
 typedef char* STBSP_SPRINTFCB(const char* buf, void* user, int len);
 
-#define STB_SPRINTF_DECORATE(name) stbsp_##name  // NOTE(khvorov) Keep name prefix consistent
+#ifndef STB_SPRINTF_DECORATE
+#define STB_SPRINTF_DECORATE(name) stbsp_##name // define this before including if you want to change the names
+#endif
 
 STBSP__PUBLICDEC int STB_SPRINTF_DECORATE(vsprintf)(char* buf, char const* fmt, va_list va);
 STBSP__PUBLICDEC int STB_SPRINTF_DECORATE(vsnprintf)(char* buf, int count, char const* fmt, va_list va);
@@ -274,6 +285,8 @@ struct {
     int32_t stepsCompleted;
     prb_StepHandle dependencies[prb_MAX_STEPS][prb_MAX_DEPENDENCIES_PER_STEP];
     int32_t dependenciesCounts[prb_MAX_STEPS];
+    float allStepsMs;
+    prb_TimeStart initTimeStart;
 } prb_globalBuilder;
 
 //
@@ -284,6 +297,7 @@ void
 prb_init(void) {
     prb_globalBuilder.arena.size = 1 * prb_GIGABYTE;
     prb_globalBuilder.arena.base = prb_vmemAllocate(prb_globalBuilder.arena.size);
+    prb_globalBuilder.initTimeStart = prb_timeStart();
 }
 
 prb_StepHandle
@@ -312,8 +326,10 @@ prb_setDependency(prb_StepHandle dependent, prb_StepHandle dependency) {
     prb_globalBuilder.dependencies[dependent.index][depIndex] = dependency;
 }
 
-void
-prb_completeAllSteps(void) {
+prb_CompletionStatus
+prb__completeAllSteps(void) {
+    prb_CompletionStatus result = prb_CompletionStatus_Success;
+    struct prb_TimeStart timeStart = prb_timeStart();
     while (prb_globalBuilder.stepsCompleted != prb_globalBuilder.stepCount) {
         int32_t stepsCompletedBeforeLoop = prb_globalBuilder.stepsCompleted;
 
@@ -353,6 +369,7 @@ prb_completeAllSteps(void) {
                         } break;
                         case prb_CompletionStatus_Failure: {
                             prb_globalBuilder.stepStatus[stepIndex] = prb_StepStatus_CompletedUnsuccessfully;
+                            result = prb_CompletionStatus_Failure;
                         } break;
                     }
 
@@ -367,12 +384,22 @@ prb_completeAllSteps(void) {
             prb_sleepMs(100);
         }
     }
+    prb_globalBuilder.allStepsMs = prb_getMsFrom(timeStart);
+    return result;
+}
+
+prb_CompletionStatus
+prb_run(void) {
+    // TODO(khvorov) Multithread
+    prb_CompletionStatus result = prb__completeAllSteps();
+    return result;
 }
 
 void
-prb_run(void) {
-    // TODO(khvorov) Multithread
-    prb_completeAllSteps();
+prb_printTimings(void) {
+    prb_assert(prb_globalBuilder.stepCount == prb_globalBuilder.stepsCompleted);
+    float fromInit = prb_getMsFrom(prb_globalBuilder.initTimeStart);
+    prb_fmtAndPrintln("prep: %.2fms\nsteps: %.2fms", fromInit - prb_globalBuilder.allStepsMs, prb_globalBuilder.allStepsMs);
 }
 
 //
@@ -942,6 +969,7 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     #include <spawn.h>
     #include <dirent.h>
     #include <glob.h>
+    #include <time.h>
 
 void*
 prb_vmemAllocate(int32_t size) {
@@ -1149,6 +1177,27 @@ prb_getAllMatches(prb_String pattern) {
         }
     }
     globfree(&globResult);
+    return result;
+}
+
+prb_TimeStart prb_timeStart(void) {
+    prb_TimeStart result = {0};
+    struct timespec tp;
+    if (clock_gettime(CLOCK_MONOTONIC, &tp) == 0) {
+        prb_assert(tp.tv_nsec >= 0 && tp.tv_sec >= 0);
+        result.time = (uint64_t)tp.tv_nsec + (uint64_t)tp.tv_sec * 1000 * 1000 * 1000;
+        result.valid = true;
+    }
+    return result;
+}
+
+float prb_getMsFrom(prb_TimeStart timeStart) {
+    prb_TimeStart now = prb_timeStart();
+    float result = 0.0f;
+    if (now.valid && timeStart.valid) {
+        uint64_t nsec = now.time - timeStart.time;
+        result = (float)nsec / 1000.0f / 1000.0f;
+    }
     return result;
 }
 
