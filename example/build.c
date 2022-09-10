@@ -84,6 +84,7 @@ makeStaticLibFromObjsInDir(void* dataInit) {
     uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(data->libFile);
     if (sourceLastMod > outputLastMod) {
         prb_println(libCmd);
+        prb_removeFileIfExists(data->libFile);
         status = prb_execCmdAndWait(libCmd);
     } else {
         prb_fmtAndPrintln("skip %s", prb_getLastEntryInPath(data->libFile));
@@ -273,7 +274,6 @@ main() {
         compileOutDir
     );
     // prb_clearDirectory(freetype.outDir);
-    // prb_removeFileIfExists(freetype.libFile);
 
     char* sdlCompileSources[] = {
         "src/atomic/*.c",
@@ -310,7 +310,6 @@ main() {
 #endif
     };
 
-    // TODO(khvorov) Remove existing static lib before making a new one
     // TODO(khvorov) Purge sdl dynamic api programmatically
     // TODO(khvorov) Make a static linux executable
     char* sdlCompileFlags[] = {
@@ -348,7 +347,6 @@ main() {
         compileOutDir
     );
     // prb_clearDirectory(sdl.outDir);
-    // prb_removeFileIfExists(sdl.libFile);
 
     //
     // SECTION Main program
