@@ -132,6 +132,8 @@ typedef enum prb_DependOn {
     prb_DependOn_LastAdded,
 } prb_DependOn;
 
+struct prb_ProcessHandle;
+
 // SECTION Core
 void prb_init(void);
 prb_StepHandle prb_addStep_(prb_DependOn dependOn, prb_StepProc proc, void* data);
@@ -170,6 +172,7 @@ prb_String prb_stringFromCstring(char* cstring);
 prb_String prb_getCurrentWorkingDir(void);
 prb_String prb_getParentDir(prb_String path);
 prb_String prb_getLastEntryInPath(prb_String path);
+char** prb_getArgArrayFromString(prb_String string);
 prb_String prb_replaceExt(prb_String path, prb_String newExt);
 prb_StringArray prb_getAllMatches(prb_String pattern);
 uint64_t prb_getLatestLastModifiedFromPattern(prb_String pattern);
@@ -178,7 +181,9 @@ uint64_t prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t pat
 uint64_t prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 prb_String prb_pathJoin(prb_String path1, prb_String path2);
 prb_StringArray prb_stringArrayJoin2(prb_StringArray arr1, prb_StringArray arr2);
-prb_CompletionStatus prb_execCmd(prb_String cmd);
+prb_CompletionStatus prb_execCmdAndWait(prb_String cmd);
+struct prb_ProcessHandle prb_execCmdAndDontWait(prb_String cmd);
+prb_CompletionStatus prb_waitForProcesses(struct prb_ProcessHandle* handles, int32_t handleCount);
 prb_String prb_fmtCustomBuffer(void* buf, int32_t bufSize, char* fmt, ...);
 prb_String prb_vfmtCustomBuffer(void* buf, int32_t bufSize, char* fmt, va_list args);
 prb_String prb_fmt(char* fmt, ...);
@@ -532,6 +537,44 @@ prb_getLastEntryInPath(prb_String path) {
     int32_t lastPathSepIndex = prb_getLastPathSepIndex(path);
     prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, lastPathSepIndex + 1, path.len - 1) : path;
     return result;
+}
+
+char**
+prb_getArgArrayFromString(prb_String string) {
+    int32_t spacesCount = 0;
+    for (int32_t strIndex = 0; strIndex < string.len; strIndex++) {
+        char ch = string.ptr[strIndex];
+        if (ch == ' ') {
+            spacesCount++;
+        }
+    }
+
+    int32_t* spacesIndices = prb_allocArray(int32_t, spacesCount);
+    {
+        int32_t index = 0;
+        for (int32_t strIndex = 0; strIndex < string.len; strIndex++) {
+            char ch = string.ptr[strIndex];
+            if (ch == ' ') {
+                spacesIndices[index++] = strIndex;
+            }
+        }
+    }
+
+    int32_t argCount = 0;
+    // NOTE(khvorov) Arg array needs a null at the end
+    char** args = prb_allocArray(char*, spacesCount + 1 + 1);
+    for (int32_t spaceIndex = 0; spaceIndex <= spacesCount; spaceIndex++) {
+        int32_t spaceBefore = spaceIndex == 0 ? -1 : spacesIndices[spaceIndex - 1];
+        int32_t spaceAfter = spaceIndex == spacesCount ? string.len : spacesIndices[spaceIndex];
+        char* argStart = string.ptr + spaceBefore + 1;
+        int32_t argLen = spaceAfter - spaceBefore - 1;
+        if (argLen > 0) {
+            prb_String argString = prb_stringCopy((prb_String) {argStart, argLen}, 0, argLen - 1);
+            args[argCount++] = argString.ptr;
+        }
+    }
+
+    return args;
 }
 
 prb_String
@@ -967,32 +1010,8 @@ prb_removeFileIfExists(prb_String path) {
 }
 
 prb_CompletionStatus
-prb_execCmd(prb_String cmd) {
-    // NOTE(khvorov) Need to split cmd into an args array (lol wtf linux)
-    int32_t spacesCount = 0;
-    int32_t* spacesIndices = prb_globalArenaAlignTo(int32_t);
-    for (int32_t strIndex = 0; strIndex < cmd.len; strIndex++) {
-        char ch = cmd.ptr[strIndex];
-        if (ch == ' ') {
-            spacesIndices[spacesCount++] = strIndex;
-        }
-    }
-    prb_globalBuilder.arena.used += spacesCount * sizeof(int32_t);
-
-    int32_t argCount = 0;
-    // NOTE(khvorov) args array needs to have a null at the end
-    char** args = prb_allocArray(char*, spacesCount + 1 + 1);
-    for (int32_t spaceIndex = 0; spaceIndex <= spacesCount; spaceIndex++) {
-        int32_t spaceBefore = spaceIndex == 0 ? -1 : spacesIndices[spaceIndex - 1];
-        int32_t spaceAfter = spaceIndex == spacesCount ? cmd.len : spacesIndices[spaceIndex];
-        char* argStart = cmd.ptr + spaceBefore + 1;
-        int32_t argLen = spaceAfter - spaceBefore - 1;
-        if (argLen > 0) {
-            prb_String argString = prb_stringCopy((prb_String) {argStart, argLen}, 0, argLen - 1);
-            args[argCount++] = argString.ptr;
-        }
-    }
-
+prb_execCmdAndWait(prb_String cmd) {
+    char** args = prb_getArgArrayFromString(cmd);
     prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
     pid_t pid;
     int32_t spawnResult = posix_spawnp(&pid, args[0], 0, 0, args, __environ);
@@ -1004,6 +1023,42 @@ prb_execCmd(prb_String cmd) {
         }
     }
     return cmdStatus;
+}
+
+typedef struct prb_ProcessHandle {
+    bool valid;
+    pid_t pid;
+} prb_ProcessHandle;
+
+prb_ProcessHandle
+prb_execCmdAndDontWait(prb_String cmd) {
+    char** args = prb_getArgArrayFromString(cmd);
+    prb_ProcessHandle result = {0};
+    int32_t spawnResult = posix_spawnp(&result.pid, args[0], 0, 0, args, __environ);
+    if (spawnResult == 0) {
+        result.valid = true;
+    }
+    return result;
+}
+
+prb_CompletionStatus
+prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
+    prb_CompletionStatus result = prb_CompletionStatus_Success;
+    for (int32_t handleIndex = 0; handleIndex < handleCount; handleIndex++) {
+        prb_ProcessHandle handle = handles[handleIndex];
+        if (handle.valid) {
+            int32_t status;
+            pid_t waitResult = waitpid(handle.pid, &status, 0);
+            if (waitResult != handle.pid || status != 0) {
+                result = prb_CompletionStatus_Failure;
+                break;
+            }
+        } else {
+            result = prb_CompletionStatus_Failure;
+            break;
+        }
+    }
+    return result;
 }
 
 void

@@ -11,7 +11,7 @@ gitClone(void* dataInit) {
     prb_CompletionStatus status = prb_CompletionStatus_Success;
     if (!prb_isDirectory(data->dest) || prb_directoryIsEmpty(data->dest)) {
         prb_String cmd = prb_fmtAndPrintln("git clone %s %s", data->url.ptr, data->dest.ptr);
-        status = prb_execCmd(cmd);
+        status = prb_execCmdAndWait(cmd);
     } else {
         prb_fmtAndPrintln("skip git clone %s", prb_getLastEntryInPath(data->dest).ptr);
     }
@@ -28,37 +28,37 @@ typedef struct CompileToObjsInDir {
 prb_CompletionStatus
 compileToObjsInDir(void* dataInit) {
     CompileToObjsInDir* data = (CompileToObjsInDir*)dataInit;
-    prb_CompletionStatus status = prb_CompletionStatus_Success;
 
+    prb_StringArray allInputFilepaths = {0};
     for (int32_t inputPatternIndex = 0; inputPatternIndex < data->inputPatternsCount; inputPatternIndex++) {
         prb_String inputPattern = data->inputPatterns[inputPatternIndex];
         prb_StringArray inputFilepaths = prb_getAllMatches(inputPattern);
-        for (int32_t inputFilepathIndex = 0; inputFilepathIndex < inputFilepaths.len; inputFilepathIndex++) {
-            prb_String inputFilepath = inputFilepaths.ptr[inputFilepathIndex];
-            prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
-            prb_String outputFilename = prb_replaceExt(inputFilename, prb_STR("obj"));
-            prb_String outputFilepath = prb_pathJoin(data->outDir, outputFilename);
+        allInputFilepaths = prb_stringArrayJoin2(allInputFilepaths, inputFilepaths);
+    }
 
-            uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(inputFilepath);
-            uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
+    prb_ProcessHandle* processes = prb_allocArray(prb_ProcessHandle, allInputFilepaths.len);
+    int32_t processCount = 0;
+    for (int32_t inputFilepathIndex = 0; inputFilepathIndex < allInputFilepaths.len; inputFilepathIndex++) {
+        prb_String inputFilepath = allInputFilepaths.ptr[inputFilepathIndex];
+        prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
+        prb_String outputFilename = prb_replaceExt(inputFilename, prb_STR("obj"));
+        prb_String outputFilepath = prb_pathJoin(data->outDir, outputFilename);
 
-            if (sourceLastMod > outputLastMod) {
+        uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(inputFilepath);
+        uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
+
+        if (sourceLastMod > outputLastMod) {
 #if prb_PLATFORM_WINDOWS
-                prb_fmt("/Fo%s/", objDir.ptr);
+            prb_fmt("/Fo%s/", objDir.ptr);
 #elif prb_PLATFORM_LINUX
-
-                prb_String cmd = prb_fmt("%s -c -o %s %s", data->cmdStart.ptr, outputFilepath.ptr, inputFilepath.ptr);
+            prb_String cmd = prb_fmt("%s -c -o %s %s", data->cmdStart.ptr, outputFilepath.ptr, inputFilepath.ptr);
 #endif
-                prb_println(cmd);
-                // TODO(khvorov) Don't wait individually
-                status = prb_execCmd(cmd);
-                if (status == prb_CompletionStatus_Failure) {
-                    break;
-                }
-            }
+            prb_println(cmd);
+            processes[processCount++] = prb_execCmdAndDontWait(cmd);
         }
     }
 
+    prb_CompletionStatus status = prb_waitForProcesses(processes, processCount);
     return status;
 }
 
@@ -84,7 +84,7 @@ makeStaticLibFromObjsInDir(void* dataInit) {
     uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(data->libFile);
     if (sourceLastMod > outputLastMod) {
         prb_println(libCmd);
-        status = prb_execCmd(libCmd);
+        status = prb_execCmdAndWait(libCmd);
     } else {
         prb_fmtAndPrintln("skip %s", prb_getLastEntryInPath(data->libFile));
     }
@@ -100,7 +100,7 @@ prb_CompletionStatus
 alwaysRun(void* dataInit) {
     AlwaysRun* data = (AlwaysRun*)dataInit;
     prb_println(data->cmd);
-    prb_CompletionStatus status = prb_execCmd(data->cmd);
+    prb_CompletionStatus status = prb_execCmdAndWait(data->cmd);
     return status;
 }
 
@@ -272,6 +272,8 @@ main() {
         rootDir,
         compileOutDir
     );
+    // prb_clearDirectory(freetype.outDir);
+    // prb_removeFileIfExists(freetype.libFile);
 
     char* sdlCompileSources[] = {
         "src/atomic/*.c",
@@ -323,6 +325,7 @@ main() {
         "-DSDL_VIDEO_RENDER_OGL=0",
         "-DSDL_VIDEO_RENDER_OGL_ES2=0",
 #if prb_PLATFORM_LINUX
+        "-Wno-deprecated-declarations",
         "-DHAVE_STRING_H=1",
         "-DHAVE_STDIO_H=1",
         "-DSDL_TIMER_UNIX=1",
@@ -344,8 +347,8 @@ main() {
         rootDir,
         compileOutDir
     );
-    //prb_clearDirectory(sdl.outDir);
-    //prb_removeFileIfExists(sdl.libFile);
+    // prb_clearDirectory(sdl.outDir);
+    // prb_removeFileIfExists(sdl.libFile);
 
     //
     // SECTION Main program
