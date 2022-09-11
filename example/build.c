@@ -69,14 +69,15 @@ downloadAndCompileStaticLib(
 
         // NOTE(khvorov) Recompile everything whenever any .h file changes
         prb_String hfilesInIncludePattern = prb_pathJoin(includeDir, prb_STR("*.h"));
-        uint64_t latestHFileChange = prb_getLatestLastModifiedFromPattern(hfilesInIncludePattern);
+        uint64_t   latestHFileChange = prb_getLatestLastModifiedFromPattern(hfilesInIncludePattern);
         for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
             prb_StringArray inputMatch = allInputMatches[inputMatchIndex];
             for (int32_t inputFilepathIndex = 0; inputFilepathIndex < inputMatch.len; inputFilepathIndex++) {
                 prb_String inputFilepath = inputMatch.ptr[inputFilepathIndex];
                 prb_String inputDir = prb_getParentDir(inputFilepath);
                 prb_String adjacentHFilesPattern = prb_pathJoin(inputDir, prb_STR("*.h"));
-                latestHFileChange = prb_max(latestHFileChange, prb_getLatestLastModifiedFromPattern(adjacentHFilesPattern));
+                latestHFileChange =
+                    prb_max(latestHFileChange, prb_getLatestLastModifiedFromPattern(adjacentHFilesPattern));
             }
         }
 
