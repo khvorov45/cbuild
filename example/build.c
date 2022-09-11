@@ -33,7 +33,8 @@ downloadAndCompileStaticLib(
         prb_String objDir = prb_pathJoin(compileOutDir, name);
         prb_createDirIfNotExists(objDir);
 
-        prb_String      includeFlag = prb_fmt("-I%s", prb_pathJoin(downloadDir, prb_STR("include")).ptr);
+        prb_String      includeDir = prb_pathJoin(downloadDir, prb_STR("include"));
+        prb_String      includeFlag = prb_fmt("-I%s", includeDir.ptr);
         prb_StringArray extraCompileFlags =
             prb_stringArrayFromCstrings(extraCompileFlagsCstr, extraCompileFlagsCstrCount);
 
@@ -66,6 +67,19 @@ downloadAndCompileStaticLib(
             allInputFilepathsCount += inputMatches.len;
         }
 
+        // NOTE(khvorov) Recompile everything whenever any .h file changes
+        prb_String hfilesInIncludePattern = prb_pathJoin(includeDir, prb_STR("*.h"));
+        uint64_t latestHFileChange = prb_getLatestLastModifiedFromPattern(hfilesInIncludePattern);
+        for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
+            prb_StringArray inputMatch = allInputMatches[inputMatchIndex];
+            for (int32_t inputFilepathIndex = 0; inputFilepathIndex < inputMatch.len; inputFilepathIndex++) {
+                prb_String inputFilepath = inputMatch.ptr[inputFilepathIndex];
+                prb_String inputDir = prb_getParentDir(inputFilepath);
+                prb_String adjacentHFilesPattern = prb_pathJoin(inputDir, prb_STR("*.h"));
+                latestHFileChange = prb_max(latestHFileChange, prb_getLatestLastModifiedFromPattern(adjacentHFilesPattern));
+            }
+        }
+
         prb_String*        allOutputFilepaths = prb_allocArray(prb_String, allInputFilepathsCount);
         prb_ProcessHandle* processes = prb_allocArray(prb_ProcessHandle, allInputFilepathsCount);
         int32_t            processCount = 0;
@@ -82,7 +96,7 @@ downloadAndCompileStaticLib(
                 uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(inputFilepath);
                 uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
 
-                if (sourceLastMod > outputLastMod) {
+                if (sourceLastMod > outputLastMod || latestHFileChange > outputLastMod) {
 #if prb_PLATFORM_WINDOWS
                     prb_fmt("/Fo%s/", objDir.ptr);
 #elif prb_PLATFORM_LINUX
@@ -140,7 +154,6 @@ main() {
     // TODO(khvorov) Release build
     // TODO(khvorov) Make sure we are not dependent on libc
     // TODO(khvorov) Make a static linux executable
-    // TODO(khvorov) Think about how to handle .h file changes
     prb_init();
     prb_TimeStart scriptStartTime = prb_timeStart();
 
