@@ -1,205 +1,163 @@
 #include "../programmable_build.h"
 
-typedef struct GitClone {
-    prb_String url;
-    prb_String dest;
-} GitClone;
-
-prb_CompletionStatus
-gitClone(void* dataInit) {
-    GitClone* data = (GitClone*)dataInit;
-    prb_CompletionStatus status = prb_CompletionStatus_Success;
-    if (!prb_isDirectory(data->dest) || prb_directoryIsEmpty(data->dest)) {
-        prb_String cmd = prb_fmtAndPrintln("git clone %s %s", data->url.ptr, data->dest.ptr);
-        status = prb_execCmdAndWait(cmd);
-    } else {
-        prb_fmtAndPrintln("skip git clone %s", prb_getLastEntryInPath(data->dest).ptr);
-    }
-    return status;
-}
-
-typedef struct CompileToObjsInDir {
-    prb_String outDir;
-    prb_String cmdStart;
-    prb_String* inputPatterns;
-    int32_t inputPatternsCount;
-} CompileToObjsInDir;
-
-prb_CompletionStatus
-compileToObjsInDir(void* dataInit) {
-    CompileToObjsInDir* data = (CompileToObjsInDir*)dataInit;
-
-    prb_StringArray allInputFilepaths = {0};
-    for (int32_t inputPatternIndex = 0; inputPatternIndex < data->inputPatternsCount; inputPatternIndex++) {
-        prb_String inputPattern = data->inputPatterns[inputPatternIndex];
-        prb_StringArray inputFilepaths = prb_getAllMatches(inputPattern);
-        allInputFilepaths = prb_stringArrayJoin2(allInputFilepaths, inputFilepaths);
-    }
-
-    prb_ProcessHandle* processes = prb_allocArray(prb_ProcessHandle, allInputFilepaths.len);
-    int32_t processCount = 0;
-    for (int32_t inputFilepathIndex = 0; inputFilepathIndex < allInputFilepaths.len; inputFilepathIndex++) {
-        prb_String inputFilepath = allInputFilepaths.ptr[inputFilepathIndex];
-        prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
-        prb_String outputFilename = prb_replaceExt(inputFilename, prb_STR("obj"));
-        prb_String outputFilepath = prb_pathJoin(data->outDir, outputFilename);
-
-        uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(inputFilepath);
-        uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
-
-        if (sourceLastMod > outputLastMod) {
-#if prb_PLATFORM_WINDOWS
-            prb_fmt("/Fo%s/", objDir.ptr);
-#elif prb_PLATFORM_LINUX
-            prb_String cmd = prb_fmt("%s -c -o %s %s", data->cmdStart.ptr, outputFilepath.ptr, inputFilepath.ptr);
-#endif
-            prb_println(cmd);
-            processes[processCount++] = prb_execCmdAndDontWait(cmd);
-        }
-    }
-
-    prb_CompletionStatus status = prb_waitForProcesses(processes, processCount);
-    return status;
-}
-
-typedef struct MakeStaticLibFromObjsInDir {
-    prb_String objDir;
-    prb_String libFile;
-} MakeStaticLibFromObjsInDir;
-
-prb_CompletionStatus
-makeStaticLibFromObjsInDir(void* dataInit) {
-    MakeStaticLibFromObjsInDir* data = (MakeStaticLibFromObjsInDir*)dataInit;
-    prb_String objsPattern = prb_pathJoin(data->objDir, prb_STR("*.obj"));
-#if prb_PLATFORM_WINDOWS
-    prb_String libCmd = prb_fmt("lib /nologo -out:%s %s", data->libFile.ptr, objsPattern.ptr);
-#elif prb_PLATFORM_LINUX
-    prb_StringArray objsPaths = prb_getAllMatches(objsPattern);
-    prb_String objsPathsString = prb_stringsJoin(objsPaths.ptr, objsPaths.len, prb_STR(" "));
-    prb_String libCmd = prb_fmt("ar rcs %s %s", data->libFile.ptr, objsPathsString.ptr);
-#endif
-
-    prb_CompletionStatus status = prb_CompletionStatus_Success;
-    uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(objsPattern);
-    uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(data->libFile);
-    if (sourceLastMod > outputLastMod) {
-        prb_println(libCmd);
-        prb_removeFileIfExists(data->libFile);
-        status = prb_execCmdAndWait(libCmd);
-    } else {
-        prb_fmtAndPrintln("skip %s", prb_getLastEntryInPath(data->libFile));
-    }
-
-    return status;
-}
-
-typedef struct AlwaysRun {
-    prb_String cmd;
-} AlwaysRun;
-
-prb_CompletionStatus
-alwaysRun(void* dataInit) {
-    AlwaysRun* data = (AlwaysRun*)dataInit;
-    prb_println(data->cmd);
-    prb_CompletionStatus status = prb_execCmdAndWait(data->cmd);
-    return status;
-}
-
 typedef struct StaticLib {
-    prb_StepHandle finalHandle;
+    bool       success;
     prb_String includeFlag;
     prb_String libFile;
-    prb_String outDir;
 } StaticLib;
 
 StaticLib
 downloadAndCompileStaticLib(
     prb_String name,
     prb_String downloadUrl,
-    char** compileSourcesRelToDownload,
-    int32_t compileSourcesRelToDownloadCount,
-    char** extraCompileFlagsCstr,
-    int32_t extraCompileFlagsCstrCount,
+    char**     compileSourcesRelToDownload,
+    int32_t    compileSourcesRelToDownloadCount,
+    char**     extraCompileFlagsCstr,
+    int32_t    extraCompileFlagsCstrCount,
     prb_String compileCmdStart,
     prb_String rootDir,
     prb_String compileOutDir
 ) {
+    StaticLib  result = {0};
     prb_String downloadDir = prb_pathJoin(rootDir, name);
-    prb_addStep(prb_DependOn_Nothing, gitClone, GitClone, {.url = downloadUrl, .dest = downloadDir});
 
-    prb_String objDir = prb_pathJoin(compileOutDir, name);
-    prb_createDirIfNotExists(objDir);
-
-    prb_String includeFlag = prb_fmt("-I%s", prb_pathJoin(downloadDir, prb_STR("include")).ptr);
-    prb_StringArray extraCompileFlags = prb_stringArrayFromCstrings(extraCompileFlagsCstr, extraCompileFlagsCstrCount);
-
-    prb_String cmdStart = prb_fmt(
-        "%s %s %s",
-        compileCmdStart.ptr,
-        includeFlag.ptr,
-        prb_stringsJoin(extraCompileFlags.ptr, extraCompileFlags.len, prb_STR(" ")).ptr
-    );
-
-#if prb_PLATFORM_WINDOWS
-    prb_String pdbPath = prb_pathJoin(compileOutDir, prb_fmt("%s.pdb", name.ptr));
-    prb_String pdbOutputFlag = prb_fmt(prb_STR("/Fd%s"), pdbPath.ptr);
-    cmdStart = prb_fmt("%s %s", cmdStart, pdbOutputFlag);
-#endif
-
-    int32_t compileSourcesCount = compileSourcesRelToDownloadCount;
-    prb_String* compileSources = prb_allocArray(prb_String, compileSourcesCount);
-    for (int32_t sourceIndex = 0; sourceIndex < compileSourcesCount; sourceIndex++) {
-        compileSources[sourceIndex] = prb_pathJoin(downloadDir, prb_STR(compileSourcesRelToDownload[sourceIndex]));
+    prb_CompletionStatus downloadStatus = prb_CompletionStatus_Success;
+    if (!prb_isDirectory(downloadDir) || prb_directoryIsEmpty(downloadDir)) {
+        prb_String cmd = prb_fmtAndPrintln("git clone %s %s", downloadUrl.ptr, downloadDir.ptr);
+        downloadStatus = prb_execCmdAndWait(cmd);
+    } else {
+        prb_fmtAndPrintln("skip git clone %s", name.ptr);
     }
 
-    prb_addStep(
-        prb_DependOn_LastAdded,
-        compileToObjsInDir,
-        CompileToObjsInDir,
-        {.outDir = objDir,
-         .cmdStart = cmdStart,
-         .inputPatterns = compileSources,
-         .inputPatternsCount = compileSourcesCount}
-    );
+    if (downloadStatus == prb_CompletionStatus_Success) {
+        prb_String objDir = prb_pathJoin(compileOutDir, name);
+        prb_createDirIfNotExists(objDir);
+
+        prb_String      includeFlag = prb_fmt("-I%s", prb_pathJoin(downloadDir, prb_STR("include")).ptr);
+        prb_StringArray extraCompileFlags =
+            prb_stringArrayFromCstrings(extraCompileFlagsCstr, extraCompileFlagsCstrCount);
+
+        prb_String cmdStart = prb_fmt(
+            "%s %s %s",
+            compileCmdStart.ptr,
+            includeFlag.ptr,
+            prb_stringsJoin(extraCompileFlags.ptr, extraCompileFlags.len, prb_STR(" ")).ptr
+        );
 
 #if prb_PLATFORM_WINDOWS
-    prb_String staticLibFileExt = prb_STR("lib");
-#elif prb_PLATFORM_LINUX
-    prb_String staticLibFileExt = prb_STR("a");
+        prb_String pdbPath = prb_pathJoin(compileOutDir, prb_fmt("%s.pdb", name.ptr));
+        prb_String pdbOutputFlag = prb_fmt(prb_STR("/Fd%s"), pdbPath.ptr);
+        cmdStart = prb_fmt("%s %s", cmdStart, pdbOutputFlag);
 #endif
 
-    prb_String libFile = prb_pathJoin(compileOutDir, prb_fmt("%s.%s", name.ptr, staticLibFileExt.ptr));
+        int32_t     compileSourcesCount = compileSourcesRelToDownloadCount;
+        prb_String* compileSources = prb_allocArray(prb_String, compileSourcesCount);
+        for (int32_t sourceIndex = 0; sourceIndex < compileSourcesCount; sourceIndex++) {
+            compileSources[sourceIndex] = prb_pathJoin(downloadDir, prb_STR(compileSourcesRelToDownload[sourceIndex]));
+        }
 
-    prb_addStep(
-        prb_DependOn_LastAdded,
-        makeStaticLibFromObjsInDir,
-        MakeStaticLibFromObjsInDir,
-        {.objDir = objDir, .libFile = libFile}
-    );
+        int32_t          allInputMatchesCount = compileSourcesCount;
+        prb_StringArray* allInputMatches = prb_allocArray(prb_StringArray, allInputMatchesCount);
+        int32_t          allInputFilepathsCount = 0;
+        for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesCount; inputPatternIndex++) {
+            prb_String      inputPattern = compileSources[inputPatternIndex];
+            prb_StringArray inputMatches = prb_getAllMatches(inputPattern);
+            allInputMatches[inputPatternIndex] = inputMatches;
+            allInputFilepathsCount += inputMatches.len;
+        }
 
-    prb_StepHandle finalHandle = prb_getLastAddedStep();
+        prb_String*        allOutputFilepaths = prb_allocArray(prb_String, allInputFilepathsCount);
+        prb_ProcessHandle* processes = prb_allocArray(prb_ProcessHandle, allInputFilepathsCount);
+        int32_t            processCount = 0;
+        int32_t            allOutputFilepathsCount = 0;
+        for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
+            prb_StringArray inputMatch = allInputMatches[inputMatchIndex];
+            for (int32_t inputFilepathIndex = 0; inputFilepathIndex < inputMatch.len; inputFilepathIndex++) {
+                prb_String inputFilepath = inputMatch.ptr[inputFilepathIndex];
+                prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
+                prb_String outputFilename = prb_replaceExt(inputFilename, prb_STR("obj"));
+                prb_String outputFilepath = prb_pathJoin(objDir, outputFilename);
+                allOutputFilepaths[allOutputFilepathsCount++] = outputFilepath;
 
-    StaticLib result = {.finalHandle = finalHandle, .includeFlag = includeFlag, .libFile = libFile, .outDir = objDir};
+                uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(inputFilepath);
+                uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
+
+                if (sourceLastMod > outputLastMod) {
+#if prb_PLATFORM_WINDOWS
+                    prb_fmt("/Fo%s/", objDir.ptr);
+#elif prb_PLATFORM_LINUX
+                    prb_String cmd = prb_fmt("%s -c -o %s %s", cmdStart.ptr, outputFilepath.ptr, inputFilepath.ptr);
+#endif
+                    prb_println(cmd);
+                    processes[processCount++] = prb_execCmdAndDontWait(cmd);
+                }
+            }
+        }
+
+        if (processCount == 0) {
+            prb_fmtAndPrintln("skip compile %s", name.ptr);
+        }
+
+        prb_CompletionStatus compileStatus = prb_waitForProcesses(processes, processCount);
+        if (compileStatus == prb_CompletionStatus_Success) {
+#if prb_PLATFORM_WINDOWS
+            prb_String staticLibFileExt = prb_STR("lib");
+#elif prb_PLATFORM_LINUX
+            prb_String staticLibFileExt = prb_STR("a");
+#endif
+            prb_String libFile = prb_pathJoin(compileOutDir, prb_fmt("%s.%s", name.ptr, staticLibFileExt.ptr));
+
+            prb_String objsPathsString = prb_stringsJoin(allOutputFilepaths, allOutputFilepathsCount, prb_STR(" "));
+#if prb_PLATFORM_WINDOWS
+            prb_String libCmd = prb_fmt("lib /nologo -out:%s %s", libFile.ptr, objsPattern.ptr);
+#elif prb_PLATFORM_LINUX
+            prb_String libCmd = prb_fmt("ar rcs %s %s", libFile.ptr, objsPathsString.ptr);
+#endif
+
+            uint64_t sourceLastMod = prb_getLatestLastModifiedFromPatterns(allOutputFilepaths, allOutputFilepathsCount);
+            uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(libFile);
+            prb_CompletionStatus libStatus = prb_CompletionStatus_Success;
+            if (sourceLastMod > outputLastMod) {
+                prb_println(libCmd);
+                prb_removeFileIfExists(libFile);
+                libStatus = prb_execCmdAndWait(libCmd);
+            } else {
+                prb_fmtAndPrintln("skip lib %s", name);
+            }
+
+            if (libStatus == prb_CompletionStatus_Success) {
+                result = (StaticLib) {.success = true, .includeFlag = includeFlag, .libFile = libFile};
+            }
+        }
+    }
+
     return result;
 }
 
 int
 main() {
-    prb_init();
     // TODO(khvorov) Argument parsing
+    // TODO(khvorov) Release build
+    // TODO(khvorov) Make sure we are not dependent on libc
+    // TODO(khvorov) Make a static linux executable
+    // TODO(khvorov) Think about how to handle .h file changes
+    prb_init();
+    prb_TimeStart scriptStartTime = prb_timeStart();
 
     prb_String rootDir = prb_getParentDir(prb_STR(__FILE__));
 
-    // TODO(khvorov) Release build
-    // TODO(khvorov) Make sure we are not dependent on libc
     prb_String compileOutDir = prb_pathJoin(rootDir, prb_STR("build-debug"));
     prb_createDirIfNotExists(compileOutDir);
 
 #if prb_PLATFORM_WINDOWS
-    prb_String compileCmdStart = prb_STR("cl /nologo /diagnostics:column /FC /Zi ");
+    prb_String compileCmdStart = prb_STR("cl /nologo /diagnostics:column /FC /Zi");
 #elif prb_PLATFORM_LINUX
-    prb_String compileCmdStart = prb_STR("gcc -g ");
+    prb_String compileCmdStart = prb_STR("gcc -g");
 #endif
+
+    //
+    // SECTION Freetype
+    //
 
     char* freetypeCompileSources[] = {
         // Required
@@ -274,8 +232,16 @@ main() {
         rootDir,
         compileOutDir
     );
-    // prb_clearDirectory(freetype.outDir);
 
+    if (!freetype.success) {
+        return 1;
+    };
+
+    //
+    // SECTION SDL
+    //
+
+    // TODO(khvorov) Purge sdl dynamic api programmatically
     char* sdlCompileSources[] = {
         "src/atomic/*.c",
         "src/thread/*.c",
@@ -311,8 +277,6 @@ main() {
 #endif
     };
 
-    // TODO(khvorov) Purge sdl dynamic api programmatically
-    // TODO(khvorov) Make a static linux executable
     char* sdlCompileFlags[] = {
         "-DSDL_AUDIO_DISABLED=1",
         "-DSDL_HAPTIC_DISABLED=1",
@@ -347,7 +311,10 @@ main() {
         rootDir,
         compileOutDir
     );
-    // prb_clearDirectory(sdl.outDir);
+
+    if (!sdl.success) {
+        return 1;
+    }
 
     //
     // SECTION Main program
@@ -377,26 +344,27 @@ main() {
         " -link -incremental:no -subsystem:windows "
         "Ole32.lib Advapi32.lib Winmm.lib User32.lib Gdi32.lib OleAut32.lib "
         "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
-    )
+    );
 #elif prb_PLATFORM_LINUX
     prb_String mainLinkFlags = prb_STR("-lX11 -lXext");
 #endif
 
-        prb_String cmd = prb_fmt(
-            "%s %s %s %s",
-            compileCmdStart.ptr,
-            prb_stringsJoin(mainFlags, prb_arrayLength(mainFlags), prb_STR(" ")).ptr,
-            prb_stringsJoin(mainFiles, prb_arrayLength(mainFiles), prb_STR(" ")).ptr,
-            mainLinkFlags.ptr
-        );
+    prb_String mainCmd = prb_fmt(
+        "%s %s %s %s",
+        compileCmdStart.ptr,
+        prb_stringsJoin(mainFlags, prb_arrayLength(mainFlags), prb_STR(" ")).ptr,
+        prb_stringsJoin(mainFiles, prb_arrayLength(mainFiles), prb_STR(" ")).ptr,
+        mainLinkFlags.ptr
+    );
 
-    prb_addStep(prb_DependOn_Nothing, alwaysRun, AlwaysRun, {.cmd = cmd});
-    prb_StepHandle exeCompileHandle = prb_getLastAddedStep();
-    prb_setDependency(exeCompileHandle, freetype.finalHandle);
-    prb_setDependency(exeCompileHandle, sdl.finalHandle);
+    prb_println(mainCmd);
+    prb_CompletionStatus mainStatus = prb_execCmdAndWait(mainCmd);
 
-    prb_CompletionStatus result = prb_run();
-    if (result == prb_CompletionStatus_Success) {
-        prb_printTimings();
+    if (mainStatus == prb_CompletionStatus_Success) {
+        prb_fmtAndPrintln("total: %.2fms", prb_getMsFrom(scriptStartTime));
+    } else {
+        return 1;
     }
+
+    return 0;
 }
