@@ -6,6 +6,7 @@
 /shell.bat
 /example/freetype
 /example/sdl
+/example/xlib
 /example/build-*
 /msvc.env
 /*.rdbg

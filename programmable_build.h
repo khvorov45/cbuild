@@ -123,6 +123,7 @@ size_t prb_strlen(const char* string);
 void*  prb_memcpy(void* restrict dest, const void* restrict src, size_t n);
 
 // SECTION Memory
+bool    prb_memeq(void* ptr1, void* ptr2, int32_t bytes);
 void*   prb_vmemAllocate(int32_t size);
 void    prb_alignPtr(void** ptr, int32_t align, int32_t* size);
 void*   prb_allocAndZero(int32_t size, int32_t align);
@@ -151,6 +152,7 @@ uint64_t        prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int3
 uint64_t        prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 
 // SECTION Strings
+bool                   prb_streq(prb_String str1, prb_String str2);
 bool                   prb_charIsSep(char ch);
 int32_t                prb_strFindIndexFromLeft(prb_String str, char ch);
 int32_t                prb_strFindIndexFromRight(prb_String str, char ch);
@@ -265,6 +267,16 @@ struct {
 // SECTION Implementation
 //
 
+bool
+prb_memeq(void* ptr1, void* ptr2, int32_t bytes) {
+    prb_assert(bytes >= 0);
+    uint8_t *l = ptr1, *r = ptr2;
+    int32_t  left = bytes;
+    for (; left > 0 && *l == *r; left--, l++, r++) {}
+    bool result = left == 0;
+    return result;
+}
+
 void
 prb_init(void) {
     prb_globalState.arena.size = 1 * prb_GIGABYTE;
@@ -333,6 +345,15 @@ prb_globalArenaAlignTo_(int32_t align) {
 }
 
 bool
+prb_streq(prb_String str1, prb_String str2) {
+    bool result = false;
+    if (str1.len == str2.len) {
+        result = prb_memeq(str1.ptr, str2.ptr, str1.len);
+    }
+    return result;
+}
+
+bool
 prb_charIsSep(char ch) {
     bool result = ch == '/' || ch == '\\';
     return result;
@@ -366,7 +387,7 @@ prb_strFindIndexFromRight(prb_String str, char ch) {
 
 prb_StringBuilder
 prb_createStringBuilder(int32_t len) {
-    prb_assert(len > 0);
+    prb_assert(len >= 0);
     // NOTE(khvorov) +1 is for the null terminator
     prb_StringBuilder result = {.ptr = prb_allocAndZero(len + 1, 1), .capacity = len};
     return result;
@@ -493,9 +514,9 @@ prb_clearDirectory(prb_String path) {
 
 prb_String
 prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
-    prb_assert(sep.ptr && sep.len > 0 && stringsCount >= 0);
+    prb_assert(sep.len >= 0 && stringsCount >= 0);
 
-    int32_t totalLen = stringsCount * sep.len;
+    int32_t totalLen = prb_max(stringsCount - 1, 0) * sep.len;
     for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
         prb_String str = strings[strIndex];
         totalLen += str.len;
@@ -505,10 +526,12 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
     for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
         prb_String str = strings[strIndex];
         prb_stringBuilderWrite(&builder, str);
-        prb_stringBuilderWrite(&builder, sep);
+        if (strIndex < stringsCount - 1) {
+            prb_stringBuilderWrite(&builder, sep);
+        }
     }
-
     prb_String result = prb_stringBuilderGetString(&builder);
+
     return result;
 }
 

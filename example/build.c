@@ -33,15 +33,26 @@ downloadAndCompileStaticLib(
         prb_String objDir = prb_pathJoin(compileOutDir, name);
         prb_createDirIfNotExists(objDir);
 
-        prb_String      includeDir = prb_pathJoin(downloadDir, prb_STR("include"));
-        prb_String      includeFlag = prb_fmt("-I%s", includeDir.ptr);
+        prb_String includeDir = prb_pathJoin(downloadDir, prb_STR("include"));
+        prb_String includeFlagForUser = prb_fmt("-I%s", includeDir.ptr);
+        prb_String includeFlagForLibrary = prb_fmt("-I%s", includeDir.ptr);
+        if (prb_streq(name, prb_STR("xlib"))) {
+            prb_clearDirectory(objDir);  // TODO(khvorov) Remove when done with xlib
+            includeFlagForLibrary = prb_fmt(
+                "%s %s/X11 -I%s/src/xcms -I%s/src/xlibi18n",
+                includeFlagForUser.ptr,
+                includeFlagForUser.ptr,
+                downloadDir.ptr,
+                downloadDir.ptr
+            );
+        }
         prb_StringArray extraCompileFlags =
             prb_stringArrayFromCstrings(extraCompileFlagsCstr, extraCompileFlagsCstrCount);
 
         prb_String cmdStart = prb_fmt(
             "%s %s %s",
             compileCmdStart.ptr,
-            includeFlag.ptr,
+            includeFlagForLibrary.ptr,
             prb_stringsJoin(extraCompileFlags.ptr, extraCompileFlags.len, prb_STR(" ")).ptr
         );
 
@@ -141,7 +152,7 @@ downloadAndCompileStaticLib(
             }
 
             if (libStatus == prb_CompletionStatus_Success) {
-                result = (StaticLib) {.success = true, .includeFlag = includeFlag, .libFile = libFile};
+                result = (StaticLib) {.success = true, .includeFlag = includeFlagForUser, .libFile = libFile};
             }
         }
     }
@@ -153,7 +164,6 @@ int
 main() {
     // TODO(khvorov) Argument parsing
     // TODO(khvorov) Release build
-    // TODO(khvorov) Make sure we are not dependent on libc
     // TODO(khvorov) Make a static linux executable
     prb_init();
     prb_TimeStart scriptStartTime = prb_timeStart();
@@ -330,6 +340,32 @@ main() {
         return 1;
     }
 
+#if prb_PLATFORM_LINUX
+
+    //
+    // SECTION Xlib
+    //
+
+    char* xlibSources[] = {"src/Window.c"};
+    char* xlibFlags[] = {};
+
+    StaticLib xlib = downloadAndCompileStaticLib(
+        prb_STR("xlib"),
+        prb_STR("https://github.com/freedesktop/xorg-libX11"),
+        xlibSources,
+        prb_arrayLength(xlibSources),
+        xlibFlags,
+        prb_arrayLength(xlibFlags),
+        compileCmdStart,
+        rootDir,
+        compileOutDir
+    );
+
+    if (!xlib.success) {
+        return 1;
+    }
+#endif
+
     //
     // SECTION Main program
     //
@@ -351,6 +387,9 @@ main() {
         prb_pathJoin(rootDir, prb_STR("example.c")),
         freetype.libFile,
         sdl.libFile,
+#if prb_PLATFORM_LINUX
+        xlib.libFile,
+#endif
     };
 
 #if prb_PLATFORM_WINDOWS
