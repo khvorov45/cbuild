@@ -79,6 +79,7 @@ downloadAndCompileStaticLib(
         }
 
         // NOTE(khvorov) Recompile everything whenever any .h file changes
+        // TODO(khvorov) Probably just search the whole directory recursively for .h files
         prb_String hfilesInIncludePattern = prb_pathJoin(includeDir, prb_STR("*.h"));
         uint64_t   latestHFileChange = prb_getLatestLastModifiedFromPattern(hfilesInIncludePattern);
         for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
