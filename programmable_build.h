@@ -1,3 +1,6 @@
+// TODO(khvorov) Make sure this compiles under C++
+// TODO(khvorov) Make sure this works as two translation units
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
