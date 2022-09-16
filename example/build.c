@@ -23,10 +23,23 @@ downloadAndCompileStaticLib(
 
     prb_CompletionStatus downloadStatus = prb_CompletionStatus_Success;
     if (!prb_isDirectory(downloadDir) || prb_directoryIsEmpty(downloadDir)) {
-        prb_String cmd = prb_fmtAndPrintln("git clone %s %s", downloadUrl.ptr, downloadDir.ptr);
+        prb_String cmd = prb_fmtAndPrintln("git clone --depth 1 %s %s", downloadUrl.ptr, downloadDir.ptr);
         downloadStatus = prb_execCmdAndWait(cmd);
     } else {
         prb_fmtAndPrintln("skip git clone %s", name.ptr);
+    }
+
+    bool       isXlib = prb_streq(name, prb_STR("xlib"));
+    prb_String downloadDirXproto = {0};
+    if (isXlib) {
+        downloadDirXproto = prb_pathJoin(rootDir, prb_STR("xproto"));
+        if (!prb_isDirectory(downloadDirXproto) || prb_directoryIsEmpty(downloadDirXproto)) {
+            prb_String cmd = prb_fmtAndPrintln(
+                "git clone --depth 1 https://github.com/freedesktop/xorg-xorgproto %s",
+                downloadDirXproto.ptr
+            );
+            downloadStatus = prb_execCmdAndWait(cmd);
+        }
     }
 
     if (downloadStatus == prb_CompletionStatus_Success) {
@@ -36,15 +49,31 @@ downloadAndCompileStaticLib(
         prb_String includeDir = prb_pathJoin(downloadDir, prb_STR("include"));
         prb_String includeFlagForUser = prb_fmt("-I%s", includeDir.ptr);
         prb_String includeFlagForLibrary = prb_fmt("-I%s", includeDir.ptr);
-        if (prb_streq(name, prb_STR("xlib"))) {
+        if (isXlib) {
             prb_clearDirectory(objDir);  // TODO(khvorov) Remove when done with xlib
+            prb_String xprotoIncludeForUser = prb_fmt("-I%s/include", downloadDirXproto.ptr);
             includeFlagForLibrary = prb_fmt(
-                "%s %s/X11 -I%s/src/xcms -I%s/src/xlibi18n",
+                "%s %s/X11 -I%s/src -I%s/src/xcms -I%s/src/xlibi18n %s %s/X11",
                 includeFlagForUser.ptr,
                 includeFlagForUser.ptr,
                 downloadDir.ptr,
-                downloadDir.ptr
+                downloadDir.ptr,
+                downloadDir.ptr,
+                xprotoIncludeForUser.ptr,
+                xprotoIncludeForUser.ptr
             );
+
+            prb_String ksTablesPath = prb_pathJoin(includeDir, prb_STR("ks_tables.h"));
+            if (!prb_isFile(ksTablesPath)) {
+                prb_String mkKeysSourcePath = prb_pathJoin(downloadDir, prb_STR("src/util/makekeys.c"));
+                prb_String mkKeysExePath = prb_pathJoin(downloadDir, prb_STR("src/util/makekeys.bin"));
+                prb_String compileMkKeysCmd =
+                    prb_fmtAndPrintln("%s %s -o %s", compileCmdStart.ptr, mkKeysSourcePath.ptr, mkKeysExePath.ptr);
+                prb_execCmdAndWait(compileMkKeysCmd);
+                prb_String keysymdefPath = prb_pathJoin(downloadDirXproto, prb_STR("include/X11/keysymdef.h"));
+                prb_String mkKeysCmd = prb_fmtAndPrintln("%s %s", mkKeysExePath.ptr, keysymdefPath.ptr);
+                prb_execCmdAndWaitRedirectStdout(mkKeysCmd, ksTablesPath);
+            }
         }
         prb_StringArray extraCompileFlags =
             prb_stringArrayFromCstrings(extraCompileFlagsCstr, extraCompileFlagsCstrCount);
@@ -104,19 +133,28 @@ downloadAndCompileStaticLib(
                 prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
                 prb_String outputFilename = prb_replaceExt(inputFilename, prb_STR("obj"));
                 prb_String outputFilepath = prb_pathJoin(objDir, outputFilename);
-                allOutputFilepaths[allOutputFilepathsCount++] = outputFilepath;
 
-                uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(inputFilepath);
-                uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
+                bool excluded = false;
+                if (isXlib) {
+                    prb_String filename = prb_getLastEntryInPath(inputFilepath);
+                    excluded = prb_streq(filename, prb_STR("os2Stubs.c"));
+                }
 
-                if (sourceLastMod > outputLastMod || latestHFileChange > outputLastMod) {
+                if (!excluded) {
+                    allOutputFilepaths[allOutputFilepathsCount++] = outputFilepath;
+
+                    uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(inputFilepath);
+                    uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
+
+                    if (sourceLastMod > outputLastMod || latestHFileChange > outputLastMod) {
 #if prb_PLATFORM_WINDOWS
-                    prb_fmt("/Fo%s/", objDir.ptr);
+                        prb_fmt("/Fo%s/", objDir.ptr);
 #elif prb_PLATFORM_LINUX
-                    prb_String cmd = prb_fmt("%s -c -o %s %s", cmdStart.ptr, outputFilepath.ptr, inputFilepath.ptr);
+                        prb_String cmd = prb_fmt("%s -c -o %s %s", cmdStart.ptr, outputFilepath.ptr, inputFilepath.ptr);
 #endif
-                    prb_println(cmd);
-                    processes[processCount++] = prb_execCmdAndDontWait(cmd);
+                        prb_println(cmd);
+                        processes[processCount++] = prb_execCmdAndDontWait(cmd);
+                    }
                 }
             }
         }
@@ -347,8 +385,41 @@ main() {
     // SECTION Xlib
     //
 
-    char* xlibSources[] = {"src/Window.c"};
-    char* xlibFlags[] = {};
+    // TODO(khvorov) Check that sources are actually present
+    #if 0
+    char* xlibSources[] = {"src/Window.c",         "src/ConvSel.c",    "src/GetPCnt.c",   "src/xlibi18n/ICWrap.c",
+                           "src/GetWAttrs.c",      "src/SetHints.c",   "src/SetFore.c",   "src/GrKeybd.c",
+                           "src/TextToStr.c",      "src/PropAlloc.c",  "src/ImUtil.c",    "src/XlibInt.c",
+                           "src/Withdraw.c",       "src/ErrDes.c",     "src/KeyBind.c",   "src/CrBFData.c",
+                           "src/VisUtil.c",        "src/PixFormats.c", "src/XlibAsync.c", "src/Clear.c",
+                           "src/StrKeysym.c",      "src/KeysymStr.c",  "src/DelProp.c",   "src/GetPntMap.c",
+                           "src/GrPointer.c",      "src/UnmapWin.c",   "src/xcb_io.c",    "src/Macros.c",
+                           "src/SetSOwner.c",      "src/Flush.c",      "src/DestWind.c",  "src/Sync.c",
+                           "src/UndefCurs.c",      "src/FSWrap.c",     "src/OCWrap.c",    "src/xlibi18n/lcWrap.c",
+                           "src/SetLocale.c",      "src/CrPixmap.c",   "src/Font.c",      "src/FreeEData.c",
+                           "src/GetHints.c",       "src/GetTxtProp.c", "src/GrServer.c",  "src/Cursor.c",
+                           "src/GetNrmHint.c",     "src/SetNrmHint.c", "src/GetDflt.c",   "src/IfEvent.c",
+                           "src/UngrabKbd.c",      "src/globals.c",    "src/ErrHndlr.c",  "src/PutImage.c",
+                           "src/CrGlCur.c",        "src/QuPntr.c",     "src/Xrm.c",       "src/DrRect.c",
+                           "src/ChWindow.c",       "src/locking.c",    "src/OpenDis.c",   "src/SetWMProto.c",
+                           "src/ModMap.c",         "src/WMProps.c",    "src/CrCursor.c",  "src/SetTxtProp.c",
+                           "src/xlibi18n/lcUtil.c", "src/"};
+    #endif
+    char* xlibSources[] = {
+        "src/*.c",
+        "src/xlibi18n/*.c",
+        "modules/lc/Utf8/*.c",
+        "modules/lc/gen/*.c",
+        "modules/lc/def/*.c",
+        "modules/im/ximcp/*.c",
+        "modules/om/generic/*.c"};
+
+    char* xlibFlags[] = {
+        "-DHAVE_SYS_IOCTL_H",
+        "-DXLOCALELIBDIR=\"/usr/lib/X11/locale\"",
+        "-DXIM_t=1",
+        "-DTRANS_CLIENT=1",
+    };
 
     StaticLib xlib = downloadAndCompileStaticLib(
         prb_STR("xlib"),
@@ -389,7 +460,7 @@ main() {
         freetype.libFile,
         sdl.libFile,
 #if prb_PLATFORM_LINUX
-        xlib.libFile,
+        xlib.libFile, // TODO(khvorov) No window title because we don't have write permissions to /usr/lib/X11/locale whatever
 #endif
     };
 
@@ -400,7 +471,7 @@ main() {
         "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
     );
 #elif prb_PLATFORM_LINUX
-    prb_String mainLinkFlags = prb_STR("-lX11 -lXext");
+    prb_String mainLinkFlags = prb_STR("-lXext -lxcb");
 #endif
 
     prb_String mainCmd = prb_fmt(

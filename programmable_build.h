@@ -137,6 +137,7 @@ void*   prb_globalArenaAlignTo_(int32_t align);
 
 // SECTION Filesystem
 bool            prb_isDirectory(prb_String path);
+bool            prb_isFile(prb_String path);
 bool            prb_directoryIsEmpty(prb_String path);
 void            prb_createDirIfNotExists(prb_String path);
 void            prb_removeFileOrDirectoryIfExists(prb_String path);
@@ -183,6 +184,7 @@ void                   prb_println(prb_String str);
 
 // SECTION Processes
 prb_CompletionStatus prb_execCmdAndWait(prb_String cmd);
+prb_CompletionStatus prb_execCmdAndWaitRedirectStdout(prb_String cmd, prb_String stdoutPath);
 prb_ProcessHandle    prb_execCmdAndDontWait(prb_String cmd);
 prb_CompletionStatus prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
 
@@ -849,6 +851,7 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     #include <dirent.h>
     #include <glob.h>
     #include <time.h>
+    #include <fcntl.h>
 
 void*
 prb_vmemAllocate(int32_t size) {
@@ -865,6 +868,14 @@ prb_isDirectory(prb_String path) {
     if (stat(path.ptr, &statBuf) == 0) {
         result = S_ISDIR(statBuf.st_mode);
     }
+    return result;
+}
+
+bool
+prb_isFile(prb_String path) {
+    prb_assert(path.ptr && path.len > 0);
+    struct stat statBuf = {0};
+    bool        result = stat(path.ptr, &statBuf) == 0;
     return result;
 }
 
@@ -927,6 +938,36 @@ prb_execCmdAndWait(prb_String cmd) {
         pid_t   waitResult = waitpid(pid, &status, 0);
         if (waitResult == pid && status == 0) {
             cmdStatus = prb_CompletionStatus_Success;
+        }
+    }
+    return cmdStatus;
+}
+
+prb_CompletionStatus
+prb_execCmdAndWaitRedirectStdout(prb_String cmd, prb_String stdoutPath) {
+    char**                     args = prb_getArgArrayFromString(cmd);
+    prb_CompletionStatus       cmdStatus = prb_CompletionStatus_Failure;
+    posix_spawn_file_actions_t fileActions = {0};
+    if (posix_spawn_file_actions_init(&fileActions) == 0) {
+        if (posix_spawn_file_actions_addopen(
+                &fileActions,
+                STDOUT_FILENO,
+                stdoutPath.ptr,
+                O_WRONLY | O_CREAT | O_TRUNC,
+                S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
+            )
+            == 0) {
+            if (posix_spawn_file_actions_adddup2(&fileActions, STDOUT_FILENO, STDERR_FILENO) == 0) {
+                pid_t   pid;
+                int32_t spawnResult = posix_spawnp(&pid, args[0], &fileActions, 0, args, __environ);
+                if (spawnResult == 0) {
+                    int32_t status;
+                    pid_t   waitResult = waitpid(pid, &status, 0);
+                    if (waitResult == pid && status == 0) {
+                        cmdStatus = prb_CompletionStatus_Success;
+                    }
+                }
+            }
         }
     }
     return cmdStatus;
