@@ -1,5 +1,6 @@
 // TODO(khvorov) Make sure this compiles under C++
 // TODO(khvorov) Make sure this works as two translation units
+// TODO(khvorov) Make sure utf8 paths work on windows
 
 #include <stdint.h>
 #include <stddef.h>
