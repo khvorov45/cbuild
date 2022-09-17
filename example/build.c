@@ -29,7 +29,7 @@ downloadAndCompileStaticLib(
         prb_String cmd = prb_fmtAndPrintln("git clone --depth 1 %s %s", downloadUrl.ptr, downloadDir.ptr);
         downloadStatus = prb_execCmdAndWait(cmd);
         if (downloadStatus == prb_CompletionStatus_Success && postDownloadCallback) {
-        postDownloadCallback(downloadDir);
+            postDownloadCallback(downloadDir);
         }
     } else {
         prb_fmtAndPrintln("skip git clone %s", name.ptr);
@@ -158,16 +158,25 @@ downloadAndCompileStaticLib(
 }
 
 void
-purgeSdlDynamicApi(prb_String downloadDir) {
+sdlMods(prb_String downloadDir) {
+    // NOTE(khvorov) Purge dynamic api because otherwise you have to compile a lot more of sdl
     prb_String dynapiPath = prb_pathJoin(downloadDir, prb_STR("src/dynapi/SDL_dynapi.h"));
     prb_textfileReplace(dynapiPath, prb_STR("#define SDL_DYNAMIC_API 1"), prb_STR("#define SDL_DYNAMIC_API 0"));
+
+    // NOTE(khvorov) This XMissingExtension function is in X11 extensions and SDL doesn't use it.
+    // Saves us from having to -lXext for no reason
+    prb_String x11sym = prb_pathJoin(downloadDir, prb_STR("src/video/x11/SDL_x11sym.h"));
+    prb_textfileReplace(
+        x11sym,
+        prb_STR("SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return)"),
+        prb_STR("//SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return")
+    );
 }
 
 int
 main() {
     // TODO(khvorov) Argument parsing
     // TODO(khvorov) Release build
-    // TODO(khvorov) Make a static linux executable
     prb_init();
     prb_TimeStart scriptStartTime = prb_timeStart();
 
@@ -324,6 +333,7 @@ main() {
         "-DSDL_LOADSO_DLOPEN=1",
         "-DSDL_VIDEO_DRIVER_X11=1",
         "-DSDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS=1",
+        "-DNO_SHARED_MEMORY=1",
 #endif
     };
 
@@ -337,16 +347,12 @@ main() {
         compileCmdStart,
         rootDir,
         compileOutDir,
-        purgeSdlDynamicApi
+        sdlMods
     );
 
     if (!sdl.success) {
         return 1;
     }
-
-#if prb_PLATFORM_LINUX
-
-#endif
 
     //
     // SECTION Main program
@@ -380,7 +386,7 @@ main() {
         "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
     );
 #elif prb_PLATFORM_LINUX
-    prb_String mainLinkFlags = prb_STR("-lX11 -lXext");
+    prb_String mainLinkFlags = prb_STR("-lX11");
 #endif
 
     prb_String mainCmd = prb_fmtAndPrintln(
