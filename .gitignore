@@ -12,3 +12,6 @@
 /msvc.env
 /*.rdbg
 *.bin
+*.gcda
+*.gcno
+*.gcov
