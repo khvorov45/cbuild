@@ -155,14 +155,19 @@ uint64_t        prb_getLatestLastModifiedFromPattern(prb_String pattern);
 uint64_t        prb_getEarliestLastModifiedFromPattern(prb_String pattern);
 uint64_t        prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 uint64_t        prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
+void            prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement);
+prb_String      prb_readEntireFileAsString(prb_String path);
+void            prb_writeEntireFileAsString(prb_String path, prb_String content);
 
 // SECTION Strings
 bool                   prb_streq(prb_String str1, prb_String str2);
 bool                   prb_charIsSep(char ch);
 int32_t                prb_strFindIndexFromLeft(prb_String str, char ch);
 int32_t                prb_strFindIndexFromRight(prb_String str, char ch);
+int32_t                prb_strFindIndexFromLeftString(prb_String str, prb_String pattern);
+prb_String             prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
 prb_StringBuilder      prb_createStringBuilder(int32_t len);
-void                   prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source);
+void                   prb_stringBuilderWrite(prb_StringBuilder* builder, char* source, int32_t len);
 prb_String             prb_stringBuilderGetString(prb_StringBuilder* builder);
 prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
 void                   prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
@@ -391,6 +396,60 @@ prb_strFindIndexFromRight(prb_String str, char ch) {
     return result;
 }
 
+int32_t
+prb_strFindIndexFromLeftString(prb_String str, prb_String pattern) {
+    int32_t result = -1;
+    if (pattern.len <= str.len) {
+        if (pattern.len == 0) {
+            result = 0;
+        } else if (pattern.len == 1) {
+            result = prb_strFindIndexFromLeft(str, pattern.ptr[0]);
+        } else {
+            // Raita string matching algorithm
+            // https://en.wikipedia.org/wiki/Raita_algorithm
+            ptrdiff_t bmBc[256];
+
+            for (int32_t i = 0; i < 256; ++i) {
+                bmBc[i] = pattern.len;
+            }
+            for (int32_t i = 0; i < pattern.len - 1; ++i) {
+                char patternChar = pattern.ptr[i];
+                bmBc[(int32_t)patternChar] = pattern.len - i - 1;
+            }
+
+            char patFirstCh = pattern.ptr[0];
+            char patMiddleCh = pattern.ptr[pattern.len / 2];
+            char patLastCh = pattern.ptr[pattern.len - 1];
+
+            int32_t j = 0;
+            while (j <= str.len - pattern.len) {
+                char strLastCh = str.ptr[j + pattern.len - 1];
+                if (patLastCh == strLastCh && patMiddleCh == str.ptr[j + pattern.len / 2] && patFirstCh == str.ptr[j]
+                    && prb_memeq(pattern.ptr + 1, str.ptr + j + 1, pattern.len - 2)) {
+                    result = j;
+                    break;
+                }
+                j += bmBc[(int32_t)strLastCh];
+            }
+        }
+    }
+    return result;
+}
+
+prb_String
+prb_strReplace(prb_String str, prb_String pattern, prb_String replacement) {
+    int32_t    patternIndex = prb_strFindIndexFromLeftString(str, pattern);
+    prb_String result = str;
+    if (patternIndex != -1) {
+        prb_StringBuilder builder = prb_createStringBuilder(str.len - pattern.len + replacement.len);
+        prb_stringBuilderWrite(&builder, str.ptr, patternIndex);
+        prb_stringBuilderWrite(&builder, replacement.ptr, replacement.len);
+        prb_stringBuilderWrite(&builder, str.ptr + patternIndex + pattern.len, str.len - patternIndex - pattern.len);
+        result = prb_stringBuilderGetString(&builder);
+    }
+    return result;
+}
+
 prb_StringBuilder
 prb_createStringBuilder(int32_t len) {
     prb_assert(len >= 0);
@@ -400,10 +459,10 @@ prb_createStringBuilder(int32_t len) {
 }
 
 void
-prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source) {
-    prb_assert(source.len <= builder->capacity - builder->written);
-    prb_memcpy(builder->ptr + builder->written, source.ptr, source.len);
-    builder->written += source.len;
+prb_stringBuilderWrite(prb_StringBuilder* builder, char* source, int32_t len) {
+    prb_assert(len <= builder->capacity - builder->written);
+    prb_memcpy(builder->ptr + builder->written, source, len);
+    builder->written += len;
 }
 
 prb_String
@@ -418,7 +477,7 @@ prb_stringCopy(prb_String source, int32_t from, int32_t to) {
     prb_assert(to >= from && to >= 0 && from >= 0 && to < source.len && from < source.len);
     int32_t           len = to - from + 1;
     prb_StringBuilder builder = prb_createStringBuilder(len);
-    prb_stringBuilderWrite(&builder, (prb_String) {source.ptr + from, len});
+    prb_stringBuilderWrite(&builder, source.ptr + from, len);
     prb_String result = prb_stringBuilderGetString(&builder);
     return result;
 }
@@ -531,9 +590,9 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
     prb_StringBuilder builder = prb_createStringBuilder(totalLen);
     for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
         prb_String str = strings[strIndex];
-        prb_stringBuilderWrite(&builder, str);
+        prb_stringBuilderWrite(&builder, str.ptr, str.len);
         if (strIndex < stringsCount - 1) {
-            prb_stringBuilderWrite(&builder, sep);
+            prb_stringBuilderWrite(&builder, sep.ptr, sep.len);
         }
     }
     prb_String result = prb_stringBuilderGetString(&builder);
@@ -548,12 +607,12 @@ prb_pathJoin(prb_String path1, prb_String path2) {
     bool              path1EndsOnSep = prb_charIsSep(path1LastChar);
     int32_t           totalLen = path1EndsOnSep ? path1.len + path2.len : path1.len + 1 + path2.len;
     prb_StringBuilder builder = prb_createStringBuilder(totalLen);
-    prb_stringBuilderWrite(&builder, path1);
+    prb_stringBuilderWrite(&builder, path1.ptr, path1.len);
     if (!path1EndsOnSep) {
         // NOTE(khvorov) Windows seems to handle mixing \ and / just fine
-        prb_stringBuilderWrite(&builder, prb_STR("/"));
+        prb_stringBuilderWrite(&builder, "/", 1);
     }
-    prb_stringBuilderWrite(&builder, path2);
+    prb_stringBuilderWrite(&builder, path2.ptr, path2.len);
     prb_String result = prb_stringBuilderGetString(&builder);
     return result;
 }
@@ -613,6 +672,13 @@ prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCo
         result = prb_min(result, prb_getEarliestLastModifiedFromPattern(patterns[patternIndex]));
     }
     return result;
+}
+
+void
+prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
+    prb_String content = prb_readEntireFileAsString(path);
+    prb_String newContent = prb_strReplace(content, pattern, replacement);
+    prb_writeEntireFileAsString(path, newContent);
 }
 
 prb_String
@@ -1116,6 +1182,29 @@ prb_getMsFrom(prb_TimeStart timeStart) {
         result = (float)nsec / 1000.0f / 1000.0f;
     }
     return result;
+}
+
+prb_String
+prb_readEntireFileAsString(prb_String path) {
+    int32_t handle = open(path.ptr, O_RDONLY, 0);
+    prb_assert(handle != -1);
+    struct stat statBuf = {0};
+    prb_assert(fstat(handle, &statBuf) == 0);
+    char*   buf = prb_allocAndZero(statBuf.st_size, 1);
+    int32_t readResult = read(handle, buf, statBuf.st_size);
+    prb_assert(readResult == statBuf.st_size);
+    prb_String result = {buf, statBuf.st_size};
+    close(handle);
+    return result;
+}
+
+void
+prb_writeEntireFileAsString(prb_String path, prb_String content) {
+    int32_t handle = open(path.ptr, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
+    prb_assert(handle != -1);
+    int32_t writeResult = write(handle, content.ptr, content.len);
+    prb_assert(writeResult == content.len);
+    close(handle);
 }
 
 #endif  // prb_PLATFORM

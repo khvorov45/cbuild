@@ -6,17 +6,20 @@ typedef struct StaticLib {
     prb_String libFile;
 } StaticLib;
 
+typedef void (*PostDownloadCallback)(prb_String downloadDir);
+
 StaticLib
 downloadAndCompileStaticLib(
-    prb_String name,
-    prb_String downloadUrl,
-    char**     compileSourcesRelToDownload,
-    int32_t    compileSourcesRelToDownloadCount,
-    char**     extraCompileFlagsCstr,
-    int32_t    extraCompileFlagsCstrCount,
-    prb_String compileCmdStart,
-    prb_String rootDir,
-    prb_String compileOutDir
+    prb_String           name,
+    prb_String           downloadUrl,
+    char**               compileSourcesRelToDownload,
+    int32_t              compileSourcesRelToDownloadCount,
+    char**               extraCompileFlagsCstr,
+    int32_t              extraCompileFlagsCstrCount,
+    prb_String           compileCmdStart,
+    prb_String           rootDir,
+    prb_String           compileOutDir,
+    PostDownloadCallback postDownloadCallback
 ) {
     StaticLib  result = {0};
     prb_String downloadDir = prb_pathJoin(rootDir, name);
@@ -25,6 +28,9 @@ downloadAndCompileStaticLib(
     if (!prb_isDirectory(downloadDir) || prb_directoryIsEmpty(downloadDir)) {
         prb_String cmd = prb_fmtAndPrintln("git clone --depth 1 %s %s", downloadUrl.ptr, downloadDir.ptr);
         downloadStatus = prb_execCmdAndWait(cmd);
+        if (downloadStatus == prb_CompletionStatus_Success && postDownloadCallback) {
+        postDownloadCallback(downloadDir);
+        }
     } else {
         prb_fmtAndPrintln("skip git clone %s", name.ptr);
     }
@@ -151,6 +157,12 @@ downloadAndCompileStaticLib(
     return result;
 }
 
+void
+purgeSdlDynamicApi(prb_String downloadDir) {
+    prb_String dynapiPath = prb_pathJoin(downloadDir, prb_STR("src/dynapi/SDL_dynapi.h"));
+    prb_textfileReplace(dynapiPath, prb_STR("#define SDL_DYNAMIC_API 1"), prb_STR("#define SDL_DYNAMIC_API 0"));
+}
+
 int
 main() {
     // TODO(khvorov) Argument parsing
@@ -245,7 +257,8 @@ main() {
         prb_arrayLength(freetypeCompileFlags),
         compileCmdStart,
         rootDir,
-        compileOutDir
+        compileOutDir,
+        0
     );
 
     if (!freetype.success) {
@@ -256,7 +269,6 @@ main() {
     // SECTION SDL
     //
 
-    // TODO(khvorov) Purge sdl dynamic api programmatically
     char* sdlCompileSources[] = {
         "src/atomic/*.c",
         "src/thread/*.c",
@@ -324,7 +336,8 @@ main() {
         prb_arrayLength(sdlCompileFlags),
         compileCmdStart,
         rootDir,
-        compileOutDir
+        compileOutDir,
+        purgeSdlDynamicApi
     );
 
     if (!sdl.success) {
@@ -367,10 +380,10 @@ main() {
         "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
     );
 #elif prb_PLATFORM_LINUX
-    prb_String mainLinkFlags = prb_STR("");
+    prb_String mainLinkFlags = prb_STR("-lX11 -lXext");
 #endif
 
-    prb_String mainCmd = prb_fmt(
+    prb_String mainCmd = prb_fmtAndPrintln(
         "%s %s %s %s",
         compileCmdStart.ptr,
         prb_stringsJoin(mainFlags, prb_arrayLength(mainFlags), prb_STR(" ")).ptr,
@@ -378,7 +391,6 @@ main() {
         mainLinkFlags.ptr
     );
 
-    prb_println(mainCmd);
     prb_CompletionStatus mainStatus = prb_execCmdAndWait(mainCmd);
 
     if (mainStatus == prb_CompletionStatus_Success) {
