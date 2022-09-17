@@ -98,6 +98,24 @@ typedef enum prb_CompletionStatus {
     prb_CompletionStatus_Failure,
 } prb_CompletionStatus;
 
+typedef struct prb_TimeStart {
+    bool     valid;
+    uint64_t time;
+} prb_TimeStart;
+
+typedef enum prb_ColorID {
+    prb_ColorID_Reset,
+    prb_ColorID_Black,
+    prb_ColorID_Red,
+    prb_ColorID_Green,
+    prb_ColorID_Yellow,
+    prb_ColorID_Blue,
+    prb_ColorID_Magenta,
+    prb_ColorID_Cyan,
+    prb_ColorID_White,
+    prb_ColorID_Count,
+} prb_ColorID;
+
 #if prb_PLATFORM_WINDOWS
 
 typedef struct prb_ProcessHandle {
@@ -113,11 +131,6 @@ typedef struct prb_ProcessHandle {
 } prb_ProcessHandle;
 
 #endif  // prb_PLATFORM
-
-typedef struct prb_TimeStart {
-    bool     valid;
-    uint64_t time;
-} prb_TimeStart;
 
 // SECTION Core
 void prb_init(void);
@@ -181,11 +194,19 @@ prb_String             prb_vfmtCustomBuffer(void* buf, int32_t bufSize, char* fm
 prb_String             prb_fmt(char* fmt, ...);
 prb_String             prb_vfmt(char* fmt, va_list args);
 prb_String             prb_fmtAndPrint(char* fmt, ...);
+prb_String             prb_fmtAndPrintColor(prb_ColorID color, char* fmt, ...);
 prb_String             prb_vfmtAndPrint(char* fmt, va_list args);
+prb_String             prb_vfmtAndPrintColor(prb_ColorID color, char* fmt, va_list args);
 prb_String             prb_fmtAndPrintln(char* fmt, ...);
+prb_String             prb_fmtAndPrintlnColor(prb_ColorID color, char* fmt, ...);
 prb_String             prb_vfmtAndPrintln(char* fmt, va_list args);
+prb_String             prb_vfmtAndPrintlnColor(prb_ColorID color, char* fmt, va_list args);
 void                   prb_print(prb_String str);
+void                   prb_printColor(prb_ColorID color, prb_String str);
 void                   prb_println(prb_String str);
+void                   prb_printlnColor(prb_ColorID color, prb_String str);
+void                   prb_setPrintColor(prb_ColorID color);
+void                   prb_resetPrintColor(void);
 
 // SECTION Processes
 prb_CompletionStatus prb_execCmdAndWait(prb_String cmd);
@@ -272,6 +293,7 @@ STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char peri
 struct {
     prb_Arena     arena;
     prb_TimeStart initTimeStart;
+    prb_String    terminalColorCodes[prb_ColorID_Count];
 } prb_globalState;
 
 //
@@ -293,6 +315,16 @@ prb_init(void) {
     prb_globalState.arena.size = 1 * prb_GIGABYTE;
     prb_globalState.arena.base = prb_vmemAllocate(prb_globalState.arena.size);
     prb_globalState.initTimeStart = prb_timeStart();
+
+    prb_globalState.terminalColorCodes[prb_ColorID_Reset] = prb_STR("\x1b[0m");
+    prb_globalState.terminalColorCodes[prb_ColorID_Black] = prb_STR("\x1b[30m");
+    prb_globalState.terminalColorCodes[prb_ColorID_Red] = prb_STR("\x1b[31m");
+    prb_globalState.terminalColorCodes[prb_ColorID_Green] = prb_STR("\x1b[32m");
+    prb_globalState.terminalColorCodes[prb_ColorID_Yellow] = prb_STR("\x1b[33m");
+    prb_globalState.terminalColorCodes[prb_ColorID_Blue] = prb_STR("\x1b[34m");
+    prb_globalState.terminalColorCodes[prb_ColorID_Magenta] = prb_STR("\x1b[35m");
+    prb_globalState.terminalColorCodes[prb_ColorID_Cyan] = prb_STR("\x1b[36m");
+    prb_globalState.terminalColorCodes[prb_ColorID_White] = prb_STR("\x1b[37m");
 }
 
 size_t
@@ -707,10 +739,31 @@ prb_fmt(char* fmt, ...) {
 }
 
 prb_String
+prb_vfmt(char* fmt, va_list args) {
+    prb_String result = prb_vfmtCustomBuffer(
+        prb_globalState.arena.base + prb_globalState.arena.used,
+        prb_globalState.arena.size - prb_globalState.arena.used,
+        fmt,
+        args
+    );
+    prb_globalState.arena.used += result.len + 1;  // NOTE(khvorov) Null terminator
+    return result;
+}
+
+prb_String
 prb_fmtAndPrint(char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     prb_String result = prb_vfmtAndPrint(fmt, args);
+    va_end(args);
+    return result;
+}
+
+prb_String
+prb_fmtAndPrintColor(prb_ColorID color, char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    prb_String result = prb_vfmtAndPrintColor(color, fmt, args);
     va_end(args);
     return result;
 }
@@ -723,14 +776,10 @@ prb_vfmtAndPrint(char* fmt, va_list args) {
 }
 
 prb_String
-prb_vfmt(char* fmt, va_list args) {
-    prb_String result = prb_vfmtCustomBuffer(
-        prb_globalState.arena.base + prb_globalState.arena.used,
-        prb_globalState.arena.size - prb_globalState.arena.used,
-        fmt,
-        args
-    );
-    prb_globalState.arena.used += result.len + 1;  // NOTE(khvorov) Null terminator
+prb_vfmtAndPrintColor(prb_ColorID color, char* fmt, va_list args) {
+    prb_setPrintColor(color);
+    prb_String result = prb_vfmtAndPrint(fmt, args);
+    prb_resetPrintColor();
     return result;
 }
 
@@ -744,16 +793,57 @@ prb_fmtAndPrintln(char* fmt, ...) {
 }
 
 prb_String
+prb_fmtAndPrintlnColor(prb_ColorID color, char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    prb_String result = prb_vfmtAndPrintlnColor(color, fmt, args);
+    va_end(args);
+    return result;
+}
+
+prb_String
 prb_vfmtAndPrintln(char* fmt, va_list args) {
     prb_String result = prb_vfmtAndPrint(fmt, args);
     prb_fmtAndPrint("\n");
     return result;
 }
 
+prb_String
+prb_vfmtAndPrintlnColor(prb_ColorID color, char* fmt, va_list args) {
+    prb_setPrintColor(color);
+    prb_String result = prb_vfmtAndPrintln(fmt, args);
+    prb_resetPrintColor();
+    return result;
+}
+
+void
+prb_printColor(prb_ColorID color, prb_String str) {
+    prb_setPrintColor(color);
+    prb_print(str);
+    prb_resetPrintColor();
+}
+
 void
 prb_println(prb_String msg) {
     prb_print(msg);
     prb_print(prb_STR("\n"));
+}
+
+void
+prb_printlnColor(prb_ColorID color, prb_String str) {
+    prb_setPrintColor(color);
+    prb_println(str);
+    prb_resetPrintColor();
+}
+
+void
+prb_setPrintColor(prb_ColorID color) {
+    prb_print(prb_globalState.terminalColorCodes[color]);
+}
+
+void
+prb_resetPrintColor() {
+    prb_print(prb_globalState.terminalColorCodes[prb_ColorID_Reset]);
 }
 
 //
