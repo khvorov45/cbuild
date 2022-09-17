@@ -70,7 +70,7 @@ typedef struct prb_Arena {
     int32_t used;
 } prb_Arena;
 
-// Assume: null-terminated, permanently allocated, immutable.
+// Assume: null-terminated, permanently allocated, immutable, utf8
 typedef struct prb_String {
     char*   ptr;
     int32_t len;
