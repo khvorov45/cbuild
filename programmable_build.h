@@ -112,6 +112,11 @@ typedef enum prb_ColorID {
     prb_ColorID_Count,
 } prb_ColorID;
 
+typedef struct prb_Bytes {
+    uint8_t* data;
+    int32_t  len;
+} prb_Bytes;
+
 #if prb_PLATFORM_WINDOWS
 
 typedef struct prb_ProcessHandle {
@@ -162,8 +167,8 @@ uint64_t        prb_getEarliestLastModifiedFromPattern(prb_String pattern);
 uint64_t        prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 uint64_t        prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 void            prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement);
-prb_String      prb_readEntireFileAsString(prb_String path);
-void            prb_writeEntireFileAsString(prb_String path, prb_String content);
+prb_Bytes       prb_readEntireFile(prb_String path);
+void            prb_writeEntireFile(prb_String path, prb_Bytes content);
 
 // SECTION Strings
 int32_t                prb_strlen(const char* string);
@@ -703,9 +708,10 @@ prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCo
 
 void
 prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
-    prb_String content = prb_readEntireFileAsString(path);
-    prb_String newContent = prb_strReplace(content, pattern, replacement);
-    prb_writeEntireFileAsString(path, newContent);
+    prb_Bytes  content = prb_readEntireFile(path);
+    prb_String newContent = prb_strReplace((char*)content.data, pattern, replacement);
+    int32_t    newContentLen = prb_strlen(newContent);
+    prb_writeEntireFile(path, (prb_Bytes) {(uint8_t*)newContent, newContentLen});
 }
 
 prb_String
@@ -1271,26 +1277,26 @@ prb_getMsFrom(prb_TimeStart timeStart) {
     return result;
 }
 
-prb_String
-prb_readEntireFileAsString(prb_String path) {
+prb_Bytes
+prb_readEntireFile(prb_String path) {
     int32_t handle = open(path, O_RDONLY, 0);
     prb_assert(handle != -1);
     struct stat statBuf = {0};
     prb_assert(fstat(handle, &statBuf) == 0);
-    char*   buf = prb_allocAndZero(statBuf.st_size, 1);
-    int32_t readResult = read(handle, buf, statBuf.st_size);
+    uint8_t* buf = prb_allocAndZero(statBuf.st_size + 1, 1); // NOTE(sen) Null terminator just in case
+    int32_t  readResult = read(handle, buf, statBuf.st_size);
     prb_assert(readResult == statBuf.st_size);
     close(handle);
-    return buf;
+    prb_Bytes result = {buf, readResult};
+    return result;
 }
 
 void
-prb_writeEntireFileAsString(prb_String path, prb_String content) {
+prb_writeEntireFile(prb_String path, prb_Bytes content) {
     int32_t handle = open(path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
     prb_assert(handle != -1);
-    int32_t contentlen = prb_strlen(content);
-    int32_t writeResult = write(handle, content, contentlen);
-    prb_assert(writeResult == contentlen);
+    int32_t writeResult = write(handle, content.data, content.len);
+    prb_assert(writeResult == content.len);
     close(handle);
 }
 
