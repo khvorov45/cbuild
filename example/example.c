@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <stdbool.h>
 
 #include <ft2build.h>
@@ -6,7 +5,22 @@
 
 #include <SDL.h>
 
-void
+// NOTE(khvorov) SDL provides platform detection
+#define PLATFORM_WINDOWS __WIN32__
+#define PLATFORM_LINUX __LINUX__
+
+#define function static
+
+typedef uint32_t u32;
+typedef int32_t  i32;
+
+typedef struct Font {
+    u32* atlas;
+    i32  atlasWidthPx;
+    i32  atlasHeightPx;
+} Font;
+
+function void
 processEvent(SDL_Window* window, SDL_Event* event, bool* running) {
     switch (event->type) {
         case SDL_QUIT: {
@@ -21,7 +35,7 @@ processEvent(SDL_Window* window, SDL_Event* event, bool* running) {
     }
 }
 
-void
+function void
 pollEvents(SDL_Window* window, bool* running) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -33,11 +47,8 @@ int
 main(int argc, char* argv[]) {
     if (SDL_Init(SDL_INIT_VIDEO) == 0) {
         // TODO(khvorov) Actually do something here
-        printf("sdl loaded successfully\n");
-
         FT_Library ftLib;
         if (FT_Init_FreeType(&ftLib) == FT_Err_Ok) {
-            printf("freetype loaded successfully\n");
 
             SDL_Window* sdlWindow = SDL_CreateWindow("test", 0, 0, 1000, 1000, 0);
             if (sdlWindow) {
