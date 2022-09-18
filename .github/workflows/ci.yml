@@ -13,3 +13,9 @@ jobs:
     - uses: actions/checkout@v2
     - name: example build
       run: ./example/build.sh
+    - name: tests
+      run: ./tests/build.sh
+    - name: coverage
+      uses: codecov/codecov-action@v3
+      with:
+        gcov: true
