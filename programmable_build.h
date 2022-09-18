@@ -28,7 +28,6 @@
 #define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), _Alignof(type))
 #define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), _Alignof(type))
 #define prb_globalArenaAlignTo(type) (type*)prb_globalArenaAlignTo_(_Alignof(type))
-#define prb_STR(str) (prb_String) { .ptr = (str), .len = (int32_t)prb_strlen(str) }
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x) - 1)) == 0))
 
 // Debug break taken from SDL
@@ -71,10 +70,7 @@ typedef struct prb_Arena {
 } prb_Arena;
 
 // Assume: null-terminated, permanently allocated, immutable, utf8
-typedef struct prb_String {
-    char*   ptr;
-    int32_t len;
-} prb_String;
+typedef char* prb_String;
 
 typedef struct prb_StringArray {
     prb_String* ptr;
@@ -135,11 +131,8 @@ typedef struct prb_ProcessHandle {
 // SECTION Core
 void prb_init(void);
 
-// SECTION CRT
-size_t prb_strlen(const char* string);
-void*  prb_memcpy(void* restrict dest, const void* restrict src, size_t n);
-
 // SECTION Memory
+void*   prb_memcpy(void* restrict dest, const void* restrict src, size_t n);
 bool    prb_memeq(void* ptr1, void* ptr2, int32_t bytes);
 void*   prb_vmemAllocate(int32_t size);
 void    prb_alignPtr(void** ptr, int32_t align, int32_t* size);
@@ -173,6 +166,7 @@ prb_String      prb_readEntireFileAsString(prb_String path);
 void            prb_writeEntireFileAsString(prb_String path, prb_String content);
 
 // SECTION Strings
+int32_t                prb_strlen(const char* string);
 bool                   prb_streq(prb_String str1, prb_String str2);
 bool                   prb_charIsSep(char ch);
 int32_t                prb_strFindIndexFromLeft(prb_String str, char ch);
@@ -185,9 +179,7 @@ prb_String             prb_stringBuilderGetString(prb_StringBuilder* builder);
 prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
 void                   prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
 prb_StringArray        prb_stringArrayFromCstrings(char** cstrings, int32_t cstringsCount);
-prb_String             prb_stringCopy(prb_String source, int32_t from, int32_t to);
-prb_String             prb_stringFromCstring(char* cstring);
-char**                 prb_getArgArrayFromString(prb_String string);
+prb_String             prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
 prb_StringArray        prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2);
 prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, char* fmt, ...);
 prb_String             prb_vfmtCustomBuffer(void* buf, int32_t bufSize, char* fmt, va_list args);
@@ -316,23 +308,24 @@ prb_init(void) {
     prb_globalState.arena.base = prb_vmemAllocate(prb_globalState.arena.size);
     prb_globalState.initTimeStart = prb_timeStart();
 
-    prb_globalState.terminalColorCodes[prb_ColorID_Reset] = prb_STR("\x1b[0m");
-    prb_globalState.terminalColorCodes[prb_ColorID_Black] = prb_STR("\x1b[30m");
-    prb_globalState.terminalColorCodes[prb_ColorID_Red] = prb_STR("\x1b[31m");
-    prb_globalState.terminalColorCodes[prb_ColorID_Green] = prb_STR("\x1b[32m");
-    prb_globalState.terminalColorCodes[prb_ColorID_Yellow] = prb_STR("\x1b[33m");
-    prb_globalState.terminalColorCodes[prb_ColorID_Blue] = prb_STR("\x1b[34m");
-    prb_globalState.terminalColorCodes[prb_ColorID_Magenta] = prb_STR("\x1b[35m");
-    prb_globalState.terminalColorCodes[prb_ColorID_Cyan] = prb_STR("\x1b[36m");
-    prb_globalState.terminalColorCodes[prb_ColorID_White] = prb_STR("\x1b[37m");
+    prb_globalState.terminalColorCodes[prb_ColorID_Reset] = "\x1b[0m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Black] = "\x1b[30m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Red] = "\x1b[31m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Green] = "\x1b[32m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Yellow] = "\x1b[33m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Blue] = "\x1b[34m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Magenta] = "\x1b[35m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Cyan] = "\x1b[36m";
+    prb_globalState.terminalColorCodes[prb_ColorID_White] = "\x1b[37m";
 }
 
-size_t
+int32_t
 prb_strlen(const char* string) {
     const char* ptr = string;
     for (; *ptr; ptr++) {}
     size_t len = ptr - string;
-    return len;
+    prb_assert(len <= INT32_MAX);
+    return (int32_t)len;
 }
 
 void*
@@ -389,9 +382,11 @@ prb_globalArenaAlignTo_(int32_t align) {
 
 bool
 prb_streq(prb_String str1, prb_String str2) {
-    bool result = false;
-    if (str1.len == str2.len) {
-        result = prb_memeq(str1.ptr, str2.ptr, str1.len);
+    bool    result = false;
+    int32_t str1len = prb_strlen(str1);
+    int32_t str2len = prb_strlen(str2);
+    if (str1len == str2len) {
+        result = prb_memeq(str1, str2, str1len);
     }
     return result;
 }
@@ -405,8 +400,8 @@ prb_charIsSep(char ch) {
 int32_t
 prb_strFindIndexFromLeft(prb_String str, char ch) {
     int32_t result = -1;
-    for (int32_t strIndex = 0; strIndex < str.len; strIndex++) {
-        char testCh = str.ptr[strIndex];
+    for (int32_t strIndex = 0; strIndex < prb_strlen(str); strIndex++) {
+        char testCh = str[strIndex];
         if (testCh == ch) {
             result = strIndex;
             break;
@@ -418,8 +413,8 @@ prb_strFindIndexFromLeft(prb_String str, char ch) {
 int32_t
 prb_strFindIndexFromRight(prb_String str, char ch) {
     int32_t result = -1;
-    for (int32_t strIndex = str.len - 1; strIndex >= 0; strIndex--) {
-        char testCh = str.ptr[strIndex];
+    for (int32_t strIndex = prb_strlen(str) - 1; strIndex >= 0; strIndex--) {
+        char testCh = str[strIndex];
         if (testCh == ch) {
             result = strIndex;
             break;
@@ -431,33 +426,35 @@ prb_strFindIndexFromRight(prb_String str, char ch) {
 int32_t
 prb_strFindIndexFromLeftString(prb_String str, prb_String pattern) {
     int32_t result = -1;
-    if (pattern.len <= str.len) {
-        if (pattern.len == 0) {
+    int32_t patlen = prb_strlen(pattern);
+    int32_t stringlen = prb_strlen(str);
+    if (patlen <= stringlen) {
+        if (patlen == 0) {
             result = 0;
-        } else if (pattern.len == 1) {
-            result = prb_strFindIndexFromLeft(str, pattern.ptr[0]);
+        } else if (patlen == 1) {
+            result = prb_strFindIndexFromLeft(str, pattern[0]);
         } else {
             // Raita string matching algorithm
             // https://en.wikipedia.org/wiki/Raita_algorithm
             ptrdiff_t bmBc[256];
 
             for (int32_t i = 0; i < 256; ++i) {
-                bmBc[i] = pattern.len;
+                bmBc[i] = patlen;
             }
-            for (int32_t i = 0; i < pattern.len - 1; ++i) {
-                char patternChar = pattern.ptr[i];
-                bmBc[(int32_t)patternChar] = pattern.len - i - 1;
+            for (int32_t i = 0; i < patlen - 1; ++i) {
+                char patternChar = pattern[i];
+                bmBc[(int32_t)patternChar] = patlen - i - 1;
             }
 
-            char patFirstCh = pattern.ptr[0];
-            char patMiddleCh = pattern.ptr[pattern.len / 2];
-            char patLastCh = pattern.ptr[pattern.len - 1];
+            char patFirstCh = pattern[0];
+            char patMiddleCh = pattern[patlen / 2];
+            char patLastCh = pattern[patlen - 1];
 
             int32_t j = 0;
-            while (j <= str.len - pattern.len) {
-                char strLastCh = str.ptr[j + pattern.len - 1];
-                if (patLastCh == strLastCh && patMiddleCh == str.ptr[j + pattern.len / 2] && patFirstCh == str.ptr[j]
-                    && prb_memeq(pattern.ptr + 1, str.ptr + j + 1, pattern.len - 2)) {
+            while (j <= stringlen - patlen) {
+                char strLastCh = str[j + patlen - 1];
+                if (patLastCh == strLastCh && patMiddleCh == str[j + patlen / 2] && patFirstCh == str[j]
+                    && prb_memeq(pattern + 1, str + j + 1, patlen - 2)) {
                     result = j;
                     break;
                 }
@@ -472,11 +469,14 @@ prb_String
 prb_strReplace(prb_String str, prb_String pattern, prb_String replacement) {
     int32_t    patternIndex = prb_strFindIndexFromLeftString(str, pattern);
     prb_String result = str;
+    int32_t    stringlen = prb_strlen(str);
+    int32_t    patlen = prb_strlen(pattern);
+    int32_t    replaceLen = prb_strlen(replacement);
     if (patternIndex != -1) {
-        prb_StringBuilder builder = prb_createStringBuilder(str.len - pattern.len + replacement.len);
-        prb_stringBuilderWrite(&builder, str.ptr, patternIndex);
-        prb_stringBuilderWrite(&builder, replacement.ptr, replacement.len);
-        prb_stringBuilderWrite(&builder, str.ptr + patternIndex + pattern.len, str.len - patternIndex - pattern.len);
+        prb_StringBuilder builder = prb_createStringBuilder(stringlen - patlen + replaceLen);
+        prb_stringBuilderWrite(&builder, str, patternIndex);
+        prb_stringBuilderWrite(&builder, replacement, replaceLen);
+        prb_stringBuilderWrite(&builder, str + patternIndex + patlen, stringlen - patternIndex - patlen);
         result = prb_stringBuilderGetString(&builder);
     }
     return result;
@@ -500,33 +500,31 @@ prb_stringBuilderWrite(prb_StringBuilder* builder, char* source, int32_t len) {
 prb_String
 prb_stringBuilderGetString(prb_StringBuilder* builder) {
     prb_assert(builder->written == builder->capacity);
-    prb_String result = {.ptr = builder->ptr, .len = builder->written};
+    prb_String result = builder->ptr;
     return result;
 }
 
 prb_String
-prb_stringCopy(prb_String source, int32_t from, int32_t to) {
-    prb_assert(to >= from && to >= 0 && from >= 0 && to < source.len && from < source.len);
-    int32_t           len = to - from + 1;
+prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
+    int32_t sourcelen = prb_strlen(source);
+    prb_assert(
+        toInclusive >= fromInclusive && toInclusive >= 0 && fromInclusive >= 0 && toInclusive < sourcelen
+        && fromInclusive < sourcelen
+    );
+    int32_t           len = toInclusive - fromInclusive + 1;
     prb_StringBuilder builder = prb_createStringBuilder(len);
-    prb_stringBuilderWrite(&builder, source.ptr + from, len);
+    prb_stringBuilderWrite(&builder, source + fromInclusive, len);
     prb_String result = prb_stringBuilderGetString(&builder);
-    return result;
-}
-
-prb_String
-prb_stringFromCstring(char* cstring) {
-    prb_String temp = prb_STR(cstring);
-    prb_String result = prb_stringCopy(temp, 0, temp.len - 1);
     return result;
 }
 
 int32_t
 prb_getLastPathSepIndex(prb_String path) {
-    prb_assert(path.ptr && path.len > 0);
+    int32_t pathlen = prb_strlen(path);
+    prb_assert(path && pathlen > 0);
     int32_t lastPathSepIndex = -1;
-    for (int32_t index = path.len - 1; index >= 0; index--) {
-        char ch = path.ptr[index];
+    for (int32_t index = pathlen - 1; index >= 0; index--) {
+        char ch = path[index];
         if (ch == '/' || ch == '\\') {
             lastPathSepIndex = index;
             break;
@@ -544,16 +542,18 @@ prb_getParentDir(prb_String path) {
 
 prb_String
 prb_getLastEntryInPath(prb_String path) {
+    int32_t    pathlen = prb_strlen(path);
     int32_t    lastPathSepIndex = prb_getLastPathSepIndex(path);
-    prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, lastPathSepIndex + 1, path.len - 1) : path;
+    prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, lastPathSepIndex + 1, pathlen - 1) : path;
     return result;
 }
 
 char**
 prb_getArgArrayFromString(prb_String string) {
+    int32_t stringlen = prb_strlen(string);
     int32_t spacesCount = 0;
-    for (int32_t strIndex = 0; strIndex < string.len; strIndex++) {
-        char ch = string.ptr[strIndex];
+    for (int32_t strIndex = 0; strIndex < stringlen; strIndex++) {
+        char ch = string[strIndex];
         if (ch == ' ') {
             spacesCount++;
         }
@@ -562,8 +562,8 @@ prb_getArgArrayFromString(prb_String string) {
     int32_t* spacesIndices = prb_allocArray(int32_t, spacesCount);
     {
         int32_t index = 0;
-        for (int32_t strIndex = 0; strIndex < string.len; strIndex++) {
-            char ch = string.ptr[strIndex];
+        for (int32_t strIndex = 0; strIndex < stringlen; strIndex++) {
+            char ch = string[strIndex];
             if (ch == ' ') {
                 spacesIndices[index++] = strIndex;
             }
@@ -575,12 +575,12 @@ prb_getArgArrayFromString(prb_String string) {
     char** args = prb_allocArray(char*, spacesCount + 1 + 1);
     for (int32_t spaceIndex = 0; spaceIndex <= spacesCount; spaceIndex++) {
         int32_t spaceBefore = spaceIndex == 0 ? -1 : spacesIndices[spaceIndex - 1];
-        int32_t spaceAfter = spaceIndex == spacesCount ? string.len : spacesIndices[spaceIndex];
-        char*   argStart = string.ptr + spaceBefore + 1;
+        int32_t spaceAfter = spaceIndex == spacesCount ? stringlen : spacesIndices[spaceIndex];
+        char*   argStart = string + spaceBefore + 1;
         int32_t argLen = spaceAfter - spaceBefore - 1;
         if (argLen > 0) {
-            prb_String argString = prb_stringCopy((prb_String) {argStart, argLen}, 0, argLen - 1);
-            args[argCount++] = argString.ptr;
+            prb_String argString = prb_stringCopy(argStart, 0, argLen - 1);
+            args[argCount++] = argString;
         }
     }
 
@@ -590,7 +590,7 @@ prb_getArgArrayFromString(prb_String string) {
 prb_String
 prb_replaceExt(prb_String path, prb_String newExt) {
     int32_t    dotIndex = prb_strFindIndexFromRight(path, '.');
-    prb_String result = prb_fmt("%.*s.%s", dotIndex, path.ptr, newExt.ptr);
+    prb_String result = prb_fmt("%.*s.%s", dotIndex, path, newExt);
     return result;
 }
 
@@ -611,20 +611,23 @@ prb_clearDirectory(prb_String path) {
 
 prb_String
 prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
-    prb_assert(sep.len >= 0 && stringsCount >= 0);
+    int32_t seplen = prb_strlen(sep);
+    prb_assert(seplen >= 0 && stringsCount >= 0);
 
-    int32_t totalLen = prb_max(stringsCount - 1, 0) * sep.len;
+    int32_t totalLen = prb_max(stringsCount - 1, 0) * seplen;
     for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
         prb_String str = strings[strIndex];
-        totalLen += str.len;
+        int32_t    stringlen = prb_strlen(str);
+        totalLen += stringlen;
     }
 
     prb_StringBuilder builder = prb_createStringBuilder(totalLen);
     for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
         prb_String str = strings[strIndex];
-        prb_stringBuilderWrite(&builder, str.ptr, str.len);
+        int32_t    stringlen = prb_strlen(str);
+        prb_stringBuilderWrite(&builder, str, stringlen);
         if (strIndex < stringsCount - 1) {
-            prb_stringBuilderWrite(&builder, sep.ptr, sep.len);
+            prb_stringBuilderWrite(&builder, sep, seplen);
         }
     }
     prb_String result = prb_stringBuilderGetString(&builder);
@@ -634,17 +637,19 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
 
 prb_String
 prb_pathJoin(prb_String path1, prb_String path2) {
-    prb_assert(path1.ptr && path1.len > 0 && path2.ptr && path2.len > 0);
-    char              path1LastChar = path1.ptr[path1.len - 1];
+    int32_t path1len = prb_strlen(path1);
+    int32_t path2len = prb_strlen(path2);
+    prb_assert(path1 && path1len > 0 && path2 && path2len > 0);
+    char              path1LastChar = path1[path1len - 1];
     bool              path1EndsOnSep = prb_charIsSep(path1LastChar);
-    int32_t           totalLen = path1EndsOnSep ? path1.len + path2.len : path1.len + 1 + path2.len;
+    int32_t           totalLen = path1EndsOnSep ? path1len + path2len : path1len + 1 + path2len;
     prb_StringBuilder builder = prb_createStringBuilder(totalLen);
-    prb_stringBuilderWrite(&builder, path1.ptr, path1.len);
+    prb_stringBuilderWrite(&builder, path1, path1len);
     if (!path1EndsOnSep) {
         // NOTE(khvorov) Windows seems to handle mixing \ and / just fine
         prb_stringBuilderWrite(&builder, "/", 1);
     }
-    prb_stringBuilderWrite(&builder, path2.ptr, path2.len);
+    prb_stringBuilderWrite(&builder, path2, path2len);
     prb_String result = prb_stringBuilderGetString(&builder);
     return result;
 }
@@ -660,16 +665,6 @@ prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr)
     prb_assert(builder->capacity >= arr.len + builder->written);
     prb_memcpy(builder->ptr + builder->written, arr.ptr, arr.len * sizeof(prb_String));
     builder->written += arr.len;
-}
-
-prb_StringArray
-prb_stringArrayFromCstrings(char** cstrings, int32_t cstringsCount) {
-    prb_String* resultBuf = prb_allocArray(prb_String, cstringsCount);
-    for (int32_t cstringIndex = 0; cstringIndex < cstringsCount; cstringIndex++) {
-        resultBuf[cstringIndex] = prb_STR(cstrings[cstringIndex]);
-    }
-    prb_StringArray result = {resultBuf, cstringsCount};
-    return result;
 }
 
 prb_StringArray
@@ -724,9 +719,8 @@ prb_fmtCustomBuffer(void* buf, int32_t bufSize, char* fmt, ...) {
 
 prb_String
 prb_vfmtCustomBuffer(void* buf, int32_t bufSize, char* fmt, va_list args) {
-    int32_t    strSize = stbsp_vsnprintf(buf, bufSize, fmt, args);
-    prb_String result = {buf, strSize};
-    return result;
+    stbsp_vsnprintf(buf, bufSize, fmt, args);
+    return buf;
 }
 
 prb_String
@@ -746,7 +740,8 @@ prb_vfmt(char* fmt, va_list args) {
         fmt,
         args
     );
-    prb_globalState.arena.used += result.len + 1;  // NOTE(khvorov) Null terminator
+    int32_t resultLen = prb_strlen(result);
+    prb_globalState.arena.used += resultLen + 1;  // NOTE(khvorov) Null terminator
     return result;
 }
 
@@ -826,7 +821,7 @@ prb_printColor(prb_ColorID color, prb_String str) {
 void
 prb_println(prb_String msg) {
     prb_print(msg);
-    prb_print(prb_STR("\n"));
+    prb_print("\n");
 }
 
 void
@@ -957,7 +952,7 @@ prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     uint64_t result = 0;
 
     WIN32_FIND_DATAA findData;
-    HANDLE           firstHandle = FindFirstFileA(pattern.ptr, &findData);
+    HANDLE           firstHandle = FindFirstFileA(pattern, &findData);
     if (firstHandle != INVALID_HANDLE_VALUE) {
         uint64_t thisLastMod =
             ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
@@ -978,7 +973,7 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     uint64_t result = UINT64_MAX;
 
     WIN32_FIND_DATAA findData;
-    HANDLE           firstHandle = FindFirstFileA(pattern.ptr, &findData);
+    HANDLE           firstHandle = FindFirstFileA(pattern, &findData);
     if (firstHandle != INVALID_HANDLE_VALUE) {
         uint64_t thisLastMod =
             ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
@@ -1018,10 +1013,11 @@ prb_vmemAllocate(int32_t size) {
 
 bool
 prb_isDirectory(prb_String path) {
-    prb_assert(path.ptr && path.len > 0);
+    int32_t pathlen = prb_strlen(path);
+    prb_assert(path && pathlen > 0);
     struct stat statBuf = {0};
     bool        result = false;
-    if (stat(path.ptr, &statBuf) == 0) {
+    if (stat(path, &statBuf) == 0) {
         result = S_ISDIR(statBuf.st_mode);
     }
     return result;
@@ -1029,15 +1025,16 @@ prb_isDirectory(prb_String path) {
 
 bool
 prb_isFile(prb_String path) {
-    prb_assert(path.ptr && path.len > 0);
+    int32_t pathlen = prb_strlen(path);
+    prb_assert(path && pathlen > 0);
     struct stat statBuf = {0};
-    bool        result = stat(path.ptr, &statBuf) == 0;
+    bool        result = stat(path, &statBuf) == 0;
     return result;
 }
 
 void
 prb_createDirIfNotExists(prb_String path) {
-    if (mkdir(path.ptr, S_IRWXU | S_IRWXG | S_IRWXO) == -1) {
+    if (mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO) == -1) {
         prb_assert(prb_isDirectory(path));
     }
 }
@@ -1045,7 +1042,7 @@ prb_createDirIfNotExists(prb_String path) {
 bool
 prb_directoryIsEmpty(prb_String path) {
     bool result = true;
-    DIR* pathHandle = opendir(path.ptr);
+    DIR* pathHandle = opendir(path);
     prb_assert(pathHandle);
     for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
         bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
@@ -1061,18 +1058,18 @@ prb_directoryIsEmpty(prb_String path) {
 
 void
 prb_removeDirectoryIfExists(prb_String path) {
-    DIR* pathHandle = opendir(path.ptr);
+    DIR* pathHandle = opendir(path);
     if (pathHandle) {
         for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
             bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
             bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
             if (!isDot && !isDoubleDot) {
-                prb_String fullpath = prb_pathJoin(path, prb_STR(entry->d_name));
+                prb_String fullpath = prb_pathJoin(path, entry->d_name);
                 prb_removeFileOrDirectoryIfExists(fullpath);
             }
         }
         prb_assert(prb_directoryIsEmpty(path));
-        int32_t rmdirResult = rmdir(path.ptr);
+        int32_t rmdirResult = rmdir(path);
         prb_assert(rmdirResult == 0);
     }
 }
@@ -1080,7 +1077,7 @@ prb_removeDirectoryIfExists(prb_String path) {
 void
 prb_removeFileIfExists(prb_String path) {
     prb_assert(!prb_isDirectory(path));
-    unlink(path.ptr);
+    unlink(path);
 }
 
 prb_CompletionStatus
@@ -1108,7 +1105,7 @@ prb_execCmdAndWaitRedirectStdout(prb_String cmd, prb_String stdoutPath) {
         if (posix_spawn_file_actions_addopen(
                 &fileActions,
                 STDOUT_FILENO,
-                stdoutPath.ptr,
+                stdoutPath,
                 O_WRONLY | O_CREAT | O_TRUNC,
                 S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
             )
@@ -1162,8 +1159,9 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
 
 void
 prb_print(prb_String msg) {
-    ssize_t writeResult = write(STDOUT_FILENO, msg.ptr, msg.len);
-    prb_assert(writeResult == msg.len);
+    int32_t msglen = prb_strlen(msg);
+    ssize_t writeResult = write(STDOUT_FILENO, msg, msglen);
+    prb_assert(writeResult == msglen);
 }
 
 int32_t
@@ -1189,16 +1187,14 @@ prb_getCurrentWorkingDir(void) {
     int32_t maxLen = PATH_MAX + 1;
     char*   ptr = prb_allocAndZero(maxLen, 1);
     prb_assert(getcwd(ptr, maxLen));
-    int32_t    len = prb_strlen(ptr);
-    prb_String result = {ptr, len};
-    return result;
+    return ptr;
 }
 
 uint64_t
 prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     uint64_t result = 0;
     glob_t   globResult = {0};
-    if (glob(pattern.ptr, GLOB_NOSORT, 0, &globResult) == 0) {
+    if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         prb_assert(globResult.gl_pathc <= INT32_MAX);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
             char*       path = globResult.gl_pathv[resultIndex];
@@ -1217,7 +1213,7 @@ uint64_t
 prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     uint64_t result = UINT64_MAX;
     glob_t   globResult = {0};
-    if (glob(pattern.ptr, GLOB_NOSORT, 0, &globResult) == 0) {
+    if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         prb_assert(globResult.gl_pathc <= INT32_MAX);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
             char*       path = globResult.gl_pathv[resultIndex];
@@ -1238,13 +1234,14 @@ prb_StringArray
 prb_getAllMatches(prb_String pattern) {
     prb_StringArray result = {0};
     glob_t          globResult = {0};
-    if (glob(pattern.ptr, GLOB_NOSORT, 0, &globResult) == 0) {
+    if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         prb_assert(globResult.gl_pathc <= INT32_MAX && globResult.gl_pathc > 0);
         result.len = (int32_t)globResult.gl_pathc;
         result.ptr = prb_allocArray(prb_String, result.len);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char* path = globResult.gl_pathv[resultIndex];
-            result.ptr[resultIndex] = prb_stringFromCstring(path);
+            char*   path = globResult.gl_pathv[resultIndex];
+            int32_t pathlen = prb_strlen(path);
+            result.ptr[resultIndex] = prb_stringCopy(path, 0, pathlen - 1);
         }
     }
     globfree(&globResult);
@@ -1276,24 +1273,24 @@ prb_getMsFrom(prb_TimeStart timeStart) {
 
 prb_String
 prb_readEntireFileAsString(prb_String path) {
-    int32_t handle = open(path.ptr, O_RDONLY, 0);
+    int32_t handle = open(path, O_RDONLY, 0);
     prb_assert(handle != -1);
     struct stat statBuf = {0};
     prb_assert(fstat(handle, &statBuf) == 0);
     char*   buf = prb_allocAndZero(statBuf.st_size, 1);
     int32_t readResult = read(handle, buf, statBuf.st_size);
     prb_assert(readResult == statBuf.st_size);
-    prb_String result = {buf, statBuf.st_size};
     close(handle);
-    return result;
+    return buf;
 }
 
 void
 prb_writeEntireFileAsString(prb_String path, prb_String content) {
-    int32_t handle = open(path.ptr, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
+    int32_t handle = open(path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
     prb_assert(handle != -1);
-    int32_t writeResult = write(handle, content.ptr, content.len);
-    prb_assert(writeResult == content.len);
+    int32_t contentlen = prb_strlen(content);
+    int32_t writeResult = write(handle, content, contentlen);
+    prb_assert(writeResult == contentlen);
     close(handle);
 }
 

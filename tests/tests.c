@@ -4,23 +4,23 @@
 
 function void
 test_printColor(void) {
-    prb_println(prb_STR("== color printing =="));
+    prb_println("== color printing ==");
     prb_fmtAndPrintColor(prb_ColorID_Blue, "blue\n");
     prb_fmtAndPrintlnColor(prb_ColorID_Cyan, "cyan");
-    prb_printColor(prb_ColorID_Magenta, prb_STR("magenta\n"));
-    prb_printlnColor(prb_ColorID_Yellow, prb_STR("yellow"));
-    prb_printlnColor(prb_ColorID_Red, prb_STR("red"));
-    prb_printlnColor(prb_ColorID_Green, prb_STR("green"));
-    prb_printlnColor(prb_ColorID_Black, prb_STR("black"));
-    prb_printlnColor(prb_ColorID_White, prb_STR("white"));
-    prb_println(prb_STR("===="));
+    prb_printColor(prb_ColorID_Magenta, "magenta\n");
+    prb_printlnColor(prb_ColorID_Yellow, "yellow");
+    prb_printlnColor(prb_ColorID_Red, "red");
+    prb_printlnColor(prb_ColorID_Green, "green");
+    prb_printlnColor(prb_ColorID_Black, "black");
+    prb_printlnColor(prb_ColorID_White, "white");
+    prb_println("====");
 }
 
 int
 main() {
     prb_init();
-    prb_println(prb_STR("== tests =="));
+    prb_println("== tests ==");
     test_printColor();
-    prb_printlnColor(prb_ColorID_Green, prb_STR("all tests passed"));
+    prb_printlnColor(prb_ColorID_Green, "all tests passed");
     return 0;
 }
