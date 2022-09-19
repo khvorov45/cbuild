@@ -14,6 +14,8 @@
 typedef uint32_t u32;
 typedef int32_t  i32;
 
+#include "fontdata.c"
+
 typedef struct Font {
     u32* atlas;
     i32  atlasWidthPx;
@@ -48,19 +50,23 @@ main(int argc, char* argv[]) {
     if (SDL_Init(SDL_INIT_VIDEO) == 0) {
         // TODO(khvorov) Actually do something here
         FT_Library ftLib;
-        if (FT_Init_FreeType(&ftLib) == FT_Err_Ok) {
-
-            SDL_Window* sdlWindow = SDL_CreateWindow("test", 0, 0, 1000, 1000, 0);
-            if (sdlWindow) {
-                SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
-                if (sdlRenderer) {
-                    bool running = true;
-                    while (running) {
-                        SDL_Event event;
-                        SDL_WaitEvent(&event);
-                        processEvent(sdlWindow, &event, &running);
-                        pollEvents(sdlWindow, &running);
-                        SDL_RenderPresent(sdlRenderer);
+        FT_Error ftInitResult = FT_Init_FreeType(&ftLib);
+        if (ftInitResult == FT_Err_Ok) {
+            FT_Face ftFace;
+            FT_Error ftFaceResult = FT_New_Memory_Face(ftLib, fontdata, sizeof(fontdata), 0, &ftFace);
+            if (ftFaceResult == FT_Err_Ok) {
+                SDL_Window* sdlWindow = SDL_CreateWindow("test", 0, 0, 1000, 1000, 0);
+                if (sdlWindow) {
+                    SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
+                    if (sdlRenderer) {
+                        bool running = true;
+                        while (running) {
+                            SDL_Event event;
+                            SDL_WaitEvent(&event);
+                            processEvent(sdlWindow, &event, &running);
+                            pollEvents(sdlWindow, &running);
+                            SDL_RenderPresent(sdlRenderer);
+                        }
                     }
                 }
             }

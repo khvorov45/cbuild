@@ -1,3 +1,11 @@
+// A set of utilities for writing "build scripts" as small C programs.
+// Repository: https://github.com/khvorov45/programmable_build
+// See example/build.c for an example build script.
+// Don't forget to call prb_init() before doing anything.
+// Note that all memory operations (such as string formatting)
+// are running off a linear allocator that is not thread-safe,
+// (so don't call prb_fmt* from multiple threads, for example).
+
 // TODO(khvorov) Make sure this compiles under C++
 // TODO(khvorov) Make sure this works as two translation units
 // TODO(khvorov) Make sure utf8 paths work on windows
@@ -189,6 +197,7 @@ prb_StringArray        prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray
 prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, char* fmt, ...);
 prb_String             prb_vfmtCustomBuffer(void* buf, int32_t bufSize, char* fmt, va_list args);
 prb_String             prb_fmt(char* fmt, ...);
+void                   prb_fmtNoNullTerminator(char* fmt, ...);
 prb_String             prb_vfmt(char* fmt, va_list args);
 prb_String             prb_fmtAndPrint(char* fmt, ...);
 prb_String             prb_fmtAndPrintColor(prb_ColorID color, char* fmt, ...);
@@ -214,6 +223,9 @@ prb_CompletionStatus prb_waitForProcesses(prb_ProcessHandle* handles, int32_t ha
 // SECTION Timing
 prb_TimeStart prb_timeStart(void);
 float         prb_getMsFrom(prb_TimeStart timeStart);
+
+// SECTION Binary to C array
+void prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION stb snprintf
 #if defined(__clang__)
@@ -738,6 +750,15 @@ prb_fmt(char* fmt, ...) {
     return result;
 }
 
+void
+prb_fmtNoNullTerminator(char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    prb_vfmt(fmt, args);
+    va_end(args);
+    prb_globalState.arena.used -= 1;
+}
+
 prb_String
 prb_vfmt(char* fmt, va_list args) {
     prb_String result = prb_vfmtCustomBuffer(
@@ -845,6 +866,27 @@ prb_setPrintColor(prb_ColorID color) {
 void
 prb_resetPrintColor() {
     prb_print(prb_globalState.terminalColorCodes[prb_ColorID_Reset]);
+}
+
+void
+prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) {
+    prb_Bytes inContent = prb_readEntireFile(inPath);
+    prb_assert(inContent.len > 0);
+
+    char* resultPtr = prb_globalArenaCurrentFreePtr();
+    prb_fmtNoNullTerminator("unsigned char %s[] = {", arrayName);
+
+    for (int32_t byteIndex = 0; byteIndex < inContent.len; byteIndex++) {
+        uint8_t byte = inContent.data[byteIndex];
+        prb_fmtNoNullTerminator("0x%x", byte);
+        if (byteIndex != inContent.len - 1) {
+            prb_fmtNoNullTerminator(", ");
+        }
+    }
+    prb_fmtNoNullTerminator("};");
+
+    int32_t resultSize = (uint8_t*)prb_globalArenaCurrentFreePtr() - (uint8_t*)resultPtr;
+    prb_writeEntireFile(outPath, (prb_Bytes) {(uint8_t*)resultPtr, resultSize});
 }
 
 //
@@ -1283,7 +1325,7 @@ prb_readEntireFile(prb_String path) {
     prb_assert(handle != -1);
     struct stat statBuf = {0};
     prb_assert(fstat(handle, &statBuf) == 0);
-    uint8_t* buf = prb_allocAndZero(statBuf.st_size + 1, 1); // NOTE(sen) Null terminator just in case
+    uint8_t* buf = prb_allocAndZero(statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
     int32_t  readResult = read(handle, buf, statBuf.st_size);
     prb_assert(readResult == statBuf.st_size);
     close(handle);
