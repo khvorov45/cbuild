@@ -369,7 +369,7 @@ main() {
     prb_String mainFlags[] = {
         freetype.includeFlag,
         sdl.includeFlag,
-        "-Wall -Wextra -Wno-unused-parameter",
+        "-Wall -Wextra -Wno-unused-parameter -Wno-unused-function",
 #if prb_PLATFORM_WINDOWS
         "-Zi"),
         prb_stringJoin2("-Fo"), prb_pathJoin(compileOutDir, "example.obj"))),
