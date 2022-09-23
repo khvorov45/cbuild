@@ -22,6 +22,7 @@
 typedef uint8_t  u8;
 typedef uint32_t u32;
 typedef int32_t  i32;
+typedef float    f32;
 
 typedef enum CompletionStatus {
     CompletionStatus_Failure,
@@ -111,7 +112,7 @@ wasUnpressed(Input* input, InputKeyID keyID) {
 }
 
 //
-// SECTION Rect packing
+// SECTION Font
 //
 
 typedef struct RectPacker {
@@ -146,10 +147,6 @@ rectPackAdd(RectPacker* packer, i32 width, i32 height, i32* topleftX, i32* tople
     packer->tallestOnLine = max(packer->tallestOnLine, height);
     packer->height += max(packer->tallestOnLine - prevTallest, 0);
 }
-
-//
-// SECTION Font
-//
 
 #include "fontdata.c"
 
@@ -283,6 +280,7 @@ typedef struct Renderer {
     SDL_Renderer* sdlRenderer;
     SDL_Texture*  sdlFontTexture;
     Font          font;
+    i32           width, height;
 } Renderer;
 
 typedef struct CreateRendererResult {
@@ -298,7 +296,9 @@ createRenderer(Allocator allocator) {
         Font font = loadFontResult.font;
         int  initResult = SDL_Init(SDL_INIT_VIDEO);
         if (initResult == 0) {
-            SDL_Window* sdlWindow = SDL_CreateWindow("test", 0, 0, 1000, 1000, 0);
+            i32         windowWidth = 1000;
+            i32         windowHeight = 1000;
+            SDL_Window* sdlWindow = SDL_CreateWindow("test", 0, 0, windowWidth, windowHeight, 0);
             if (sdlWindow) {
                 SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
                 if (sdlRenderer) {
@@ -319,6 +319,8 @@ createRenderer(Allocator allocator) {
                                     .sdlRenderer = sdlRenderer,
                                     .font = font,
                                     .sdlFontTexture = sdlTexture,
+                                    .width = windowWidth,
+                                    .height = windowHeight,
                                 };
 
                                 result = (CreateRendererResult) {.success = true, .renderer = renderer};
@@ -335,7 +337,7 @@ createRenderer(Allocator allocator) {
 function CompletionStatus
 renderBegin(Renderer* renderer) {
     CompletionStatus result = CompletionStatus_Failure;
-    int              setDrawColorResult = SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 0, 255, 255);
+    int              setDrawColorResult = SDL_SetRenderDrawColor(renderer->sdlRenderer, 0, 0, 0, 0);
     if (setDrawColorResult == 0) {
         int renderClearResult = SDL_RenderClear(renderer->sdlRenderer);
         if (renderClearResult == 0) {
@@ -359,6 +361,67 @@ drawEntireFontTexture(Renderer* renderer) {
         result = CompletionStatus_Sucess;
     }
     return result;
+}
+
+typedef SDL_Rect  Rect;
+typedef SDL_Color Color;
+
+function void
+drawRect(Renderer* renderer, Rect rect, Color color) {
+    assert(rect.w >= 0 && rect.h >= 0);
+    if (rect.w > 0 && rect.h > 0) {
+        SDL_SetRenderDrawColor(renderer->sdlRenderer, color.r, color.g, color.b, color.a);
+        SDL_RenderFillRect(renderer->sdlRenderer, &rect);
+    }
+}
+
+//
+// SECTION Game
+//
+
+function Rect
+rectCenterDim(i32 centerX, i32 centerY, i32 dimX, i32 dimY) {
+    assert(dimX >= 0 && dimY >= 0);
+    Rect result = {.x = centerX - dimX / 2, .y = centerY - dimY / 2, .w = dimX, .h = dimY};
+    return result;
+}
+
+typedef struct GameState {
+    f32  plankPosX01;
+    bool showEntireFontTexture;
+} GameState;
+
+function void
+gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input) {
+    if (wasPressed(input, InputKeyID_MouseLeft)) {
+        gameState->showEntireFontTexture = !gameState->showEntireFontTexture;
+    }
+
+    i32 plankHeightPx = 20;
+    i32 plankWidthPx = 50;
+    {
+        f32 plankHalfWidth = (f32)plankWidthPx / 2.0f;
+        f32 plankMin = plankHalfWidth / (f32)renderer->width;
+        f32 plankMax = 1.0f - plankMin;
+        gameState->plankPosX01 = clamp((f32)input->cursorX / (f32)renderer->width, plankMin, plankMax);
+    }
+
+    assert(renderBegin(renderer) == CompletionStatus_Sucess);
+
+    Rect plankRect = rectCenterDim(
+        (i32)(gameState->plankPosX01 * (f32)renderer->width),
+        renderer->height - plankHeightPx / 2,
+        plankWidthPx,
+        plankHeightPx
+    );
+    Color plankColor = {.r = 100, .g = 0, .b = 0, .a = 255};
+    drawRect(renderer, plankRect, plankColor);
+
+    if (gameState->showEntireFontTexture) {
+        drawEntireFontTexture(renderer);
+    }
+
+    renderEnd(renderer);
 }
 
 //
@@ -391,6 +454,11 @@ processEvent(SDL_Window* window, SDL_Event* event, bool* running, Input* input) 
                 recordKey(input, keyID, down);
             }
         } break;
+
+        case SDL_MOUSEMOTION: {
+            input->cursorX = event->motion.x;
+            input->cursorY = event->motion.y;
+        } break;
     }
 }
 
@@ -403,10 +471,8 @@ main(int argc, char* argv[]) {
         Renderer    renderer = createRendererResult.renderer;
         SDL_Window* sdlWindow = renderer.sdlWindow;
         Input       input = {0};
-
-        bool showEntireFontTexture = true;
-
-        bool running = true;
+        GameState   gameState = {0};
+        bool        running = true;
         while (running) {
             inputBeginFrame(&input);
 
@@ -417,17 +483,7 @@ main(int argc, char* argv[]) {
                 processEvent(sdlWindow, &event, &running, &input);
             }
 
-            if (wasPressed(&input, InputKeyID_MouseLeft)) {
-                showEntireFontTexture = !showEntireFontTexture;
-            }
-
-            assert(renderBegin(&renderer) == CompletionStatus_Sucess);
-
-            if (showEntireFontTexture) {
-                drawEntireFontTexture(&renderer);
-            }
-
-            renderEnd(&renderer);
+            gameUpdateAndRender(&gameState, &renderer, &input);
         }
     }
     return 0;
