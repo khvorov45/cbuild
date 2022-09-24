@@ -9,6 +9,7 @@
 #define PLATFORM_WINDOWS __WIN32__
 #define PLATFORM_LINUX __LINUX__
 
+#define INFINITY __builtin_inff()
 #define function static
 
 // clang-format off
@@ -16,6 +17,7 @@
 #define max(x, y) (((x) > (y)) ? (x) : (y))
 #define clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
+#define arrayLen(arr) (sizeof(arr) / sizeof(arr[0]))
 #define assert(condition) do { if (!(condition)) { SDL_TriggerBreakpoint(); } } while (0)
 // clang-format on
 
@@ -386,36 +388,167 @@ rectCenterDim(i32 centerX, i32 centerY, i32 dimX, i32 dimY) {
     return result;
 }
 
+// Position units are proportions of the screen
+// Time is in ms (including for velocity)
 typedef struct GameState {
-    f32  plankPosX01;
+    f32 plankWidth;
+    f32 plankHeight;
+    f32 plankPosX;
+
+    f32 ballWidth;
+    f32 ballHeight;
+    f32 ballPosX;
+    f32 ballPosY;
+    f32 ballVelX;
+    f32 ballVelY;
+
     bool showEntireFontTexture;
 } GameState;
 
+function GameState
+createGameState(f32 widthOverHeight) {
+    f32       plankPosX = 0.5f;
+    f32       plankHeight = 0.01f;
+    f32       plankWidth = 0.05f;
+    f32       ballHeight = plankHeight;
+    f32       ballWidth = widthOverHeight * ballHeight;
+    f32       ballPosX = plankPosX;
+    f32       ballPosY = plankHeight + ballHeight / 2.0f;
+    GameState result = {
+        .plankPosX = plankPosX,
+        .plankHeight = plankHeight,
+        .plankWidth = plankWidth,
+        .ballWidth = ballWidth,
+        .ballHeight = ballHeight,
+        .ballPosX = ballPosX,
+        .ballPosY = ballPosY};
+    return result;
+}
+
 function void
-gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input) {
+gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 deltaTimeMs) {
     if (wasPressed(input, InputKeyID_MouseLeft)) {
         gameState->showEntireFontTexture = !gameState->showEntireFontTexture;
     }
 
-    i32 plankHeightPx = 20;
-    i32 plankWidthPx = 50;
+    // NOTE(khvorov) Update plank
     {
-        f32 plankHalfWidth = (f32)plankWidthPx / 2.0f;
-        f32 plankMin = plankHalfWidth / (f32)renderer->width;
+        f32 plankMin = gameState->plankWidth / 2.0f;
         f32 plankMax = 1.0f - plankMin;
-        gameState->plankPosX01 = clamp((f32)input->cursorX / (f32)renderer->width, plankMin, plankMax);
+        gameState->plankPosX = clamp((f32)input->cursorX / (f32)renderer->width, plankMin, plankMax);
+    }
+
+    // NOTE(khvorov) Update ball
+    {
+        f32 deltaTimeUnaccounted = deltaTimeMs;
+        f32 newPosX = gameState->ballPosX;
+        f32 newPosY = gameState->ballPosY;
+        f32 newVelX = gameState->ballVelX;
+        f32 newVelY = gameState->ballVelY;
+        while (deltaTimeUnaccounted > 0.0f) {
+            f32 xRightCollisionDeltaTime = INFINITY;
+            f32 xRightWalls[] = {0.0f};
+            if (newVelX < 0.0f) {
+                for (i32 wallIndex = 0; wallIndex < (i32)arrayLen(xRightWalls); wallIndex++) {
+                    f32 wallX = xRightWalls[wallIndex] + (f32)gameState->ballWidth / 2.0f;;
+                    f32 testCollisionDeltaTime = (wallX - newPosX) / newVelX;
+                    if (testCollisionDeltaTime > 0) {
+                        xRightCollisionDeltaTime = min(xRightCollisionDeltaTime, testCollisionDeltaTime);
+                    }
+                }
+            }
+
+            f32 xLeftCollisionDeltaTime = INFINITY;
+            f32 xLeftWalls[] = {1.0f};
+            if (newVelX > 0.0f) {
+                for (i32 wallIndex = 0; wallIndex < (i32)arrayLen(xLeftWalls); wallIndex++) {
+                    f32 wallX = xLeftWalls[wallIndex] - (f32)gameState->ballWidth / 2.0f;;
+                    f32 testCollisionDeltaTime = (wallX - newPosX) / newVelX;
+                    if (testCollisionDeltaTime > 0) {
+                        xLeftCollisionDeltaTime = min(xLeftCollisionDeltaTime, testCollisionDeltaTime);
+                    }
+                }
+            }
+            
+            f32 xCollisionDeltaTime = min(xRightCollisionDeltaTime, xLeftCollisionDeltaTime);
+
+            f32 yBottomCollisionDeltaTime = INFINITY;
+            f32 yBottomWalls[] = {0.0f};
+            if (newVelY < 0.0f) {
+                for (i32 wallIndex = 0; wallIndex < (i32)arrayLen(yBottomWalls); wallIndex++) {
+                    f32 wallY = yBottomWalls[wallIndex] + (f32)gameState->ballHeight / 2.0f;
+                    f32 testCollisionDeltaTime = (wallY - newPosY) / newVelY;
+                    if (testCollisionDeltaTime > 0) {
+                        yBottomCollisionDeltaTime = min(yBottomCollisionDeltaTime, testCollisionDeltaTime);
+                    }
+                }
+            }
+
+            f32 yTopCollisionDeltaTime = INFINITY;
+            f32 yTopWalls[] = {1.0f};
+            if (newVelY > 0.0f) {
+                for (i32 wallIndex = 0; wallIndex < (i32)arrayLen(yTopWalls); wallIndex++) {
+                    f32 wallY = yTopWalls[wallIndex] - (f32)gameState->ballHeight / 2.0f;
+                    f32 testCollisionDeltaTime = (wallY - newPosY) / newVelY;
+                    if (testCollisionDeltaTime > 0) {
+                        yTopCollisionDeltaTime = min(yTopCollisionDeltaTime, testCollisionDeltaTime);
+                    }
+                }
+            }
+
+            f32 yCollisionDeltaTime = min(yBottomCollisionDeltaTime, yTopCollisionDeltaTime);
+
+            f32 collisionDeltaTime = min(xCollisionDeltaTime, yCollisionDeltaTime);
+            f32 accountedDeltaTime = min(collisionDeltaTime, deltaTimeUnaccounted);
+
+            f32 deltaPosX = accountedDeltaTime * newVelX;            
+            f32 deltaPosY = accountedDeltaTime * newVelY;
+            assert(newPosX + deltaPosX >= 0.0f && newPosX + deltaPosX <= 1.0f);
+            assert(newPosY + deltaPosY >= 0.0f && newPosY + deltaPosX <= 1.0f);
+
+            newPosX += deltaPosX;
+            newPosY += deltaPosY;
+
+            if (collisionDeltaTime == accountedDeltaTime) {
+                if (xCollisionDeltaTime < yCollisionDeltaTime) {
+                    newVelX *= -1;
+                } else if (xCollisionDeltaTime == xCollisionDeltaTime) {
+                    newVelX *= -1;
+                    newVelY *= -1;
+                } else {
+                    newVelY *= -1;
+                }
+            }
+
+            deltaTimeUnaccounted -= accountedDeltaTime;
+        }
+
+        gameState->ballPosX = newPosX;
+        gameState->ballPosY = newPosY;
+        gameState->ballVelX = newVelX;
+        gameState->ballVelY = newVelY;
     }
 
     assert(renderBegin(renderer) == CompletionStatus_Sucess);
 
+    i32 plankHeightPx = (i32)(gameState->plankHeight * (f32)renderer->height);
     Rect plankRect = rectCenterDim(
-        (i32)(gameState->plankPosX01 * (f32)renderer->width),
+        (i32)(gameState->plankPosX * (f32)renderer->width),
         renderer->height - plankHeightPx / 2,
-        plankWidthPx,
+        (i32)(gameState->plankWidth * (f32)renderer->width),
         plankHeightPx
     );
     Color plankColor = {.r = 100, .g = 0, .b = 0, .a = 255};
     drawRect(renderer, plankRect, plankColor);
+
+    Rect ballRect = rectCenterDim(
+        (i32)(gameState->ballPosX * (f32)renderer->width),
+        renderer->height - (i32)(gameState->ballPosY * (f32)renderer->height),
+        (i32)(gameState->ballWidth * renderer->width),
+        (i32)(gameState->ballHeight * renderer->height)
+    );
+    Color ballColor = {.r = 0, .g = 100, .b = 0, .a = 255};
+    drawRect(renderer, ballRect, ballColor);
 
     if (gameState->showEntireFontTexture) {
         drawEntireFontTexture(renderer);
@@ -471,19 +604,20 @@ main(int argc, char* argv[]) {
         Renderer    renderer = createRendererResult.renderer;
         SDL_Window* sdlWindow = renderer.sdlWindow;
         Input       input = {0};
-        GameState   gameState = {0};
+        GameState   gameState = createGameState((f32)renderer.width / (f32)renderer.height);
         bool        running = true;
         while (running) {
             inputBeginFrame(&input);
 
             SDL_Event event;
-            assert(SDL_WaitEvent(&event) == 1);
-            processEvent(sdlWindow, &event, &running, &input);
             while (SDL_PollEvent(&event)) {
                 processEvent(sdlWindow, &event, &running, &input);
             }
 
-            gameUpdateAndRender(&gameState, &renderer, &input);
+            gameUpdateAndRender(&gameState, &renderer, &input, 1.0f);
+
+            // TODO(khvorov) Timings + sleep
+            // TODO(khvorov) Single step
         }
     }
     return 0;
