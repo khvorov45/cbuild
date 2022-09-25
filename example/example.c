@@ -23,6 +23,7 @@
 
 typedef uint8_t  u8;
 typedef uint32_t u32;
+typedef uint64_t u64;
 typedef int32_t  i32;
 typedef float    f32;
 
@@ -274,6 +275,28 @@ loadFont(Allocator allocator) {
 }
 
 //
+// SECTION Timing
+//
+
+typedef struct Clock {
+    u64 countsPerSecond;
+    u64 counter;
+} Clock;
+
+Clock
+getCurrentClock() {
+    Clock result = {.countsPerSecond = SDL_GetPerformanceFrequency(), .counter = SDL_GetPerformanceCounter()};
+    return result;
+}
+
+f32
+getMsFrom(Clock clock) {
+    u64 counterDiff = SDL_GetPerformanceCounter() - clock.counter;
+    f32 result = (f32)counterDiff / (f32)clock.countsPerSecond * 1000.f;
+    return result;
+}
+
+//
 // SECTION Render
 //
 
@@ -296,7 +319,7 @@ createRenderer(Allocator allocator) {
     LoadFontResult       loadFontResult = loadFont(allocator);
     if (loadFontResult.success) {
         Font font = loadFontResult.font;
-        int  initResult = SDL_Init(SDL_INIT_VIDEO);
+        int  initResult = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
         if (initResult == 0) {
             i32         windowWidth = 1000;
             i32         windowHeight = 1000;
@@ -331,6 +354,10 @@ createRenderer(Allocator allocator) {
                     }
                 }
             }
+        } else {
+            // NOTE(khvorov) SDL log functions work even if it's not initialized
+            const char* sdlError = SDL_GetError();
+            SDL_LogError(0, "Failed to init SDL: %s\n", sdlError);
         }
     }
     return result;
@@ -421,16 +448,15 @@ createGameState(f32 widthOverHeight) {
         .ballWidth = ballWidth,
         .ballHeight = ballHeight,
         .ballPosX = ballPosX,
-        .ballPosY = ballPosY};
+        .ballPosY = ballPosY,
+        .ballVelX = 0.0f,
+        .ballVelY = 0.0f,
+    };
     return result;
 }
 
 function void
 gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 deltaTimeMs) {
-    if (wasPressed(input, InputKeyID_MouseLeft)) {
-        gameState->showEntireFontTexture = !gameState->showEntireFontTexture;
-    }
-
     // NOTE(khvorov) Update plank
     {
         f32 plankMin = gameState->plankWidth / 2.0f;
@@ -440,6 +466,11 @@ gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 
 
     // NOTE(khvorov) Update ball
     {
+        if (gameState->ballVelX == 0 && gameState->ballVelY == 0 && wasPressed(input, InputKeyID_MouseLeft)) {
+            gameState->ballVelX = 0.001f;
+            gameState->ballVelY = 0.001f;
+        }
+
         f32 deltaTimeUnaccounted = deltaTimeMs;
         f32 newPosX = gameState->ballPosX;
         f32 newPosY = gameState->ballPosY;
@@ -450,7 +481,7 @@ gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 
             f32 xRightWalls[] = {0.0f};
             if (newVelX < 0.0f) {
                 for (i32 wallIndex = 0; wallIndex < (i32)arrayLen(xRightWalls); wallIndex++) {
-                    f32 wallX = xRightWalls[wallIndex] + (f32)gameState->ballWidth / 2.0f;;
+                    f32 wallX = xRightWalls[wallIndex] + (f32)gameState->ballWidth / 2.0f;
                     f32 testCollisionDeltaTime = (wallX - newPosX) / newVelX;
                     if (testCollisionDeltaTime > 0) {
                         xRightCollisionDeltaTime = min(xRightCollisionDeltaTime, testCollisionDeltaTime);
@@ -462,14 +493,15 @@ gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 
             f32 xLeftWalls[] = {1.0f};
             if (newVelX > 0.0f) {
                 for (i32 wallIndex = 0; wallIndex < (i32)arrayLen(xLeftWalls); wallIndex++) {
-                    f32 wallX = xLeftWalls[wallIndex] - (f32)gameState->ballWidth / 2.0f;;
+                    f32 wallX = xLeftWalls[wallIndex] - (f32)gameState->ballWidth / 2.0f;
+                    ;
                     f32 testCollisionDeltaTime = (wallX - newPosX) / newVelX;
                     if (testCollisionDeltaTime > 0) {
                         xLeftCollisionDeltaTime = min(xLeftCollisionDeltaTime, testCollisionDeltaTime);
                     }
                 }
             }
-            
+
             f32 xCollisionDeltaTime = min(xRightCollisionDeltaTime, xLeftCollisionDeltaTime);
 
             f32 yBottomCollisionDeltaTime = INFINITY;
@@ -501,7 +533,7 @@ gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 
             f32 collisionDeltaTime = min(xCollisionDeltaTime, yCollisionDeltaTime);
             f32 accountedDeltaTime = min(collisionDeltaTime, deltaTimeUnaccounted);
 
-            f32 deltaPosX = accountedDeltaTime * newVelX;            
+            f32 deltaPosX = accountedDeltaTime * newVelX;
             f32 deltaPosY = accountedDeltaTime * newVelY;
             assert(newPosX + deltaPosX >= 0.0f && newPosX + deltaPosX <= 1.0f);
             assert(newPosY + deltaPosY >= 0.0f && newPosY + deltaPosX <= 1.0f);
@@ -512,7 +544,7 @@ gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 
             if (collisionDeltaTime == accountedDeltaTime) {
                 if (xCollisionDeltaTime < yCollisionDeltaTime) {
                     newVelX *= -1;
-                } else if (xCollisionDeltaTime == xCollisionDeltaTime) {
+                } else if (xCollisionDeltaTime == yCollisionDeltaTime) {
                     newVelX *= -1;
                     newVelY *= -1;
                 } else {
@@ -529,9 +561,7 @@ gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 
         gameState->ballVelY = newVelY;
     }
 
-    assert(renderBegin(renderer) == CompletionStatus_Sucess);
-
-    i32 plankHeightPx = (i32)(gameState->plankHeight * (f32)renderer->height);
+    i32  plankHeightPx = (i32)(gameState->plankHeight * (f32)renderer->height);
     Rect plankRect = rectCenterDim(
         (i32)(gameState->plankPosX * (f32)renderer->width),
         renderer->height - plankHeightPx / 2,
@@ -553,8 +583,6 @@ gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 
     if (gameState->showEntireFontTexture) {
         drawEntireFontTexture(renderer);
     }
-
-    renderEnd(renderer);
 }
 
 //
@@ -597,7 +625,6 @@ processEvent(SDL_Window* window, SDL_Event* event, bool* running, Input* input) 
 
 int
 main(int argc, char* argv[]) {
-    // TODO(khvorov) Actually do something here
     Allocator            sdlGeneralPurposeAllocator = {.allocAndZero = sdlCallocWrapper};
     CreateRendererResult createRendererResult = createRenderer(sdlGeneralPurposeAllocator);
     if (createRendererResult.success) {
@@ -605,6 +632,8 @@ main(int argc, char* argv[]) {
         SDL_Window* sdlWindow = renderer.sdlWindow;
         Input       input = {0};
         GameState   gameState = createGameState((f32)renderer.width / (f32)renderer.height);
+        f32         targetMsPerFrame = 1000.0f / 60.0f;
+        Clock       lastRenderEnd = getCurrentClock();
         bool        running = true;
         while (running) {
             inputBeginFrame(&input);
@@ -614,10 +643,29 @@ main(int argc, char* argv[]) {
                 processEvent(sdlWindow, &event, &running, &input);
             }
 
-            gameUpdateAndRender(&gameState, &renderer, &input, 1.0f);
+            assert(renderBegin(&renderer) == CompletionStatus_Sucess);
 
-            // TODO(khvorov) Timings + sleep
             // TODO(khvorov) Single step
+            // TODO(khvorov) Visualize timings
+            // TODO(khvorov) Grid of glyphs
+            gameUpdateAndRender(&gameState, &renderer, &input, targetMsPerFrame);
+
+            // NOTE(khvorov) Wait
+            {
+                f32 msFromPreviousRenderEnd = getMsFrom(lastRenderEnd);
+                f32 msRemaining = targetMsPerFrame - msFromPreviousRenderEnd;
+                if (msRemaining >= 2.0f) {
+                    u32 toWait = (u32)(msRemaining - 1);
+                    SDL_Delay(toWait);
+                    msRemaining -= (f32)toWait;
+                }
+                while (msRemaining > 0.0f) {
+                    msRemaining = targetMsPerFrame - getMsFrom(lastRenderEnd);
+                }
+            }
+
+            lastRenderEnd = getCurrentClock();
+            renderEnd(&renderer);
         }
     }
     return 0;

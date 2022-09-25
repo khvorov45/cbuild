@@ -67,6 +67,7 @@ downloadAndCompileStaticLib(
         for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesCount; inputPatternIndex++) {
             prb_String      inputPattern = compileSources[inputPatternIndex];
             prb_StringArray inputMatches = prb_getAllMatches(inputPattern);
+            // TODO(khvorov) Report no matches
             allInputMatches[inputPatternIndex] = inputMatches;
             allInputFilepathsCount += inputMatches.len;
         }
@@ -168,6 +169,19 @@ sdlMods(prb_String downloadDir) {
         x11sym,
         "SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return)",
         "//SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return"
+    );
+
+    // NOTE(khvorov) SDL would normally overwrite this "minimal" config with a generated one on linux
+    prb_String configMinimal = prb_pathJoin(downloadDir, "include/SDL_config_minimal.h");
+    prb_textfileReplace(
+        configMinimal,
+        "#define SDL_THREADS_DISABLED    1",
+        "#define SDL_THREADS_DISABLED    0"
+    );
+    prb_textfileReplace(
+        configMinimal,
+        "#define SDL_TIMERS_DISABLED 1",
+        "#define SDL_TIMERS_DISABLED 0"
     );
 }
 
@@ -279,7 +293,6 @@ main() {
     char* sdlCompileSources[] = {
         "src/atomic/*.c",
         "src/thread/*.c",
-        "src/thread/generic/*.c",
         "src/events/*.c",
         "src/file/*.c",
         "src/stdlib/*.c",
@@ -303,11 +316,13 @@ main() {
         "src/locale/windows/*.c",
         "src/main/windows/*.c",
 #elif prb_PLATFORM_LINUX
+        "src/thread/pthread/*.c",
         "src/timer/unix/*.c",
         "src/filesystem/unix/*.c",
         "src/loadso/dlopen/*.c",
         "src/video/x11/*.c",
         "src/core/unix/SDL_poll.c",
+        "src/core/linux/SDL_threadprio.c",
 #endif
     };
 
@@ -332,6 +347,10 @@ main() {
         "-DSDL_VIDEO_DRIVER_X11=1",
         "-DSDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS=1",
         "-DNO_SHARED_MEMORY=1",
+        "-DSDL_THREAD_PTHREAD=1",
+        "-DHAVE_NANOSLEEP=1",
+        "-DHAVE_CLOCK_GETTIME=1",
+        "-DCLOCK_MONOTONIC_RAW=1",
 #endif
     };
 
@@ -395,7 +414,7 @@ main() {
         "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
     );
 #elif prb_PLATFORM_LINUX
-    prb_String mainLinkFlags = "-lX11";
+    prb_String mainLinkFlags = "-lX11 -lpthread";
 #endif
 
     prb_String mainCmd = prb_fmtAndPrintln(

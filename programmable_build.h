@@ -9,6 +9,8 @@
 // TODO(khvorov) Make sure this compiles under C++
 // TODO(khvorov) Make sure this works as two translation units
 // TODO(khvorov) Make sure utf8 paths work on windows
+// TODO(khvorov) String regex ops
+// TODO(khvorov) File search by regex + recursive
 
 #include <stdint.h>
 #include <stddef.h>
@@ -181,6 +183,8 @@ void            prb_writeEntireFile(prb_String path, prb_Bytes content);
 // SECTION Strings
 int32_t                prb_strlen(const char* string);
 bool                   prb_streq(prb_String str1, prb_String str2);
+bool                   prb_strEndsWith(prb_String str1, prb_String str2);
+bool                   prb_strStartsWith(prb_String str1, prb_String str2);
 bool                   prb_charIsSep(char ch);
 int32_t                prb_strFindIndexFromLeft(prb_String str, char ch);
 int32_t                prb_strFindIndexFromRight(prb_String str, char ch);
@@ -404,6 +408,28 @@ prb_streq(prb_String str1, prb_String str2) {
     int32_t str2len = prb_strlen(str2);
     if (str1len == str2len) {
         result = prb_memeq(str1, str2, str1len);
+    }
+    return result;
+}
+
+bool
+prb_strEndsWith(prb_String str1, prb_String str2) {
+    bool    result = false;
+    int32_t str1len = prb_strlen(str1);
+    int32_t str2len = prb_strlen(str2);
+    if (str2len <= str1len) {
+        result = prb_memeq(str1 + str1len - str2len, str2, str2len);
+    }
+    return result;
+}
+
+bool
+prb_strStartsWith(prb_String str1, prb_String str2) {
+    bool    result = false;
+    int32_t str1len = prb_strlen(str1);
+    int32_t str2len = prb_strlen(str2);
+    if (str2len <= str1len) {
+        result = prb_memeq(str1, str2, str2len);
     }
     return result;
 }
