@@ -24,6 +24,7 @@
 typedef uint8_t  u8;
 typedef uint32_t u32;
 typedef uint64_t u64;
+typedef size_t   usize;
 typedef int32_t  i32;
 typedef float    f32;
 
@@ -435,7 +436,7 @@ typedef struct GameState {
 function GameState
 createGameState(f32 widthOverHeight) {
     f32       plankPosX = 0.5f;
-    f32       plankHeight = 0.01f;
+    f32       plankHeight = 0.1f;
     f32       plankWidth = 0.05f;
     f32       ballHeight = plankHeight;
     f32       ballWidth = widthOverHeight * ballHeight;
@@ -455,6 +456,61 @@ createGameState(f32 widthOverHeight) {
     return result;
 }
 
+typedef enum Direction {
+    Direction_Left,
+    Direction_Right,
+    Direction_Top,
+    Direction_Bottom,
+} Direction;
+
+typedef struct Wall {
+    Direction allowCollisionFrom;
+    f32       coord;
+    f32       min;
+    f32       max;
+} Wall;
+
+function f32
+calcWallCollisionDeltaTime(f32 posX, f32 posY, f32 velX, f32 velY, f32 width, f32 height, Wall wall) {
+    f32 collisionDeltaTime = INFINITY;
+
+    bool canCollide = false;
+    switch (wall.allowCollisionFrom) {
+        case Direction_Left: canCollide = velX > 0.0f; break;
+        case Direction_Right: canCollide = velX < 0.0f; break;
+        case Direction_Top: canCollide = velY < 0.0f; break;
+        case Direction_Bottom: canCollide = velY > 0.0f; break;
+    }
+
+    if (canCollide) {
+        f32 posForBounds = posX;
+        f32 posForCollision = posY;
+        f32 velForCollision = velY;
+        f32 halfDim = height * 0.5f;
+        if (wall.allowCollisionFrom == Direction_Left || wall.allowCollisionFrom == Direction_Right) {
+            posForBounds = posY;
+            posForCollision = posX;
+            velForCollision = velX;
+            halfDim = width * 0.5f;
+        }
+
+        f32 halfDimForCoord = halfDim;
+        if (wall.allowCollisionFrom == Direction_Left || wall.allowCollisionFrom == Direction_Bottom) {
+            halfDimForCoord *= -1;
+        }
+
+        if (posForBounds >= wall.min - halfDim && posForBounds <= wall.max + halfDim) {
+            f32 wallCoord = wall.coord + halfDimForCoord;
+            f32 testCollisionDeltaTime = (wallCoord - posForCollision) / velForCollision;
+            if (testCollisionDeltaTime > 0) {
+                collisionDeltaTime = min(collisionDeltaTime, testCollisionDeltaTime);
+            }
+        }
+    }
+
+    return collisionDeltaTime;
+}
+
 function void
 gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 deltaTimeMs) {
     // NOTE(khvorov) Update plank
@@ -466,99 +522,93 @@ gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 
 
     // NOTE(khvorov) Update ball
     {
-        if (gameState->ballVelX == 0 && gameState->ballVelY == 0 && wasPressed(input, InputKeyID_MouseLeft)) {
-            gameState->ballVelX = 0.001f;
-            gameState->ballVelY = 0.001f;
+        if (gameState->ballVelX == 0 && gameState->ballVelY == 0) {
+            if (wasPressed(input, InputKeyID_MouseLeft)) {
+                gameState->ballVelX = 0.001f;
+                gameState->ballVelY = 0.001f;
+            } else {
+                gameState->ballPosX = gameState->plankPosX;
+                gameState->ballPosY = gameState->plankHeight + gameState->ballHeight * 0.5;
+            }
         }
 
+        Wall walls[] = {
+            (Wall) {.allowCollisionFrom = Direction_Right, .coord = 0.0f, .min = 0.0f, .max = 1.0f},
+            (Wall) {.allowCollisionFrom = Direction_Left, .coord = 1.0f, .min = 0.0f, .max = 1.0f},
+            (Wall) {.allowCollisionFrom = Direction_Top, .coord = 0.0f, .min = 0.0f, .max = 1.0f},
+            (Wall) {.allowCollisionFrom = Direction_Bottom, .coord = 1.0f, .min = 0.0f, .max = 1.0f},
+            (Wall) {
+                .allowCollisionFrom = Direction_Top,
+                .coord = gameState->plankHeight,
+                .min = gameState->plankPosX - gameState->plankWidth * 0.5,
+                .max = gameState->plankPosX + gameState->plankWidth * 0.5,
+            },
+        };
+
         f32 deltaTimeUnaccounted = deltaTimeMs;
-        f32 newPosX = gameState->ballPosX;
-        f32 newPosY = gameState->ballPosY;
-        f32 newVelX = gameState->ballVelX;
-        f32 newVelY = gameState->ballVelY;
+        f32 curPosX = gameState->ballPosX;
+        f32 curPosY = gameState->ballPosY;
+        f32 curVelX = gameState->ballVelX;
+        f32 curVelY = gameState->ballVelY;
         while (deltaTimeUnaccounted > 0.0f) {
-            f32 xRightCollisionDeltaTime = INFINITY;
-            f32 xRightWalls[] = {0.0f};
-            if (newVelX < 0.0f) {
-                for (i32 wallIndex = 0; wallIndex < (i32)arrayLen(xRightWalls); wallIndex++) {
-                    f32 wallX = xRightWalls[wallIndex] + (f32)gameState->ballWidth / 2.0f;
-                    f32 testCollisionDeltaTime = (wallX - newPosX) / newVelX;
-                    if (testCollisionDeltaTime > 0) {
-                        xRightCollisionDeltaTime = min(xRightCollisionDeltaTime, testCollisionDeltaTime);
+            f32  collisionDeltaTime = INFINITY;
+            bool collidedX = false;
+            bool collidedY = false;
+            for (usize wallIndex = 0; wallIndex < arrayLen(walls); wallIndex++) {
+                Wall wall = walls[wallIndex];
+                f32  testCollisionDeltaTime = calcWallCollisionDeltaTime(
+                    curPosX,
+                    curPosY,
+                    curVelX,
+                    curVelY,
+                    gameState->ballWidth,
+                    gameState->ballHeight,
+                    wall
+                );
+                if (testCollisionDeltaTime < collisionDeltaTime) {
+                    collisionDeltaTime = testCollisionDeltaTime;
+                    if (wall.allowCollisionFrom == Direction_Left || wall.allowCollisionFrom == Direction_Right) {
+                        collidedX = true;
+                        collidedY = false;
+                    } else {
+                        collidedY = true;
+                        collidedX = false;
+                    }
+                } else if (testCollisionDeltaTime == collisionDeltaTime) {
+                    if (wall.allowCollisionFrom == Direction_Left || wall.allowCollisionFrom == Direction_Right) {
+                        collidedX = true;
+                    } else {
+                        collidedY = true;
                     }
                 }
             }
 
-            f32 xLeftCollisionDeltaTime = INFINITY;
-            f32 xLeftWalls[] = {1.0f};
-            if (newVelX > 0.0f) {
-                for (i32 wallIndex = 0; wallIndex < (i32)arrayLen(xLeftWalls); wallIndex++) {
-                    f32 wallX = xLeftWalls[wallIndex] - (f32)gameState->ballWidth / 2.0f;
-                    ;
-                    f32 testCollisionDeltaTime = (wallX - newPosX) / newVelX;
-                    if (testCollisionDeltaTime > 0) {
-                        xLeftCollisionDeltaTime = min(xLeftCollisionDeltaTime, testCollisionDeltaTime);
-                    }
+            f32  accountedDeltaTime = min(collisionDeltaTime, deltaTimeUnaccounted);
+            bool collided = accountedDeltaTime == collisionDeltaTime;
+
+            f32 newPosX = curPosX + accountedDeltaTime * curVelX;
+            f32 newPosY = curPosY + accountedDeltaTime * curVelY;
+            assert(newPosX >= 0.0f && newPosX <= 1.0f);
+            assert(newPosY >= 0.0f && newPosY <= 1.0f);
+            curPosX = newPosX;
+            curPosY = newPosY;
+
+            if (collided) {
+                if (collidedX) {
+                    curVelX *= -1;
                 }
-            }
-
-            f32 xCollisionDeltaTime = min(xRightCollisionDeltaTime, xLeftCollisionDeltaTime);
-
-            f32 yBottomCollisionDeltaTime = INFINITY;
-            f32 yBottomWalls[] = {0.0f};
-            if (newVelY < 0.0f) {
-                for (i32 wallIndex = 0; wallIndex < (i32)arrayLen(yBottomWalls); wallIndex++) {
-                    f32 wallY = yBottomWalls[wallIndex] + (f32)gameState->ballHeight / 2.0f;
-                    f32 testCollisionDeltaTime = (wallY - newPosY) / newVelY;
-                    if (testCollisionDeltaTime > 0) {
-                        yBottomCollisionDeltaTime = min(yBottomCollisionDeltaTime, testCollisionDeltaTime);
-                    }
-                }
-            }
-
-            f32 yTopCollisionDeltaTime = INFINITY;
-            f32 yTopWalls[] = {1.0f};
-            if (newVelY > 0.0f) {
-                for (i32 wallIndex = 0; wallIndex < (i32)arrayLen(yTopWalls); wallIndex++) {
-                    f32 wallY = yTopWalls[wallIndex] - (f32)gameState->ballHeight / 2.0f;
-                    f32 testCollisionDeltaTime = (wallY - newPosY) / newVelY;
-                    if (testCollisionDeltaTime > 0) {
-                        yTopCollisionDeltaTime = min(yTopCollisionDeltaTime, testCollisionDeltaTime);
-                    }
-                }
-            }
-
-            f32 yCollisionDeltaTime = min(yBottomCollisionDeltaTime, yTopCollisionDeltaTime);
-
-            f32 collisionDeltaTime = min(xCollisionDeltaTime, yCollisionDeltaTime);
-            f32 accountedDeltaTime = min(collisionDeltaTime, deltaTimeUnaccounted);
-
-            f32 deltaPosX = accountedDeltaTime * newVelX;
-            f32 deltaPosY = accountedDeltaTime * newVelY;
-            assert(newPosX + deltaPosX >= 0.0f && newPosX + deltaPosX <= 1.0f);
-            assert(newPosY + deltaPosY >= 0.0f && newPosY + deltaPosX <= 1.0f);
-
-            newPosX += deltaPosX;
-            newPosY += deltaPosY;
-
-            if (collisionDeltaTime == accountedDeltaTime) {
-                if (xCollisionDeltaTime < yCollisionDeltaTime) {
-                    newVelX *= -1;
-                } else if (xCollisionDeltaTime == yCollisionDeltaTime) {
-                    newVelX *= -1;
-                    newVelY *= -1;
-                } else {
-                    newVelY *= -1;
+                if (collidedY) {
+                    curVelY *= -1;
                 }
             }
 
             deltaTimeUnaccounted -= accountedDeltaTime;
         }
 
-        gameState->ballPosX = newPosX;
-        gameState->ballPosY = newPosY;
-        gameState->ballVelX = newVelX;
-        gameState->ballVelY = newVelY;
+        gameState->ballPosX = curPosX;
+        gameState->ballPosY = curPosY;
+        gameState->ballVelX = curVelX;
+        gameState->ballVelY = curVelY;
     }
 
     i32  plankHeightPx = (i32)(gameState->plankHeight * (f32)renderer->height);
@@ -648,6 +698,7 @@ main(int argc, char* argv[]) {
             // TODO(khvorov) Single step
             // TODO(khvorov) Visualize timings
             // TODO(khvorov) Grid of glyphs
+            // TODO(khvorov) Vsync problems on linux
             gameUpdateAndRender(&gameState, &renderer, &input, targetMsPerFrame);
 
             // NOTE(khvorov) Wait
