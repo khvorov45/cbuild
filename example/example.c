@@ -367,7 +367,7 @@ createRenderer(Allocator allocator) {
 function CompletionStatus
 renderBegin(Renderer* renderer) {
     CompletionStatus result = CompletionStatus_Failure;
-    int              setDrawColorResult = SDL_SetRenderDrawColor(renderer->sdlRenderer, 0, 0, 0, 0);
+    int              setDrawColorResult = SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 0, 255, 0);
     if (setDrawColorResult == 0) {
         int renderClearResult = SDL_RenderClear(renderer->sdlRenderer);
         if (renderClearResult == 0) {
@@ -406,7 +406,7 @@ drawRect(Renderer* renderer, Rect2i rect, Color color) {
 }
 
 //
-// SECTION Game
+// SECTION Editor
 //
 
 function Rect2i
@@ -416,257 +416,25 @@ rect2iCenterDim(i32 centerX, i32 centerY, i32 dimX, i32 dimY) {
     return result;
 }
 
-typedef struct Rect2f {
-    f32 x, y, w, h;
-} Rect2f;
-
-function Rect2f
-rect2fCenterDim(f32 centerX, f32 centerY, f32 dimX, f32 dimY) {
-    assert(dimX >= 0.0f && dimY >= 0.0f);
-    Rect2f result = {.x = centerX - dimX / 2.0f, .y = centerY - dimY / 2.0f, .w = dimX, .h = dimY};
-    return result;
-}
-
-function Rect2i
-pxRectFromGameRect(Renderer* renderer, Rect2f rect) {
-    Rect2i result = {
-        .x = (i32)(rect.x * (f32)renderer->width + 0.5f),
-        .y = renderer->height - (i32)((rect.y + rect.h) * (f32)renderer->height + 0.5f),
-        .w = (i32)(rect.w * (f32)renderer->width + 0.5f),
-        .h = (i32)(rect.h * (f32)renderer->height + 0.5f),
-    };
-    return result;
-}
-
 // Position units are proportions of the screen
 // Time is in ms (including for velocity)
-typedef struct GameState {
-    Rect2f plankRect;
-    Rect2f ballRect;
-
-    f32 ballVelX;
-    f32 ballVelY;
-    f32 plankVelX;
-    f32 plankVelY;
-
+typedef struct EditorState {
     bool showEntireFontTexture;
-} GameState;
+} EditorState;
 
-function GameState
+function EditorState
 createGameState(f32 widthOverHeight) {
-    Rect2f    plankRect = (Rect2f) {.x = 0.5f, .y = 0.0f, .w = 0.05f, .h = 0.1f};
-    Rect2f    ballRect = (Rect2f) {.x = plankRect.x, .y = plankRect.y, .w = 0.05f, .h = 0.05f};
-    GameState result = {
-        .plankRect = plankRect,
-        .ballRect = ballRect,
-        .ballVelX = 0.001f,
-        .ballVelY = 0.0f,
-        .plankVelX = 0.0f,
-        .plankVelY = 0.0f,
+    EditorState result = {
+        .showEntireFontTexture = true,
     };
-    return result;
-}
-
-typedef enum Direction {
-    Direction_Left,
-    Direction_Right,
-    Direction_Top,
-    Direction_Bottom,
-} Direction;
-
-typedef struct Collision {
-    f32  deltaTime;
-    bool horizontal;
-    bool vertical;
-} Collision;
-
-function Collision
-calcRectOuterRectCollision(Rect2f rect1, f32 vel1x, f32 vel1y, Rect2f rect2, f32 vel2x, f32 vel2y) {
-    f32 rvelx = vel1x - vel2x;
-    f32 rvely = vel1y - vel2y;
-
-    f32 xCollisionDeltaTime = INFINITY;
-    if (rvelx > 0.0f) {
-        f32 coord1 = rect1.x + rect1.w;
-        f32 coord2 = rect2.x;
-        if (coord1 < coord2) {
-            f32 testCollisionDeltaTime = (coord2 - coord1) / rvelx;
-            xCollisionDeltaTime = min(testCollisionDeltaTime, xCollisionDeltaTime);
-        }
-    } else if (rvelx < 0.0f) {
-        f32 coord1 = rect1.x;
-        f32 coord2 = rect2.x + rect2.w;
-        if (coord1 > coord2) {
-            f32 testCollisionDeltaTime = (coord2 - coord1) / rvelx;
-            xCollisionDeltaTime = min(testCollisionDeltaTime, xCollisionDeltaTime);
-        }
-    }
-
-    f32 yCollisionDeltaTime = INFINITY;
-    if (rvely > 0.0f) {
-        f32 coord1 = rect1.y + rect1.h;
-        f32 coord2 = rect2.y;
-        if (coord1 < coord2) {
-            f32 testCollisionDeltaTime = (coord2 - coord1) / rvely;
-            yCollisionDeltaTime = min(testCollisionDeltaTime, yCollisionDeltaTime);
-        }
-    } else if (rvelx < 0.0f) {
-        f32 coord1 = rect1.y;
-        f32 coord2 = rect2.y + rect2.h;
-        if (coord1 > coord2) {
-            f32 testCollisionDeltaTime = (coord2 - coord1) / rvely;
-            yCollisionDeltaTime = min(testCollisionDeltaTime, yCollisionDeltaTime);
-        }
-    }
-
-    f32 collisionDeltaTime = min(xCollisionDeltaTime, yCollisionDeltaTime);
-    assert(collisionDeltaTime > 0.0f);
-    bool      horizontal = xCollisionDeltaTime <= yCollisionDeltaTime;
-    bool      vertical = xCollisionDeltaTime >= yCollisionDeltaTime;
-    Collision result = {.deltaTime = collisionDeltaTime, .horizontal = horizontal, .vertical = vertical};
-    return result;
-}
-
-function Collision
-calcRectInnerRectCollision(Rect2f rect1, f32 vel1x, f32 vel1y, Rect2f rect2, f32 vel2x, f32 vel2y) {
-    f32 rvelx = vel1x - vel2x;
-    f32 rvely = vel1y - vel2y;
-
-    f32 xCollisionDeltaTime = INFINITY;
-    if (rvelx > 0.0f) {
-        f32 coord1 = rect1.x + rect1.w;
-        f32 coord2 = rect2.x + rect2.w;
-        if (coord1 < coord2) {
-            f32 testCollisionDeltaTime = (coord2 - coord1) / rvelx;
-            xCollisionDeltaTime = min(testCollisionDeltaTime, xCollisionDeltaTime);
-        }
-    } else if (rvelx < 0.0f) {
-        f32 coord1 = rect1.x;
-        f32 coord2 = rect2.x;
-        if (coord1 > coord2) {
-            f32 testCollisionDeltaTime = (coord2 - coord1) / rvelx;
-            xCollisionDeltaTime = min(testCollisionDeltaTime, xCollisionDeltaTime);
-        }
-    }
-
-    f32 yCollisionDeltaTime = INFINITY;
-    if (rvely > 0.0f) {
-        f32 coord1 = rect1.y + rect1.h;
-        f32 coord2 = rect2.y + rect2.h;
-        if (coord1 < coord2) {
-            f32 testCollisionDeltaTime = (coord2 - coord1) / rvely;
-            yCollisionDeltaTime = min(testCollisionDeltaTime, yCollisionDeltaTime);
-        }
-    } else if (rvelx < 0.0f) {
-        f32 coord1 = rect1.y + rect1.h;
-        f32 coord2 = rect2.y + rect2.h;
-        if (coord1 > coord2) {
-            f32 testCollisionDeltaTime = (coord2 - coord1) / rvely;
-            yCollisionDeltaTime = min(testCollisionDeltaTime, yCollisionDeltaTime);
-        }
-    }
-
-    f32 collisionDeltaTime = min(xCollisionDeltaTime, yCollisionDeltaTime);
-    assert(collisionDeltaTime > 0.0f);
-    bool      horizontal = xCollisionDeltaTime <= yCollisionDeltaTime;
-    bool      vertical = xCollisionDeltaTime >= yCollisionDeltaTime;
-    Collision result = {.deltaTime = collisionDeltaTime, .horizontal = horizontal, .vertical = vertical};
     return result;
 }
 
 function void
-gameUpdateAndRender(GameState* gameState, Renderer* renderer, Input* input, f32 deltaTimeMs) {
-    // NOTE(khvorov) Update plank
-    {
-        // TODO(khvorov) Plank movement
-    }
-
-    // NOTE(khvorov) Update ball
-    {
-        if (gameState->ballVelX == 0 && gameState->ballVelY == 0) {
-            if (wasPressed(input, InputKeyID_MouseLeft)) {
-                gameState->ballVelX = 0.001f;
-                gameState->ballVelY = 0.001f;
-            } else {
-                gameState->ballRect.x = gameState->plankRect.x;
-                gameState->ballRect.y = gameState->plankRect.h + gameState->ballRect.h * 0.5;
-            }
-        }
-
-        // TODO(khvorov) Address tunnelling
-        f32    deltaTimeUnaccounted = deltaTimeMs;
-        Rect2f curRect = gameState->ballRect;
-        f32    curVelX = gameState->ballVelX;
-        f32    curVelY = gameState->ballVelY;
-        while (deltaTimeUnaccounted > 0.0f) {
-            Collision plankCollision = calcRectOuterRectCollision(
-                curRect,
-                curVelX,
-                curVelY,
-                gameState->plankRect,
-                gameState->plankVelX,
-                gameState->plankVelY
-            );
-
-            Rect2f    screenRect = {0.0f, 0.0f, 1.0f, 1.0f};
-            Collision screenCollision = calcRectInnerRectCollision(curRect, curVelX, curVelY, screenRect, 0.0f, 0.0f);
-
-            Collision collision = plankCollision;
-            if (screenCollision.deltaTime < collision.deltaTime) {
-                collision = screenCollision;
-            }
-
-            f32  accountedDeltaTime = min(collision.deltaTime, deltaTimeUnaccounted);
-            bool collided = accountedDeltaTime == collision.deltaTime;
-
-            curRect.x = curRect.x + accountedDeltaTime * curVelX;
-            curRect.y = curRect.y + accountedDeltaTime * curVelY;
-
-            if (collided) {
-                if (collision.horizontal) {
-                    curVelX *= -1;
-                }
-                if (collision.vertical) {
-                    curVelY *= -1;
-                }
-            }
-
-            deltaTimeUnaccounted -= accountedDeltaTime;
-        }
-
-        gameState->ballRect = curRect;
-        gameState->ballVelX = curVelX;
-        gameState->ballVelY = curVelY;
-    }
-
-    // NOTE(khvorov) Render
-    // TODO(khvorov) Subpixel rendering
-
-    Rect2i plankRect = pxRectFromGameRect(renderer, gameState->plankRect);
-    Color  plankColor = {.r = 100, .g = 0, .b = 0, .a = 255};
-    drawRect(renderer, plankRect, plankColor);
-
-    Rect2i ballRect = pxRectFromGameRect(renderer, gameState->ballRect);
-    Color ballColor = {.r = 0, .g = 100, .b = 0, .a = 255};
-    drawRect(renderer, ballRect, ballColor);
-
-    if (gameState->showEntireFontTexture) {
+editorUpdateAndRender(EditorState* editorState, Renderer* renderer, Input* input, f32 deltaTimeMs) {
+    // TODO(khvorov) Implement
+    if (editorState->showEntireFontTexture) {
         drawEntireFontTexture(renderer);
-    }
-
-    // NOTE(khvorov) Draw grid
-    f32   gridStep = 0.1f;
-    Color gridColor = {.r = 0, .g = 0, .b = 100, .a = 255};
-    i32   gridLineThickness = 2;
-    for (f32 ycoord = 0.0f; ycoord <= 1.0f; ycoord += gridStep) {
-        i32    yi = renderer->height - (i32)(ycoord * (f32)renderer->height);
-        Rect2i rect = {.x = 0, .y = yi, .w = renderer->width, .h = gridLineThickness};
-        drawRect(renderer, rect, gridColor);
-    }
-    for (f32 xcoord = 0.0f; xcoord <= 1.0f; xcoord += gridStep) {
-        i32    xi = (i32)(xcoord * (f32)renderer->width);
-        Rect2i rect = {.x = xi, .y = 0, .w = gridLineThickness, .h = renderer->height};
-        drawRect(renderer, rect, gridColor);
     }
 }
 
@@ -710,47 +478,31 @@ processEvent(SDL_Window* window, SDL_Event* event, bool* running, Input* input) 
 
 int
 main(int argc, char* argv[]) {
+    // TODO(khvorov) Hook up custom allocators to SDL and freetype
     Allocator            sdlGeneralPurposeAllocator = {.allocAndZero = sdlCallocWrapper};
     CreateRendererResult createRendererResult = createRenderer(sdlGeneralPurposeAllocator);
     if (createRendererResult.success) {
         Renderer    renderer = createRendererResult.renderer;
         SDL_Window* sdlWindow = renderer.sdlWindow;
         Input       input = {0};
-        GameState   gameState = createGameState((f32)renderer.width / (f32)renderer.height);
+        EditorState   editorState = createGameState((f32)renderer.width / (f32)renderer.height);
         f32         targetMsPerFrame = 1000.0f / 60.0f;
-        Clock       lastRenderEnd = getCurrentClock();
         bool        running = true;
         while (running) {
             inputBeginFrame(&input);
 
             SDL_Event event;
+            assert(SDL_WaitEvent(&event) == 1);
             while (SDL_PollEvent(&event)) {
                 processEvent(sdlWindow, &event, &running, &input);
             }
 
             assert(renderBegin(&renderer) == CompletionStatus_Sucess);
 
-            // TODO(khvorov) Single step
             // TODO(khvorov) Visualize timings
-            // TODO(khvorov) Grid of glyphs
             // TODO(khvorov) Hardware rendering?
-            gameUpdateAndRender(&gameState, &renderer, &input, targetMsPerFrame);
+            editorUpdateAndRender(&editorState, &renderer, &input, targetMsPerFrame);
 
-            // NOTE(khvorov) Wait
-            {
-                f32 msFromPreviousRenderEnd = getMsFrom(lastRenderEnd);
-                f32 msRemaining = targetMsPerFrame - msFromPreviousRenderEnd;
-                if (msRemaining >= 2.0f) {
-                    u32 toWait = (u32)(msRemaining - 1);
-                    SDL_Delay(toWait);
-                    msRemaining -= (f32)toWait;
-                }
-                while (msRemaining > 0.0f) {
-                    msRemaining = targetMsPerFrame - getMsFrom(lastRenderEnd);
-                }
-            }
-
-            lastRenderEnd = getCurrentClock();
             renderEnd(&renderer);
         }
     }
