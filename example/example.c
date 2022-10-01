@@ -11,6 +11,12 @@
 
 #define INFINITY __builtin_inff()
 #define function static
+#define global_variable static
+
+#define BYTE 1
+#define KILOBYTE 1024 * BYTE
+#define MEGABYTE 1024 * KILOBYTE
+#define GIGABYTE 1024 * MEGABYTE
 
 // clang-format off
 #define min(x, y) (((x) < (y)) ? (x) : (y))
@@ -37,20 +43,125 @@ typedef enum CompletionStatus {
 // SECTION Memory
 //
 
-typedef void* (*AllocatorAllocAndZero)(i32 size, i32 align);
-typedef void* (*AllocatorRealloc)(void* ptr, i32 size, i32 align);
+#if PLATFORM_WINDOWS
+
+    #error unimlemented
+
+#elif PLATFORM_LINUX
+    #include <sys/mman.h>
+
+void*
+vmemAlloc(i32 size) {
+    void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    assert(ptr != MAP_FAILED);
+    return ptr;
+}
+
+#endif
+
+typedef struct ByteSlice {
+    u8* ptr;
+    i32 len;
+} ByteSlice;
+
+typedef void* (*AllocatorAllocAndZero)(void* data, i32 size, i32 align);
 
 typedef struct Allocator {
+    void*                 data;
     AllocatorAllocAndZero allocAndZero;
 } Allocator;
 
-#define allocArray(allocator, type, count) (type*)(allocator).allocAndZero(sizeof(type) * (count), _Alignof(type))
+#define allocArray(allocator, type, count) \
+    (type*)(allocator).allocAndZero((allocator).data, sizeof(type) * (count), _Alignof(type))
 
-function void*
-sdlCallocWrapper(i32 size, i32 align) {
-    assert(size >= 0 && align >= 0 && isPowerOf2(align) && align <= 8);
-    void* result = SDL_calloc(size, 1);
+ByteSlice
+alignPtr(void* ptr, i32 size, i32 align) {
+    assert(isPowerOf2(align));
+    i32       offBy = ((usize)ptr) & (align - 1);
+    i32       moveBy = offBy > 0 ? align - offBy : 0;
+    ByteSlice result = {(u8*)ptr + moveBy, size + moveBy};
     return result;
+}
+
+typedef struct Arena {
+    u8* base;
+    i32 size;
+    i32 used;
+} Arena;
+
+Arena
+createArena(i32 size, Allocator allocator) {
+    u8*   base = allocArray(allocator, u8, size);
+    Arena arena = {.base = base, .size = size, .used = 0};
+    return arena;
+}
+
+Arena
+createArenaFromVmem(i32 size) {
+    u8*   base = vmemAlloc(size);
+    Arena arena = {.base = base, .size = size, .used = 0};
+    return arena;
+}
+
+void*
+arenaAllocAndZero(void* data, i32 size, i32 align) {
+    Arena* arena = (Arena*)data;
+    assert(arena->used <= arena->size);
+    ByteSlice aligned = alignPtr(arena->base + arena->used, size, align);
+    i32       freeSize = arena->size - arena->used;
+    void*     result = 0;
+    if (aligned.len <= freeSize) {
+        arena->used += aligned.len;
+        result = aligned.ptr;
+        for (i32 index = 0; index < aligned.len; index++) {
+            aligned.ptr[index] = 0;
+        }
+    }
+    return result;
+}
+
+void*
+arenaRealloc(void* data, void* ptr, i32 size, i32 align) {
+    Arena* arena = (Arena*)data;
+    void*  result = arenaAllocAndZero(arena, size, align);
+    if (result && ptr) {
+        SDL_memcpy(result, ptr, size);
+    }
+    return result;
+}
+
+Allocator
+createArenaAllocator(Arena* arena) {
+    Allocator allocator = {.data = arena, .allocAndZero = arenaAllocAndZero};
+    return allocator;
+}
+
+global_variable Arena globalSDLArena;
+
+void*
+sdlArenaMalloc(usize size) {
+    assert(size <= INT32_MAX);
+    void* result = arenaAllocAndZero(&globalSDLArena, size, 8);
+    return result;
+}
+
+void*
+sdlArenaCalloc(usize n, usize size) {
+    assert(n * size <= INT32_MAX);
+    void* result = arenaAllocAndZero(&globalSDLArena, n * size, 8);
+    return result;
+}
+
+void*
+sdlArenaRealloc(void* ptr, usize size) {
+    assert(size <= INT32_MAX);
+    void* result = arenaRealloc(&globalSDLArena, ptr, size, 8);
+    return result;
+}
+
+void
+sdlArenaFree(void* ptr) {
+    // NOTE(khvorov) NOOP
 }
 
 //
@@ -367,7 +478,7 @@ createRenderer(Allocator allocator) {
 function CompletionStatus
 renderBegin(Renderer* renderer) {
     CompletionStatus result = CompletionStatus_Failure;
-    int              setDrawColorResult = SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 0, 255, 0);
+    int              setDrawColorResult = SDL_SetRenderDrawColor(renderer->sdlRenderer, 0, 0, 0, 0);
     if (setDrawColorResult == 0) {
         int renderClearResult = SDL_RenderClear(renderer->sdlRenderer);
         if (renderClearResult == 0) {
@@ -403,6 +514,17 @@ drawRect(Renderer* renderer, Rect2i rect, Color color) {
         SDL_SetRenderDrawColor(renderer->sdlRenderer, color.r, color.g, color.b, color.a);
         SDL_RenderFillRect(renderer->sdlRenderer, &rect);
     }
+}
+
+i32
+drawArenaUsage(Renderer* renderer, Arena* arena, i32 topleftY) {
+    Rect2i arenaRect = {.x = 0, .y = topleftY, .w = 1000, .h = 20};
+    Rect2i arenaUsedRect = arenaRect;
+    arenaUsedRect.w = (i32)((f32)arena->used / (f32)arena->size * (f32)arenaRect.w + 0.5f);
+    drawRect(renderer, arenaRect, (Color) {0, 100, 0, 0});
+    drawRect(renderer, arenaUsedRect, (Color) {100, 0, 0, 0});
+    i32 yoffset = topleftY + arenaRect.h;
+    return yoffset;
 }
 
 //
@@ -478,14 +600,18 @@ processEvent(SDL_Window* window, SDL_Event* event, bool* running, Input* input) 
 
 int
 main(int argc, char* argv[]) {
-    // TODO(khvorov) Hook up custom allocators to SDL and freetype
-    Allocator            sdlGeneralPurposeAllocator = {.allocAndZero = sdlCallocWrapper};
-    CreateRendererResult createRendererResult = createRenderer(sdlGeneralPurposeAllocator);
+    // TODO(khvorov) Hook up custom allocators to freetype
+    // TODO(khvorov) Make SDL arena thread-safe
+    Arena     virtualArena = createArenaFromVmem(1 * GIGABYTE);
+    Allocator virtualArenaAllocator = createArenaAllocator(&virtualArena);
+    globalSDLArena = createArena(100 * MEGABYTE, virtualArenaAllocator);
+    SDL_SetMemoryFunctions(sdlArenaMalloc, sdlArenaCalloc, sdlArenaRealloc, sdlArenaFree);
+    CreateRendererResult createRendererResult = createRenderer(virtualArenaAllocator);
     if (createRendererResult.success) {
         Renderer    renderer = createRendererResult.renderer;
         SDL_Window* sdlWindow = renderer.sdlWindow;
         Input       input = {0};
-        EditorState   editorState = createGameState((f32)renderer.width / (f32)renderer.height);
+        EditorState editorState = createGameState((f32)renderer.width / (f32)renderer.height);
         f32         targetMsPerFrame = 1000.0f / 60.0f;
         bool        running = true;
         while (running) {
@@ -502,6 +628,12 @@ main(int argc, char* argv[]) {
             // TODO(khvorov) Visualize timings
             // TODO(khvorov) Hardware rendering?
             editorUpdateAndRender(&editorState, &renderer, &input, targetMsPerFrame);
+
+            // NOTE(khvorov) Visualize memory usage
+            {
+                i32 yoffset = drawArenaUsage(&renderer, &virtualArena, 0);
+                drawArenaUsage(&renderer, &globalSDLArena, yoffset);
+            }
 
             renderEnd(&renderer);
         }
