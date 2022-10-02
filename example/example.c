@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #include <ft2build.h>
 #include <freetype/freetype.h>
@@ -32,6 +33,7 @@ typedef uint32_t u32;
 typedef uint64_t u64;
 typedef size_t   usize;
 typedef int32_t  i32;
+typedef int32_t  b32;
 typedef float    f32;
 
 typedef enum CompletionStatus {
@@ -136,32 +138,59 @@ createArenaAllocator(Arena* arena) {
     return allocator;
 }
 
-global_variable Arena globalSDLArena;
+global_variable volatile usize globalSDLMemoryUsed;
+
+// NOTE(khvorov) SDL has these, it just doesn't expose them
+void* dlmalloc(size_t);
+void* dlcalloc(size_t, size_t);
+void* dlrealloc(void*, size_t);
+void  dlfree(void*);
 
 void*
-sdlArenaMalloc(usize size) {
-    assert(size <= INT32_MAX);
-    void* result = arenaAllocAndZero(&globalSDLArena, size, 8);
+sdlMallocWrapper(usize size) {
+    void* result = dlmalloc(size);
+    if (result) {
+        usize* sizeActual = (usize*)result - 1;
+        atomic_fetch_add(&globalSDLMemoryUsed, *sizeActual);
+    }
     return result;
 }
 
 void*
-sdlArenaCalloc(usize n, usize size) {
-    assert(n * size <= INT32_MAX);
-    void* result = arenaAllocAndZero(&globalSDLArena, n * size, 8);
+sdlCallocWrapper(usize n, usize size) {
+    void* result = dlcalloc(n, size);
+    if (result) {
+        usize* sizeActual = (usize*)result - 1;
+        atomic_fetch_add(&globalSDLMemoryUsed, *sizeActual);
+    }
     return result;
 }
 
 void*
-sdlArenaRealloc(void* ptr, usize size) {
-    assert(size <= INT32_MAX);
-    void* result = arenaRealloc(&globalSDLArena, ptr, size, 8);
+sdlReallocWrapper(void* ptr, usize size) {
+    usize sizeBefore = 0;
+    if (ptr) {
+        sizeBefore = *((usize*)ptr - 1);
+    }
+    void* result = dlrealloc(ptr, size);
+    if (result) {
+        usize sizeAfter = *((usize*)result - 1);
+        if (sizeAfter > sizeBefore) {
+            atomic_fetch_add(&globalSDLMemoryUsed, sizeAfter - sizeBefore);
+        } else {
+            atomic_fetch_sub(&globalSDLMemoryUsed, sizeBefore - sizeAfter);
+        }
+    }
     return result;
 }
 
 void
-sdlArenaFree(void* ptr) {
-    // NOTE(khvorov) NOOP
+sdlFreeWrapper(void* ptr) {
+    if (ptr) {
+        usize* size = (usize*)ptr - 1;
+        atomic_fetch_sub(&globalSDLMemoryUsed, *size);
+    }
+    dlfree(ptr);
 }
 
 //
@@ -435,7 +464,7 @@ createRenderer(Allocator allocator) {
         if (initResult == 0) {
             i32         windowWidth = 1000;
             i32         windowHeight = 1000;
-            SDL_Window* sdlWindow = SDL_CreateWindow("test", 0, 0, windowWidth, windowHeight, 0);
+            SDL_Window* sdlWindow = SDL_CreateWindow("test", 0, 0, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
             if (sdlWindow) {
                 SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
                 if (sdlRenderer) {
@@ -601,11 +630,11 @@ processEvent(SDL_Window* window, SDL_Event* event, bool* running, Input* input) 
 int
 main(int argc, char* argv[]) {
     // TODO(khvorov) Hook up custom allocators to freetype
-    // TODO(khvorov) Make SDL arena thread-safe
+    // TODO(khvorov) Visualize SDL memory usage
+    // TODO(khvorov) Custom pool for SDL?
     Arena     virtualArena = createArenaFromVmem(1 * GIGABYTE);
     Allocator virtualArenaAllocator = createArenaAllocator(&virtualArena);
-    globalSDLArena = createArena(100 * MEGABYTE, virtualArenaAllocator);
-    SDL_SetMemoryFunctions(sdlArenaMalloc, sdlArenaCalloc, sdlArenaRealloc, sdlArenaFree);
+    SDL_SetMemoryFunctions(sdlMallocWrapper, sdlCallocWrapper, sdlReallocWrapper, sdlFreeWrapper);
     CreateRendererResult createRendererResult = createRenderer(virtualArenaAllocator);
     if (createRendererResult.success) {
         Renderer    renderer = createRendererResult.renderer;
@@ -631,8 +660,8 @@ main(int argc, char* argv[]) {
 
             // NOTE(khvorov) Visualize memory usage
             {
-                i32 yoffset = drawArenaUsage(&renderer, &virtualArena, 0);
-                drawArenaUsage(&renderer, &globalSDLArena, yoffset);
+                drawArenaUsage(&renderer, &virtualArena, 0);
+                SDL_Log("%ld", globalSDLMemoryUsed / 1024);
             }
 
             renderEnd(&renderer);

@@ -183,12 +183,25 @@ sdlMods(prb_String downloadDir) {
         "#define SDL_TIMERS_DISABLED 1",
         "#define SDL_TIMERS_DISABLED 0"
     );
+
+    // NOTE(khvorov) SDL allocates the pixels in the X11 framebuffer using
+    // SDL_malloc but then frees it using XDestroyImage which will call libc
+    // free. So even SDL's own custom malloc won't work because libc free will
+    // crash when trying to free a pointer allocated with something other than
+    // libc malloc.
+    prb_String x11FrameBuffer = prb_pathJoin(downloadDir, "src/video/x11/SDL_x11framebuffer.c");
+    prb_textfileReplace(
+        x11FrameBuffer,
+        "XDestroyImage(data->ximage);",
+        "SDL_free(data->ximage->data);data->ximage->data = 0;XDestroyImage(data->ximage);"
+    );
 }
 
 int
 main() {
     // TODO(khvorov) Argument parsing
     // TODO(khvorov) Release build
+    // TODO(khvorov) Clone a specific commit probably
     prb_init();
     prb_TimeStart scriptStartTime = prb_timeStart();
 
