@@ -648,6 +648,7 @@ main(int argc, char* argv[]) {
 
             SDL_Event event;
             assert(SDL_WaitEvent(&event) == 1);
+            processEvent(sdlWindow, &event, &running, &input);
             while (SDL_PollEvent(&event)) {
                 processEvent(sdlWindow, &event, &running, &input);
             }
