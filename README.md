@@ -1,5 +1,7 @@
 # Why not zig build?
 
+* zig build requires you to depend on the entire zig toolchain.
+
 * zig build locks you in to clang for C compiling.
 
 * zig build hides the generated build executables somewhere so you can't easily run them in a debugger.
