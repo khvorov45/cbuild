@@ -220,6 +220,7 @@ ftReallocCustom(FT_Memory memory, long curSize, long newSize, void* block) {
     void* result = arenaRealloc(&globalFTArena, block, newSize, 8);
     return result;
 }
+
 FT_CALLBACK_DEF(void)
 ftFreeCustom(FT_Memory memory, void* block) {
     // NOTE(khvorov) NOOP
