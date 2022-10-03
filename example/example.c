@@ -53,7 +53,7 @@ typedef enum CompletionStatus {
 #elif PLATFORM_LINUX
     #include <sys/mman.h>
 
-void*
+function void*
 vmemAlloc(i32 size) {
     void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     assert(ptr != MAP_FAILED);
@@ -78,7 +78,7 @@ typedef struct Allocator {
 #define allocArray(allocator, type, count) \
     (type*)(allocator).allocAndZero((allocator).data, sizeof(type) * (count), _Alignof(type))
 
-ByteSlice
+function ByteSlice
 alignPtr(void* ptr, i32 size, i32 align) {
     assert(isPowerOf2(align));
     i32       offBy = ((usize)ptr) & (align - 1);
@@ -93,21 +93,21 @@ typedef struct Arena {
     i32 used;
 } Arena;
 
-Arena
+function Arena
 createArena(i32 size, Allocator allocator) {
     u8*   base = allocArray(allocator, u8, size);
     Arena arena = {.base = base, .size = size, .used = 0};
     return arena;
 }
 
-Arena
+function Arena
 createArenaFromVmem(i32 size) {
     u8*   base = vmemAlloc(size);
     Arena arena = {.base = base, .size = size, .used = 0};
     return arena;
 }
 
-void*
+function void*
 arenaAllocAndZero(void* data, i32 size, i32 align) {
     Arena* arena = (Arena*)data;
     assert(arena->used <= arena->size);
@@ -124,7 +124,7 @@ arenaAllocAndZero(void* data, i32 size, i32 align) {
     return result;
 }
 
-void*
+function void*
 arenaRealloc(void* data, void* ptr, i32 size, i32 align) {
     Arena* arena = (Arena*)data;
     void*  result = arenaAllocAndZero(arena, size, align);
@@ -134,7 +134,7 @@ arenaRealloc(void* data, void* ptr, i32 size, i32 align) {
     return result;
 }
 
-Allocator
+function Allocator
 createArenaAllocator(Arena* arena) {
     Allocator allocator = {.data = arena, .allocAndZero = arenaAllocAndZero};
     return allocator;
@@ -148,7 +148,7 @@ void* dlcalloc(size_t, size_t);
 void* dlrealloc(void*, size_t);
 void  dlfree(void*);
 
-void*
+function void*
 sdlMallocWrapper(usize size) {
     void* result = dlmalloc(size);
     if (result) {
@@ -158,7 +158,7 @@ sdlMallocWrapper(usize size) {
     return result;
 }
 
-void*
+function void*
 sdlCallocWrapper(usize n, usize size) {
     void* result = dlcalloc(n, size);
     if (result) {
@@ -168,7 +168,7 @@ sdlCallocWrapper(usize n, usize size) {
     return result;
 }
 
-void*
+function void*
 sdlReallocWrapper(void* ptr, usize size) {
     usize sizeBefore = 0;
     if (ptr) {
@@ -186,7 +186,7 @@ sdlReallocWrapper(void* ptr, usize size) {
     return result;
 }
 
-void
+function void
 sdlFreeWrapper(void* ptr) {
     if (ptr) {
         usize* size = (usize*)ptr - 1;
@@ -246,6 +246,37 @@ FT_BASE_DEF(void)
 FT_Done_Memory(FT_Memory memory) {
     UNUSED(memory);
     // NOTE(khvorov) NOOP
+}
+
+global_variable Arena globalTempArena;
+
+//
+// SECTION Strings
+//
+
+typedef struct String {
+    char* ptr;
+    i32   len;
+} String;
+
+function String
+stringFromCstring(char* cstring) {
+    usize len = SDL_strlen(cstring);
+    assert(len <= SDL_MAX_SINT32);
+    String str = {.ptr = cstring, .len = (i32)len};
+    return str;
+}
+
+function String
+fmtTempString(char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    char* ptr = (char*)(globalTempArena.base + globalTempArena.used);
+    i32   len = SDL_vsnprintf(ptr, globalTempArena.size - globalTempArena.used, fmt, ap);
+    globalTempArena.used += len;
+    va_end(ap);
+    String result = {ptr, len};
+    return result;
 }
 
 //
@@ -470,6 +501,14 @@ loadFont(Allocator allocator) {
     return result;
 }
 
+function Glyph*
+getGlyphInfo(Font* font, u32 ch) {
+    assert(ch >= font->firstChar);
+    u32    chIndex = ch - font->firstChar;
+    Glyph* glyphInfo = font->glyphs + chIndex;
+    return glyphInfo;
+}
+
 //
 // SECTION Timing
 //
@@ -479,13 +518,13 @@ typedef struct Clock {
     u64 counter;
 } Clock;
 
-Clock
+function Clock
 getCurrentClock() {
     Clock result = {.countsPerSecond = SDL_GetPerformanceFrequency(), .counter = SDL_GetPerformanceCounter()};
     return result;
 }
 
-f32
+function f32
 getMsFrom(Clock clock) {
     u64 counterDiff = SDL_GetPerformanceCounter() - clock.counter;
     f32 result = (f32)counterDiff / (f32)clock.countsPerSecond * 1000.f;
@@ -600,7 +639,62 @@ drawRect(Renderer* renderer, Rect2i rect, Color color) {
     }
 }
 
-i32
+typedef struct OutlineRects {
+    Rect2i rects[4];
+} OutlineRects;
+
+function OutlineRects
+getOutlineRects(Rect2i rect, i32 thickness) {
+    assert(rect.h >= 0 && rect.w >= 0);
+    Rect2i top = rect;
+    top.h = thickness;
+
+    Rect2i bottom = top;
+    bottom.y += rect.h - thickness;
+
+    Rect2i right = rect;
+    right.w = thickness;
+
+    Rect2i left = right;
+    left.x += rect.w - thickness;
+
+    OutlineRects result = {{top, bottom, left, right}};
+    return result;
+}
+
+function void
+drawRectOutline(Renderer* renderer, Rect2i rect, Color color, i32 thickness) {
+    assert(rect.w >= 0 && rect.h >= 0);
+    OutlineRects outline = getOutlineRects(rect, thickness);
+    for (usize index = 0; index < arrayLen(outline.rects); index++) {
+        Rect2i outlineRect = outline.rects[index];
+        drawRect(renderer, outlineRect, color);
+    }
+}
+
+function void
+drawGlyph(Renderer* renderer, Glyph* glyph, i32 topleftX, i32 topleftY) {
+    SDL_Rect atlasRect = {.x = glyph->atlasTopleftX, .y = glyph->atlasY, .w = glyph->width, .h = glyph->height};
+    SDL_Rect destRect =
+        {.x = topleftX + glyph->offsetX, .y = topleftY + glyph->offsetY, .w = glyph->width, .h = glyph->height};
+    SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlFontTexture, &atlasRect, &destRect);
+}
+
+function void
+drawTextline(Renderer* renderer, String text, Rect2i rect) {
+    SDL_RenderSetClipRect(renderer->sdlRenderer, &rect);
+    i32 curTopleftX = rect.x;
+    i32 topleftY = rect.y + (rect.h - renderer->font.lineHeight) / 2;
+    for (i32 strIndex = 0; strIndex < text.len; strIndex++) {
+        u32    ch = text.ptr[strIndex];
+        Glyph* glyphInfo = getGlyphInfo(&renderer->font, ch);
+        drawGlyph(renderer, glyphInfo, curTopleftX, topleftY);
+        curTopleftX += glyphInfo->advanceX;
+    }
+    SDL_RenderSetClipRect(renderer->sdlRenderer, 0);
+}
+
+function i32
 drawMemRect(Renderer* renderer, i32 topleftX, i32 memUsed, i32 totalMemoryUsed, i32 height, Color color) {
     Rect2i memRect = {
         .x = topleftX,
@@ -609,11 +703,13 @@ drawMemRect(Renderer* renderer, i32 topleftX, i32 memUsed, i32 totalMemoryUsed, 
         .h = height,
     };
     drawRect(renderer, memRect, color);
+    drawRectOutline(renderer, memRect, (Color){.a = 255}, 1);
+    drawTextline(renderer, fmtTempString("%d", memUsed), memRect);
     i32 toprightX = memRect.x + memRect.w;
     return toprightX;
 }
 
-i32
+function i32
 drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topleftX, i32 totalMemoryUsed, i32 height) {
     i32 toprightX = drawMemRect(renderer, topleftX, used, totalMemoryUsed, height, (Color) {.r = 100, .a = 255});
     toprightX = drawMemRect(renderer, toprightX, size - used, totalMemoryUsed, height, (Color) {.g = 100, .a = 255});
@@ -696,10 +792,13 @@ int
 main(int argc, char* argv[]) {
     UNUSED(argc);
     UNUSED(argv);
-    Arena     virtualArena = createArenaFromVmem(2 * MEGABYTE);
+
+    Arena     virtualArena = createArenaFromVmem(3 * MEGABYTE);
     Allocator virtualArenaAllocator = createArenaAllocator(&virtualArena);
     globalFTArena = createArena(1 * MEGABYTE, virtualArenaAllocator);
+    globalTempArena = createArena(1 * MEGABYTE, virtualArenaAllocator);
     SDL_SetMemoryFunctions(sdlMallocWrapper, sdlCallocWrapper, sdlReallocWrapper, sdlFreeWrapper);
+
     CreateRendererResult createRendererResult = createRenderer(virtualArenaAllocator);
     if (createRendererResult.success) {
         Renderer    renderer = createRendererResult.renderer;
@@ -708,6 +807,7 @@ main(int argc, char* argv[]) {
         EditorState editorState = createEditorState();
         bool        running = true;
         while (running) {
+            globalTempArena.used = 0;
             inputBeginFrame(&input);
 
             SDL_Event event;
@@ -746,8 +846,16 @@ main(int argc, char* argv[]) {
                 );
                 toprightX = drawArenaUsage(
                     &renderer,
-                    virtualArena.size - globalFTArena.size,
-                    virtualArena.used - globalFTArena.size,
+                    globalTempArena.size,
+                    globalTempArena.used,
+                    toprightX,
+                    totalMemoryUsed,
+                    memRectHeight
+                );
+                toprightX = drawArenaUsage(
+                    &renderer,
+                    virtualArena.size - globalFTArena.size - globalTempArena.size,
+                    virtualArena.used - globalFTArena.size - globalTempArena.size,
                     toprightX,
                     totalMemoryUsed,
                     memRectHeight
