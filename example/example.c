@@ -20,6 +20,7 @@
 #define GIGABYTE 1024 * MEGABYTE
 
 // clang-format off
+#define UNUSED(x) ((x)=(x))
 #define min(x, y) (((x) < (y)) ? (x) : (y))
 #define max(x, y) (((x) > (y)) ? (x) : (y))
 #define clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
@@ -73,6 +74,7 @@ typedef struct Allocator {
     AllocatorAllocAndZero allocAndZero;
 } Allocator;
 
+#define allocStruct(allocator, type) (type*)(allocator).allocAndZero((allocator).data, sizeof(type), _Alignof(type))
 #define allocArray(allocator, type, count) \
     (type*)(allocator).allocAndZero((allocator).data, sizeof(type) * (count), _Alignof(type))
 
@@ -191,6 +193,58 @@ sdlFreeWrapper(void* ptr) {
         atomic_fetch_sub(&globalSDLMemoryUsed, *size);
     }
     dlfree(ptr);
+}
+
+#include FT_CONFIG_CONFIG_H
+#include <freetype/internal/ftdebug.h>
+#include <freetype/internal/ftstream.h>
+#include <freetype/ftsystem.h>
+#include <freetype/fterrors.h>
+#include <freetype/fttypes.h>
+
+global_variable Arena globalFTArena;
+
+FT_CALLBACK_DEF(void*)
+ftAllocCustom(FT_Memory memory, long size) {
+    UNUSED(memory);
+    assert(size <= INT32_MAX);
+    void* result = arenaAllocAndZero(&globalFTArena, size, 8);
+    return result;
+}
+
+FT_CALLBACK_DEF(void*)
+ftReallocCustom(FT_Memory memory, long curSize, long newSize, void* block) {
+    UNUSED(memory);
+    UNUSED(curSize);
+    assert(newSize <= INT32_MAX);
+    void* result = arenaRealloc(&globalFTArena, block, newSize, 8);
+    return result;
+}
+FT_CALLBACK_DEF(void)
+ftFreeCustom(FT_Memory memory, void* block) {
+    // NOTE(khvorov) NOOP
+    UNUSED(memory);
+    UNUSED(block);
+}
+
+FT_BASE_DEF(FT_Memory)
+FT_New_Memory(void) {
+    FT_Memory memory = (FT_Memory)arenaAllocAndZero(&globalFTArena, sizeof(*memory), _Alignof(*memory));
+    if (memory) {
+        // NOTE(khvorov) This user pointer is very helpful and all but this
+        // function doesn't take it, so freetype arena has to be a global anyway
+        memory->user = NULL;
+        memory->alloc = ftAllocCustom;
+        memory->realloc = ftReallocCustom;
+        memory->free = ftFreeCustom;
+    }
+    return memory;
+}
+
+FT_BASE_DEF(void)
+FT_Done_Memory(FT_Memory memory) {
+    UNUSED(memory);
+    // NOTE(khvorov) NOOP
 }
 
 //
@@ -545,13 +599,24 @@ drawRect(Renderer* renderer, Rect2i rect, Color color) {
     }
 }
 
-void
-drawArenaUsage(Renderer* renderer, Arena* arena, Rect2i bounds) {
-    Rect2i arenaRect = bounds;
-    Rect2i arenaUsedRect = arenaRect;
-    arenaUsedRect.w = (i32)((f32)arena->used / (f32)arena->size * (f32)arenaRect.w + 0.5f);
-    drawRect(renderer, arenaRect, (Color) {0, 100, 0, 0});
-    drawRect(renderer, arenaUsedRect, (Color) {100, 0, 0, 0});
+i32
+drawMemRect(Renderer* renderer, i32 topleftX, i32 memUsed, i32 totalMemoryUsed, i32 height, Color color) {
+    Rect2i memRect = {
+        .x = topleftX,
+        .y = 0,
+        .w = (i32)((f32)memUsed / (f32)totalMemoryUsed * (f32)renderer->width + 0.5f),
+        .h = height,
+    };
+    drawRect(renderer, memRect, color);
+    i32 toprightX = memRect.x + memRect.w;
+    return toprightX;
+}
+
+i32
+drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topleftX, i32 totalMemoryUsed, i32 height) {
+    i32 toprightX = drawMemRect(renderer, topleftX, used, totalMemoryUsed, height, (Color) {.r = 100, .a = 255});
+    toprightX = drawMemRect(renderer, toprightX, size - used, totalMemoryUsed, height, (Color) {.g = 100, .a = 255});
+    return toprightX;
 }
 
 //
@@ -572,7 +637,7 @@ typedef struct EditorState {
 } EditorState;
 
 function EditorState
-createGameState(f32 widthOverHeight) {
+createEditorState(void) {
     EditorState result = {
         .showEntireFontTexture = true,
     };
@@ -580,7 +645,8 @@ createGameState(f32 widthOverHeight) {
 }
 
 function void
-editorUpdateAndRender(EditorState* editorState, Renderer* renderer, Input* input, f32 deltaTimeMs) {
+editorUpdateAndRender(EditorState* editorState, Renderer* renderer, Input* input) {
+    UNUSED(input);
     // TODO(khvorov) Implement
     if (editorState->showEntireFontTexture) {
         drawEntireFontTexture(renderer);
@@ -627,17 +693,18 @@ processEvent(SDL_Window* window, SDL_Event* event, bool* running, Input* input) 
 
 int
 main(int argc, char* argv[]) {
-    // TODO(khvorov) Hook up custom allocators to freetype
-    Arena     virtualArena = createArenaFromVmem(1 * MEGABYTE);
+    UNUSED(argc);
+    UNUSED(argv);
+    Arena     virtualArena = createArenaFromVmem(2 * MEGABYTE);
     Allocator virtualArenaAllocator = createArenaAllocator(&virtualArena);
+    globalFTArena = createArena(1 * MEGABYTE, virtualArenaAllocator);
     SDL_SetMemoryFunctions(sdlMallocWrapper, sdlCallocWrapper, sdlReallocWrapper, sdlFreeWrapper);
     CreateRendererResult createRendererResult = createRenderer(virtualArenaAllocator);
     if (createRendererResult.success) {
         Renderer    renderer = createRendererResult.renderer;
         SDL_Window* sdlWindow = renderer.sdlWindow;
         Input       input = {0};
-        EditorState editorState = createGameState((f32)renderer.width / (f32)renderer.height);
-        f32         targetMsPerFrame = 1000.0f / 60.0f;
+        EditorState editorState = createEditorState();
         bool        running = true;
         while (running) {
             inputBeginFrame(&input);
@@ -653,28 +720,37 @@ main(int argc, char* argv[]) {
 
             // TODO(khvorov) Visualize timings
             // TODO(khvorov) Hardware rendering?
-            editorUpdateAndRender(&editorState, &renderer, &input, targetMsPerFrame);
+            editorUpdateAndRender(&editorState, &renderer, &input);
 
             // NOTE(khvorov) Visualize memory usage
             {
                 assert(globalSDLMemoryUsed <= INT32_MAX);
-                i32    totalMemoryUsed = globalSDLMemoryUsed + virtualArena.size;
-                i32    memRectHeight = 20;
-                Rect2i sdlMemRect = {
-                    .x = 0,
-                    .y = 0,
-                    .w = (i32)((f32)globalSDLMemoryUsed / (f32)totalMemoryUsed * (f32)renderer.width + 0.5f),
-                    .h = memRectHeight,
-                };
-                drawRect(&renderer, sdlMemRect, (Color) {.r = 100, .g = 100, .b = 0, .a = 255});
-
-                Rect2i varenaMemRect = {
-                    .x = sdlMemRect.x + sdlMemRect.w,
-                    .y = sdlMemRect.y,
-                    .w = renderer.width - sdlMemRect.w,
-                    .h = memRectHeight,
-                };
-                drawArenaUsage(&renderer, &virtualArena, varenaMemRect);
+                i32 totalMemoryUsed = globalSDLMemoryUsed + virtualArena.size;
+                i32 memRectHeight = 20;
+                i32 toprightX = drawMemRect(
+                    &renderer,
+                    0,
+                    globalSDLMemoryUsed,
+                    totalMemoryUsed,
+                    memRectHeight,
+                    (Color) {.r = 100, .g = 100, .a = 255}
+                );
+                toprightX = drawArenaUsage(
+                    &renderer,
+                    globalFTArena.size,
+                    globalFTArena.used,
+                    toprightX,
+                    totalMemoryUsed,
+                    memRectHeight
+                );
+                toprightX = drawArenaUsage(
+                    &renderer,
+                    virtualArena.size - globalFTArena.size,
+                    virtualArena.used - globalFTArena.size,
+                    toprightX,
+                    totalMemoryUsed,
+                    memRectHeight
+                );
             }
 
             renderEnd(&renderer);

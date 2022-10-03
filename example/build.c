@@ -222,7 +222,7 @@ main() {
 
     char* freetypeCompileSources[] = {
         // Required
-        "src/base/ftsystem.c",
+        //"src/base/ftsystem.c", // NOTE(khvorov) Memory routines for freetype are in the main program
         "src/base/ftinit.c",
         "src/base/ftdebug.c",
         "src/base/ftbase.c",
@@ -280,6 +280,7 @@ main() {
 
     char* freetypeCompileFlags[] = {
         "-DFT2_BUILD_LIBRARY",
+        "-DFT_CONFIG_OPTION_DISABLE_STREAM_SUPPORT",
     };
 
     StaticLib freetype = downloadAndCompileStaticLib(
@@ -401,7 +402,7 @@ main() {
     prb_String mainFlags[] = {
         freetype.includeFlag,
         sdl.includeFlag,
-        "-Wall -Wextra -Wno-unused-parameter -Wno-unused-function",
+        "-Wall -Wextra -Wno-unused-function",
 #if prb_PLATFORM_WINDOWS
         "-Zi"),
         prb_stringJoin2("-Fo"), prb_pathJoin(compileOutDir, "example.obj"))),
