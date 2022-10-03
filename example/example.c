@@ -545,15 +545,13 @@ drawRect(Renderer* renderer, Rect2i rect, Color color) {
     }
 }
 
-i32
-drawArenaUsage(Renderer* renderer, Arena* arena, i32 topleftY) {
-    Rect2i arenaRect = {.x = 0, .y = topleftY, .w = 1000, .h = 20};
+void
+drawArenaUsage(Renderer* renderer, Arena* arena, Rect2i bounds) {
+    Rect2i arenaRect = bounds;
     Rect2i arenaUsedRect = arenaRect;
     arenaUsedRect.w = (i32)((f32)arena->used / (f32)arena->size * (f32)arenaRect.w + 0.5f);
     drawRect(renderer, arenaRect, (Color) {0, 100, 0, 0});
     drawRect(renderer, arenaUsedRect, (Color) {100, 0, 0, 0});
-    i32 yoffset = topleftY + arenaRect.h;
-    return yoffset;
 }
 
 //
@@ -630,9 +628,7 @@ processEvent(SDL_Window* window, SDL_Event* event, bool* running, Input* input) 
 int
 main(int argc, char* argv[]) {
     // TODO(khvorov) Hook up custom allocators to freetype
-    // TODO(khvorov) Visualize SDL memory usage
-    // TODO(khvorov) Custom pool for SDL?
-    Arena     virtualArena = createArenaFromVmem(1 * GIGABYTE);
+    Arena     virtualArena = createArenaFromVmem(1 * MEGABYTE);
     Allocator virtualArenaAllocator = createArenaAllocator(&virtualArena);
     SDL_SetMemoryFunctions(sdlMallocWrapper, sdlCallocWrapper, sdlReallocWrapper, sdlFreeWrapper);
     CreateRendererResult createRendererResult = createRenderer(virtualArenaAllocator);
@@ -661,8 +657,24 @@ main(int argc, char* argv[]) {
 
             // NOTE(khvorov) Visualize memory usage
             {
-                drawArenaUsage(&renderer, &virtualArena, 0);
-                SDL_Log("%ld", globalSDLMemoryUsed / 1024);
+                assert(globalSDLMemoryUsed <= INT32_MAX);
+                i32    totalMemoryUsed = globalSDLMemoryUsed + virtualArena.size;
+                i32    memRectHeight = 20;
+                Rect2i sdlMemRect = {
+                    .x = 0,
+                    .y = 0,
+                    .w = (i32)((f32)globalSDLMemoryUsed / (f32)totalMemoryUsed * (f32)renderer.width + 0.5f),
+                    .h = memRectHeight,
+                };
+                drawRect(&renderer, sdlMemRect, (Color) {.r = 100, .g = 100, .b = 0, .a = 255});
+
+                Rect2i varenaMemRect = {
+                    .x = sdlMemRect.x + sdlMemRect.w,
+                    .y = sdlMemRect.y,
+                    .w = renderer.width - sdlMemRect.w,
+                    .h = memRectHeight,
+                };
+                drawArenaUsage(&renderer, &virtualArena, varenaMemRect);
             }
 
             renderEnd(&renderer);
