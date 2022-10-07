@@ -509,6 +509,17 @@ getGlyphInfo(Font* font, u32 ch) {
     return glyphInfo;
 }
 
+function i32
+getTextlinePxLength(Font* font, String textline) {
+    i32 result = 0;
+    for (i32 strIndex = 0; strIndex < textline.len; strIndex++) {
+        u32    ch = textline.ptr[strIndex];
+        Glyph* glyph = getGlyphInfo(font, ch);
+        result += glyph->advanceX;
+    }
+    return result;
+}
+
 //
 // SECTION Timing
 //
@@ -682,8 +693,9 @@ drawGlyph(Renderer* renderer, Glyph* glyph, i32 topleftX, i32 topleftY) {
 
 function void
 drawTextline(Renderer* renderer, String text, Rect2i rect) {
-    SDL_RenderSetClipRect(renderer->sdlRenderer, &rect);
-    i32 curTopleftX = rect.x;
+    // SDL_RenderSetClipRect(renderer->sdlRenderer, &rect);
+    // i32 textlineWidth = getTextlinePxLength(&renderer->font, text);
+    i32 curTopleftX = rect.x; // + rect.w / 2 - textlineWidth / 2;
     i32 topleftY = rect.y + (rect.h - renderer->font.lineHeight) / 2;
     for (i32 strIndex = 0; strIndex < text.len; strIndex++) {
         u32    ch = text.ptr[strIndex];
@@ -691,11 +703,21 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
         drawGlyph(renderer, glyphInfo, curTopleftX, topleftY);
         curTopleftX += glyphInfo->advanceX;
     }
-    SDL_RenderSetClipRect(renderer->sdlRenderer, 0);
+    // SDL_RenderSetClipRect(renderer->sdlRenderer, 0);
 }
 
 function i32
-drawMemRect(Renderer* renderer, i32 topleftX, i32 memUsed, i32 totalMemoryUsed, i32 height, Color color) {
+drawMemRect(
+    Renderer* renderer,
+    i32       topleftX,
+    i32       topleftXText,
+    i32       topleftYTextMultiplier,
+    i32       memUsed,
+    i32       totalMemoryUsed,
+    i32       height,
+    Color     color,
+    String    name
+) {
     Rect2i memRect = {
         .x = topleftX,
         .y = 0,
@@ -704,15 +726,51 @@ drawMemRect(Renderer* renderer, i32 topleftX, i32 memUsed, i32 totalMemoryUsed, 
     };
     drawRect(renderer, memRect, color);
     drawRectOutline(renderer, memRect, (Color) {.a = 255}, 1);
-    drawTextline(renderer, fmtTempString("%d", memUsed), memRect);
+
+    // NOTE(khvorov) Draw memory usage
+    {
+        char* sizes[] = {"B", "KB", "MB", "GB", "TB"};
+        f32   sizeSmallEnough = (f32)memUsed;
+        usize divisions = 0;
+        while (sizeSmallEnough > 1024.0f && divisions < arrayLen(sizes) - 1) {
+            sizeSmallEnough /= 1024.0f;
+            divisions++;
+        }
+        String memsizeString = fmtTempString("%s: %.1f%s", name.ptr, sizeSmallEnough, sizes[divisions]);
+
+        Rect2i textRect =
+            {.x = topleftXText, .y = memRect.y + memRect.h * topleftYTextMultiplier, .w = memRect.w, .h = memRect.h};
+        drawTextline(renderer, memsizeString, textRect);
+    }
+
     i32 toprightX = memRect.x + memRect.w;
     return toprightX;
 }
 
 function i32
-drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topleftX, i32 totalMemoryUsed, i32 height) {
-    i32 toprightX = drawMemRect(renderer, topleftX, used, totalMemoryUsed, height, (Color) {.r = 100, .a = 255});
-    toprightX = drawMemRect(renderer, toprightX, size - used, totalMemoryUsed, height, (Color) {.g = 100, .a = 255});
+drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topleftX, i32 totalMemoryUsed, i32 height, String name) {
+    i32 toprightX = drawMemRect(
+        renderer,
+        topleftX,
+        topleftX,
+        1,
+        used,
+        totalMemoryUsed,
+        height,
+        (Color) {.r = 100, .a = 255},
+        fmtTempString("%s used", name)
+    );
+    toprightX = drawMemRect(
+        renderer,
+        toprightX,
+        topleftX,
+        2,
+        size - used,
+        totalMemoryUsed,
+        height,
+        (Color) {.g = 100, .a = 255},
+        fmtTempString("%s free", name)
+    );
     return toprightX;
 }
 
@@ -829,34 +887,43 @@ main(int argc, char* argv[]) {
                 i32 toprightX = drawMemRect(
                     &renderer,
                     0,
+                    0,
+                    1,
                     globalSDLMemoryUsed,
                     totalMemoryUsed,
                     memRectHeight,
-                    (Color) {.r = 100, .g = 100, .a = 255}
+                    (Color) {.r = 100, .g = 100, .a = 255},
+                    stringFromCstring("SDL")
                 );
+
                 toprightX = drawArenaUsage(
                     &renderer,
                     globalFTArena.size,
                     globalFTArena.used,
                     toprightX,
                     totalMemoryUsed,
-                    memRectHeight
+                    memRectHeight,
+                    stringFromCstring("FT")
                 );
+
                 toprightX = drawArenaUsage(
                     &renderer,
                     globalTempArena.size,
                     globalTempArena.used,
                     toprightX,
                     totalMemoryUsed,
-                    memRectHeight
+                    memRectHeight,
+                    stringFromCstring("TMP")
                 );
+
                 toprightX = drawArenaUsage(
                     &renderer,
                     virtualArena.size - globalFTArena.size - globalTempArena.size,
                     virtualArena.used - globalFTArena.size - globalTempArena.size,
                     toprightX,
                     totalMemoryUsed,
-                    memRectHeight
+                    memRectHeight,
+                    stringFromCstring("REST")
                 );
             }
 
