@@ -703,7 +703,7 @@ drawMemRect(Renderer* renderer, i32 topleftX, i32 memUsed, i32 totalMemoryUsed, 
         .h = height,
     };
     drawRect(renderer, memRect, color);
-    drawRectOutline(renderer, memRect, (Color){.a = 255}, 1);
+    drawRectOutline(renderer, memRect, (Color) {.a = 255}, 1);
     drawTextline(renderer, fmtTempString("%d", memUsed), memRect);
     i32 toprightX = memRect.x + memRect.w;
     return toprightX;
@@ -810,12 +810,10 @@ main(int argc, char* argv[]) {
             globalTempArena.used = 0;
             inputBeginFrame(&input);
 
+            // NOTE(khvorov) Process one event at a time since input doesn't store the order they come in in
             SDL_Event event;
             assert(SDL_WaitEvent(&event) == 1);
             processEvent(sdlWindow, &event, &running, &input);
-            while (SDL_PollEvent(&event)) {
-                processEvent(sdlWindow, &event, &running, &input);
-            }
 
             assert(renderBegin(&renderer) == CompletionStatus_Sucess);
 
