@@ -202,13 +202,16 @@ sdlFreeWrapper(void* ptr) {
 #include <freetype/fterrors.h>
 #include <freetype/fttypes.h>
 
-global_variable Arena globalFTArena;
+// NOTE(khvorov) Freetype is single-threaded
+global_variable usize globalFTMemoryUsed;
 
 FT_CALLBACK_DEF(void*)
 ftAllocCustom(FT_Memory memory, long size) {
     UNUSED(memory);
-    assert(size <= INT32_MAX);
-    void* result = arenaAllocAndZero(&globalFTArena, size, 8);
+    void* result = dlmalloc(size);
+    if (result) {
+        globalFTMemoryUsed += *((usize*)result - 1);
+    }
     return result;
 }
 
@@ -216,24 +219,30 @@ FT_CALLBACK_DEF(void*)
 ftReallocCustom(FT_Memory memory, long curSize, long newSize, void* block) {
     UNUSED(memory);
     UNUSED(curSize);
-    assert(newSize <= INT32_MAX);
-    void* result = arenaRealloc(&globalFTArena, block, newSize, 8);
+    if (block) {
+        globalFTMemoryUsed -= *((usize*)block - 1);
+    }
+    void* result = dlrealloc(block, newSize);
+    if (result) {
+        globalFTMemoryUsed += *((usize*)result - 1);
+    }
     return result;
 }
 
 FT_CALLBACK_DEF(void)
 ftFreeCustom(FT_Memory memory, void* block) {
-    // NOTE(khvorov) NOOP
     UNUSED(memory);
-    UNUSED(block);
+    globalFTMemoryUsed -= *((usize*)block - 1);
+    dlfree(block);
 }
 
 FT_BASE_DEF(FT_Memory)
 FT_New_Memory(void) {
-    FT_Memory memory = (FT_Memory)arenaAllocAndZero(&globalFTArena, sizeof(*memory), _Alignof(*memory));
+    FT_Memory memory = (FT_Memory)dlmalloc(sizeof(*memory));
+    globalFTMemoryUsed += *((usize*)memory - 1);
     if (memory) {
         // NOTE(khvorov) This user pointer is very helpful and all but this
-        // function doesn't take it, so freetype arena has to be a global anyway
+        // function doesn't take it, so freetype data has to be a global anyway
         memory->user = NULL;
         memory->alloc = ftAllocCustom;
         memory->realloc = ftReallocCustom;
@@ -244,8 +253,8 @@ FT_New_Memory(void) {
 
 FT_BASE_DEF(void)
 FT_Done_Memory(FT_Memory memory) {
-    UNUSED(memory);
-    // NOTE(khvorov) NOOP
+    globalFTMemoryUsed -= *((usize*)memory - 1);
+    dlfree(memory);
 }
 
 global_variable Arena globalTempArena;
@@ -345,70 +354,56 @@ wasUnpressed(Input* input, InputKeyID keyID) {
 // SECTION Font
 //
 
-typedef struct RectPacker {
-    i32 width, height;
-    i32 currentX, currentY;
-    i32 tallestOnLine;
-} RectPacker;
-
-function RectPacker
-rectPackBegin(i32 width) {
-    RectPacker packer = {.width = width};
-    return packer;
-}
-
-function void
-rectPackAdd(RectPacker* packer, i32 width, i32 height, i32* topleftX, i32* topleftY) {
-    i32 widthLeft = packer->width - packer->currentX;
-
-    if (width > widthLeft) {
-        assert(width <= packer->width);
-        packer->currentX = 0;
-        packer->currentY += packer->tallestOnLine;
-        packer->tallestOnLine = 0;
-    }
-
-    *topleftX = packer->currentX;
-    *topleftY = packer->currentY;
-
-    packer->currentX += width;
-
-    i32 prevTallest = packer->tallestOnLine;
-    packer->tallestOnLine = max(packer->tallestOnLine, height);
-    packer->height += max(packer->tallestOnLine - prevTallest, 0);
-}
-
 #include "fontdata.c"
 
 typedef struct Glyph {
-    i32 atlasTopleftX, atlasY;
-    i32 width, height;
+    i32 width, height, pitch;
     i32 offsetX, offsetY;
     i32 advanceX;
 } Glyph;
 
 typedef struct Font {
-    Glyph* glyphs;
-    u32    firstChar;
-    i32    charCount;
-    i32    lineHeight;
-    u32*   buffer;
-    i32    width, height, pitch;
+    FT_Face ftFace;
+    i32     lineHeight;
+    i32     fontHeight;
+    Glyph   loadedGlyph;
+    u32*    loadedGlyphPx;
+    i32     loadedGlyphPxWidth, loadedGlyphPxHeight;
 } Font;
 
 function CompletionStatus
-loadAndRenderFTBitmap(u32 firstchar, i32 chIndex, FT_Face ftFace) {
-    assert(chIndex >= 0);
+loadGlyph(Font* font, u32 ch) {
     CompletionStatus result = CompletionStatus_Failure;
-    u32              ch = firstchar + chIndex;
-    u32              ftGlyphIndex = FT_Get_Char_Index(ftFace, ch);
-    FT_Error         loadGlyphResult = FT_Load_Glyph(ftFace, ftGlyphIndex, FT_LOAD_DEFAULT);
+    u32              ftGlyphIndex = FT_Get_Char_Index(font->ftFace, ch);
+    FT_Error         loadGlyphResult = FT_Load_Glyph(font->ftFace, ftGlyphIndex, FT_LOAD_DEFAULT);
     if (loadGlyphResult == FT_Err_Ok) {
-        if (ftFace->glyph->format != FT_GLYPH_FORMAT_BITMAP) {
-            FT_Error renderGlyphResult = FT_Render_Glyph(ftFace->glyph, FT_RENDER_MODE_NORMAL);
+        if (font->ftFace->glyph->format != FT_GLYPH_FORMAT_BITMAP) {
+            FT_Error renderGlyphResult = FT_Render_Glyph(font->ftFace->glyph, FT_RENDER_MODE_NORMAL);
             if (renderGlyphResult == FT_Err_Ok) {
+                FT_GlyphSlot ftGlyph = font->ftFace->glyph;
+                FT_Bitmap    bm = ftGlyph->bitmap;
+
+                font->loadedGlyph = (Glyph) {
+                    .advanceX = ftGlyph->advance.x >> 6,
+                    .width = bm.width,
+                    .height = bm.rows,
+                    .pitch = bm.pitch,
+                    .offsetX = ftGlyph->bitmap_left,
+                    .offsetY = font->fontHeight - ftGlyph->bitmap_top,
+                };
+
+                for (i32 bmRow = 0; bmRow < (i32)bm.rows; bmRow++) {
+                    for (i32 bmCol = 0; bmCol < (i32)bm.width; bmCol++) {
+                        i32 bmIndex = bmRow * bm.pitch + bmCol;
+                        i32 alpha = bm.buffer[bmIndex];
+                        i32 fullColorRGBA = 0xFFFFFF00 | alpha;
+                        i32 bufIndex = bmRow * font->loadedGlyphPxWidth + bmCol;
+                        font->loadedGlyphPx[bufIndex] = fullColorRGBA;
+                    }
+                }
+
                 result = CompletionStatus_Sucess;
-            }
+            };
         }
     }
     return result;
@@ -431,91 +426,21 @@ loadFont(Allocator allocator) {
             i32      fontHeight = 14;
             FT_Error ftSetPxSizeResult = FT_Set_Pixel_Sizes(ftFace, 0, fontHeight);
             if (ftSetPxSizeResult == FT_Err_Ok) {
-                i32        atlasWidth = 500;
-                i32        atlasPitch = atlasWidth * sizeof(u32);
-                RectPacker charPacker = rectPackBegin(atlasWidth);
-
-                u32    firstChar = ' ';
-                i32    charCount = '~' - firstChar + 1;
-                Glyph* glyphs = allocArray(allocator, Glyph, charCount);
-                for (i32 chIndex = 0; chIndex < charCount; chIndex++) {
-                    assert(loadAndRenderFTBitmap(firstChar, chIndex, ftFace) == CompletionStatus_Sucess);
-                    FT_GlyphSlot ftGlyph = ftFace->glyph;
-                    FT_Bitmap    bm = ftGlyph->bitmap;
-                    Glyph*       glyphInfo = glyphs + chIndex;
-                    *glyphInfo = (Glyph) {
-                        .advanceX = ftGlyph->advance.x >> 6,
-                        .width = bm.width,
-                        .height = bm.rows,
-                        .offsetX = ftGlyph->bitmap_left,
-                        .offsetY = fontHeight - ftGlyph->bitmap_top,
-                    };
-                    rectPackAdd(&charPacker, bm.width, bm.rows, &glyphInfo->atlasTopleftX, &glyphInfo->atlasY);
-                }
-
-                i32  atlasHeight = charPacker.height;
-                i32  fontAtlasPx = charPacker.width * atlasHeight;
-                u32* atlas = allocArray(allocator, u32, fontAtlasPx);
-                for (i32 chIndex = 0; chIndex < charCount; chIndex++) {
-                    assert(loadAndRenderFTBitmap(firstChar, chIndex, ftFace) == CompletionStatus_Sucess);
-                    FT_GlyphSlot ftGlyph = ftFace->glyph;
-                    FT_Bitmap    bm = ftGlyph->bitmap;
-                    Glyph*       glyphInfo = glyphs + chIndex;
-
-                    for (i32 bmRow = 0; bmRow < (i32)bm.rows; bmRow++) {
-                        i32 atlasY = bmRow + glyphInfo->atlasY;
-                        for (i32 bmCol = 0; bmCol < (i32)bm.width; bmCol++) {
-                            i32 atlasX = bmCol + glyphInfo->atlasTopleftX;
-                            i32 bmIndex = bmRow * (bm.pitch / sizeof(u8)) + bmCol;
-                            i32 atlasIndex = atlasY * (atlasPitch / sizeof(u32)) + atlasX;
-
-                            i32 alpha = bm.buffer[bmIndex];
-                            i32 fullColorRGBA = 0xFFFFFF00 | alpha;
-                            atlas[atlasIndex] = fullColorRGBA;
-                        }
-                    }
-                }
-
-                i32 lineHeight = FT_MulFix(ftFace->height, ftFace->size->metrics.y_scale) >> 6;
-
+                i32  lineHeight = FT_MulFix(ftFace->height, ftFace->size->metrics.y_scale) >> 6;
+                i32  pxBufferWidth = 100;
+                i32  pxBufferHeight = 100;
+                u32* pxBuffer = allocArray(allocator, u32, pxBufferWidth * pxBufferWidth);
                 Font font = {
-                    .glyphs = glyphs,
-                    .firstChar = firstChar,
-                    .charCount = charCount,
-                    .buffer = atlas,
-                    .width = atlasWidth,
-                    .height = atlasHeight,
-                    .pitch = atlasPitch,
+                    .ftFace = ftFace,
                     .lineHeight = lineHeight,
+                    .fontHeight = fontHeight,
+                    .loadedGlyphPx = pxBuffer,
+                    .loadedGlyphPxWidth = pxBufferWidth,
+                    .loadedGlyphPxHeight = pxBufferHeight,
                 };
-
                 result = (LoadFontResult) {.success = true, .font = font};
             }
-
-            FT_Done_Face(ftFace);
         }
-
-        FT_Done_FreeType(ftLib);
-    }
-
-    return result;
-}
-
-function Glyph*
-getGlyphInfo(Font* font, u32 ch) {
-    assert(ch >= font->firstChar);
-    u32    chIndex = ch - font->firstChar;
-    Glyph* glyphInfo = font->glyphs + chIndex;
-    return glyphInfo;
-}
-
-function i32
-getTextlinePxLength(Font* font, String textline) {
-    i32 result = 0;
-    for (i32 strIndex = 0; strIndex < textline.len; strIndex++) {
-        u32    ch = textline.ptr[strIndex];
-        Glyph* glyph = getGlyphInfo(font, ch);
-        result += glyph->advanceX;
     }
     return result;
 }
@@ -573,29 +498,20 @@ createRenderer(Allocator allocator) {
             if (sdlWindow) {
                 SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
                 if (sdlRenderer) {
-                    SDL_Texture* sdlTexture = SDL_CreateTexture(
-                        sdlRenderer,
-                        SDL_PIXELFORMAT_RGBA8888,
-                        SDL_TEXTUREACCESS_STATIC,
-                        font.width,
-                        font.height
-                    );
+                    SDL_Texture* sdlTexture =
+                        SDL_CreateTexture(sdlRenderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, 100, 100);
                     if (sdlTexture) {
                         int setTexBlendModeResult = SDL_SetTextureBlendMode(sdlTexture, SDL_BLENDMODE_BLEND);
                         if (setTexBlendModeResult == 0) {
-                            int updateTexResult = SDL_UpdateTexture(sdlTexture, 0, font.buffer, font.pitch);
-                            if (updateTexResult == 0) {
-                                Renderer renderer = {
-                                    .sdlWindow = sdlWindow,
-                                    .sdlRenderer = sdlRenderer,
-                                    .font = font,
-                                    .sdlFontTexture = sdlTexture,
-                                    .width = windowWidth,
-                                    .height = windowHeight,
-                                };
-
-                                result = (CreateRendererResult) {.success = true, .renderer = renderer};
-                            }
+                            Renderer renderer = {
+                                .sdlWindow = sdlWindow,
+                                .sdlRenderer = sdlRenderer,
+                                .font = font,
+                                .sdlFontTexture = sdlTexture,
+                                .width = windowWidth,
+                                .height = windowHeight,
+                            };
+                            result = (CreateRendererResult) {.success = true, .renderer = renderer};
                         }
                     }
                 }
@@ -630,8 +546,8 @@ renderEnd(Renderer* renderer) {
 function CompletionStatus
 drawEntireFontTexture(Renderer* renderer) {
     CompletionStatus result = CompletionStatus_Failure;
-    SDL_Rect         destRect = {.y = 50, .w = renderer->font.width, .h = renderer->font.height};
-    int              renderCopyResult = SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlFontTexture, 0, &destRect);
+    SDL_Rect destRect = {.y = 150, .w = renderer->font.loadedGlyphPxWidth, .h = renderer->font.loadedGlyphPxHeight};
+    int      renderCopyResult = SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlFontTexture, 0, &destRect);
     if (renderCopyResult == 0) {
         result = CompletionStatus_Sucess;
     }
@@ -683,27 +599,76 @@ drawRectOutline(Renderer* renderer, Rect2i rect, Color color, i32 thickness) {
     }
 }
 
-function void
-drawGlyph(Renderer* renderer, Glyph* glyph, i32 topleftX, i32 topleftY) {
-    SDL_Rect atlasRect = {.x = glyph->atlasTopleftX, .y = glyph->atlasY, .w = glyph->width, .h = glyph->height};
-    SDL_Rect destRect =
-        {.x = topleftX + glyph->offsetX, .y = topleftY + glyph->offsetY, .w = glyph->width, .h = glyph->height};
-    SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlFontTexture, &atlasRect, &destRect);
+function CompletionStatus
+drawGlyph(Renderer* renderer, u32 ch, i32 topleftX, i32 topleftY) {
+    CompletionStatus result = CompletionStatus_Failure;
+    CompletionStatus glyphResult = loadGlyph(&renderer->font, ch);
+    if (glyphResult == CompletionStatus_Sucess) {
+        Glyph glyph = renderer->font.loadedGlyph;
+        int   updateTexResult = SDL_UpdateTexture(
+            renderer->sdlFontTexture,
+            0,
+            renderer->font.loadedGlyphPx,
+            renderer->font.loadedGlyphPxWidth * sizeof(u32)
+        );
+        if (updateTexResult == 0) {
+            SDL_Rect texRect = {.w = glyph.width, .h = glyph.height};
+            SDL_Rect destRect =
+                {.x = topleftX + glyph.offsetX, .y = topleftY + glyph.offsetY, .w = glyph.width, .h = glyph.height};
+            int copyResult = SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlFontTexture, &texRect, &destRect);
+            if (copyResult == 0) {
+                result = CompletionStatus_Sucess;
+            }
+        }
+    }
+    return result;
+}
+
+typedef struct UtfIter {
+    String str;
+    i32    read;
+    u32    lastCh;
+} UtfIter;
+
+function CompletionStatus
+utfIterNext(UtfIter* iter) {
+    u32 result = CompletionStatus_Failure;
+    if (iter->read < iter->str.len) {
+        char* charBytes = iter->str.ptr + iter->read;
+        u8  firstByte = charBytes[0];
+        i32 leading1sCount = firstByte ? __builtin_clz(~(firstByte << 24)) : 0;
+        i32 mask = (1 << (8 - leading1sCount)) - 1;
+        u32 value = firstByte & mask;
+        i32 extraBytesLeft = leading1sCount == 0 ? 0 : leading1sCount - 1;
+        iter->read += 1 + extraBytesLeft;
+        for (u8 byte = charBytes[leading1sCount - extraBytesLeft]; extraBytesLeft > 0;
+             byte = charBytes[leading1sCount - (--extraBytesLeft)]) {
+            value <<= 6;
+            value += (byte & 0x3F);
+        }
+        iter->lastCh = value;
+        result = CompletionStatus_Sucess;
+    }
+    return result;
+}
+
+function UtfIter
+createUtfIter(String str) {
+    UtfIter iter = {.str = str};
+    return iter;
 }
 
 function void
 drawTextline(Renderer* renderer, String text, Rect2i rect) {
-    // SDL_RenderSetClipRect(renderer->sdlRenderer, &rect);
-    // i32 textlineWidth = getTextlinePxLength(&renderer->font, text);
-    i32 curTopleftX = rect.x; // + rect.w / 2 - textlineWidth / 2;
+    i32 curTopleftX = rect.x;  // + rect.w / 2 - textlineWidth / 2;
     i32 topleftY = rect.y + (rect.h - renderer->font.lineHeight) / 2;
-    for (i32 strIndex = 0; strIndex < text.len; strIndex++) {
-        u32    ch = text.ptr[strIndex];
-        Glyph* glyphInfo = getGlyphInfo(&renderer->font, ch);
-        drawGlyph(renderer, glyphInfo, curTopleftX, topleftY);
-        curTopleftX += glyphInfo->advanceX;
+    for (UtfIter iter = createUtfIter(text); utfIterNext(&iter) == CompletionStatus_Sucess;) {
+        u32              ch = iter.lastCh;
+        CompletionStatus glyphResult = drawGlyph(renderer, ch, curTopleftX, topleftY);
+        if (glyphResult == CompletionStatus_Sucess) {
+            curTopleftX += renderer->font.loadedGlyph.advanceX;
+        }
     }
-    // SDL_RenderSetClipRect(renderer->sdlRenderer, 0);
 }
 
 function i32
@@ -788,24 +753,24 @@ rect2iCenterDim(i32 centerX, i32 centerY, i32 dimX, i32 dimY) {
 // Position units are proportions of the screen
 // Time is in ms (including for velocity)
 typedef struct EditorState {
-    bool showEntireFontTexture;
+    i32 tmp;
 } EditorState;
 
 function EditorState
 createEditorState(void) {
-    EditorState result = {
-        .showEntireFontTexture = true,
-    };
+    EditorState result = {0};
     return result;
 }
 
 function void
 editorUpdateAndRender(EditorState* editorState, Renderer* renderer, Input* input) {
+    UNUSED(editorState);
     UNUSED(input);
+    UNUSED(renderer);
     // TODO(khvorov) Implement
-    if (editorState->showEntireFontTexture) {
-        drawEntireFontTexture(renderer);
-    }
+    Rect2i editorRect = {.x = 0, .y = 50, .w = renderer->width, .h = renderer->height};
+    drawTextline(renderer, stringFromCstring("Mārtiņš Možeiko"), editorRect);
+    // drawEntireFontTexture(renderer);
 }
 
 //
@@ -853,7 +818,6 @@ main(int argc, char* argv[]) {
 
     Arena     virtualArena = createArenaFromVmem(3 * MEGABYTE);
     Allocator virtualArenaAllocator = createArenaAllocator(&virtualArena);
-    globalFTArena = createArena(1 * MEGABYTE, virtualArenaAllocator);
     globalTempArena = createArena(1 * MEGABYTE, virtualArenaAllocator);
     SDL_SetMemoryFunctions(sdlMallocWrapper, sdlCallocWrapper, sdlReallocWrapper, sdlFreeWrapper);
 
@@ -882,7 +846,7 @@ main(int argc, char* argv[]) {
             // NOTE(khvorov) Visualize memory usage
             {
                 assert(globalSDLMemoryUsed <= INT32_MAX);
-                i32 totalMemoryUsed = globalSDLMemoryUsed + virtualArena.size;
+                i32 totalMemoryUsed = globalSDLMemoryUsed + globalFTMemoryUsed + virtualArena.size;
                 i32 memRectHeight = 20;
                 i32 toprightX = drawMemRect(
                     &renderer,
@@ -896,13 +860,15 @@ main(int argc, char* argv[]) {
                     stringFromCstring("SDL")
                 );
 
-                toprightX = drawArenaUsage(
+                toprightX = drawMemRect(
                     &renderer,
-                    globalFTArena.size,
-                    globalFTArena.used,
                     toprightX,
+                    0,
+                    2,
+                    globalFTMemoryUsed,
                     totalMemoryUsed,
                     memRectHeight,
+                    (Color) {.r = 100, .b = 100, .a = 255},
                     stringFromCstring("FT")
                 );
 
@@ -918,8 +884,8 @@ main(int argc, char* argv[]) {
 
                 toprightX = drawArenaUsage(
                     &renderer,
-                    virtualArena.size - globalFTArena.size - globalTempArena.size,
-                    virtualArena.used - globalFTArena.size - globalTempArena.size,
+                    virtualArena.size - globalTempArena.size,
+                    virtualArena.used - globalTempArena.size,
                     toprightX,
                     totalMemoryUsed,
                     memRectHeight,
