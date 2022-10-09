@@ -173,16 +173,8 @@ sdlMods(prb_String downloadDir) {
 
     // NOTE(khvorov) SDL would normally overwrite this "minimal" config with a generated one on linux
     prb_String configMinimal = prb_pathJoin(downloadDir, "include/SDL_config_minimal.h");
-    prb_textfileReplace(
-        configMinimal,
-        "#define SDL_THREADS_DISABLED    1",
-        "#define SDL_THREADS_DISABLED    0"
-    );
-    prb_textfileReplace(
-        configMinimal,
-        "#define SDL_TIMERS_DISABLED 1",
-        "#define SDL_TIMERS_DISABLED 0"
-    );
+    prb_textfileReplace(configMinimal, "#define SDL_THREADS_DISABLED    1", "#define SDL_THREADS_DISABLED    0");
+    prb_textfileReplace(configMinimal, "#define SDL_TIMERS_DISABLED 1", "#define SDL_TIMERS_DISABLED 0");
 
     // NOTE(khvorov) SDL allocates the pixels in the X11 framebuffer using
     // SDL_malloc but then frees it using XDestroyImage which will call libc
@@ -409,13 +401,19 @@ main() {
         prb_stringJoin2("-Fe"), prb_pathJoin(compileOutDir, "example.exe"))),
         prb_stringJoin2("-Fd"), prb_pathJoin(compileOutDir, "example.pdb"))),
 #elif prb_PLATFORM_LINUX
+        // TODO(khvorov) See if we can compile without 9000 *-dev packages on linux
+        "-I/usr/include/pango-1.0/",
+        "-I/usr/include/glib-2.0/",
+        "-I/usr/include/harfbuzz/",
+        "-I/usr/include/cairo/",
+        "-I/usr/lib/x86_64-linux-gnu/glib-2.0/include/",
         prb_fmt("-o %s/example.bin", compileOutDir),
 #endif
     };
 
     prb_String mainFiles[] = {
         prb_pathJoin(rootDir, "example.c"),
-        freetype.libFile,
+        // freetype.libFile,
         sdl.libFile,
 #if prb_PLATFORM_LINUX
 #endif
@@ -428,7 +426,7 @@ main() {
         "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
     );
 #elif prb_PLATFORM_LINUX
-    prb_String mainLinkFlags = "-lX11 -lpthread";
+    prb_String mainLinkFlags = "-lX11 -lpthread -lpango-1.0 -lpangoft2-1.0 -lfreetype";
 #endif
 
     prb_String mainCmd = prb_fmtAndPrintln(

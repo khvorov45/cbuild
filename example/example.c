@@ -3,8 +3,11 @@
 
 #include <ft2build.h>
 #include <freetype/freetype.h>
+#include <freetype/ftbitmap.h>
 
 #include <SDL.h>
+
+#include <pango/pangoft2.h>
 
 // NOTE(khvorov) SDL provides platform detection
 #define PLATFORM_WINDOWS __WIN32__
@@ -498,6 +501,7 @@ createRenderer(Allocator allocator) {
             if (sdlWindow) {
                 SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
                 if (sdlRenderer) {
+                    // TODO(khvorov) Fix this texture
                     SDL_Texture* sdlTexture =
                         SDL_CreateTexture(sdlRenderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, 100, 100);
                     if (sdlTexture) {
@@ -635,11 +639,11 @@ utfIterNext(UtfIter* iter) {
     u32 result = CompletionStatus_Failure;
     if (iter->read < iter->str.len) {
         char* charBytes = iter->str.ptr + iter->read;
-        u8  firstByte = charBytes[0];
-        i32 leading1sCount = firstByte ? __builtin_clz(~(firstByte << 24)) : 0;
-        i32 mask = (1 << (8 - leading1sCount)) - 1;
-        u32 value = firstByte & mask;
-        i32 extraBytesLeft = leading1sCount == 0 ? 0 : leading1sCount - 1;
+        u8    firstByte = charBytes[0];
+        i32   leading1sCount = firstByte ? __builtin_clz(~(firstByte << 24)) : 0;
+        i32   mask = (1 << (8 - leading1sCount)) - 1;
+        u32   value = firstByte & mask;
+        i32   extraBytesLeft = leading1sCount == 0 ? 0 : leading1sCount - 1;
         iter->read += 1 + extraBytesLeft;
         for (u8 byte = charBytes[leading1sCount - extraBytesLeft]; extraBytesLeft > 0;
              byte = charBytes[leading1sCount - (--extraBytesLeft)]) {
@@ -821,13 +825,60 @@ main(int argc, char* argv[]) {
     globalTempArena = createArena(1 * MEGABYTE, virtualArenaAllocator);
     SDL_SetMemoryFunctions(sdlMallocWrapper, sdlCallocWrapper, sdlReallocWrapper, sdlFreeWrapper);
 
+    PangoFontMap*         pangoFontMap = pango_ft2_font_map_new();
+    PangoContext*         pangoCtx = pango_font_map_create_context(pangoFontMap);
+    PangoLayout*          pangoLayout = pango_layout_new(pangoCtx);
+    PangoFontDescription* pangoFontDescription = pango_font_description_from_string("Sans 12");
+    pango_layout_set_font_description(pangoLayout, pangoFontDescription);
+    pango_layout_set_text(pangoLayout, "من 6,000 عام", -1);
+
+    i32       tmpBmWidth = 300;
+    i32       tmpBmHeight = 300;
+    FT_Bitmap ftBitmap = {
+        .rows = tmpBmHeight,
+        .width = tmpBmWidth,
+        .pitch = tmpBmHeight,
+        .buffer = allocArray(virtualArenaAllocator, u8, tmpBmWidth * tmpBmHeight),
+        // .num_grays = 255,
+        // .pixel_mode = FT_PIXEL_MODE_GRAY,
+        // .palette_mode = 0,
+        // .palette = 0,
+    };
+    // FT_Bitmap_Init(&ftBitmap);
+    pango_ft2_render_layout(&ftBitmap, pangoLayout, 0, 0);
+
+    u32* tmpBmPx = allocArray(virtualArenaAllocator, u32, tmpBmWidth * tmpBmHeight);
+    {
+        for (i32 bmRow = 0; bmRow < (i32)ftBitmap.rows; bmRow++) {
+            for (i32 bmCol = 0; bmCol < (i32)ftBitmap.width; bmCol++) {
+                i32 bmIndex = bmRow * ftBitmap.pitch + bmCol;
+                i32 alpha = ftBitmap.buffer[bmIndex];
+                i32 fullColorRGBA = 0xFFFFFF00 | alpha;
+                i32 bufIndex = bmRow * tmpBmWidth + bmCol;
+                tmpBmPx[bufIndex] = fullColorRGBA;
+                // tmpBmPx[bufIndex] = 0xffffffff;
+            }
+        }
+    }
+
     CreateRendererResult createRendererResult = createRenderer(virtualArenaAllocator);
     if (createRendererResult.success) {
         Renderer    renderer = createRendererResult.renderer;
         SDL_Window* sdlWindow = renderer.sdlWindow;
         Input       input = {0};
         EditorState editorState = createEditorState();
-        bool        running = true;
+
+        SDL_Texture* tmpSdlTex = SDL_CreateTexture(
+            renderer.sdlRenderer,
+            SDL_PIXELFORMAT_RGBA8888,
+            SDL_TEXTUREACCESS_STATIC,
+            tmpBmWidth,
+            tmpBmHeight
+        );
+        SDL_SetTextureBlendMode(tmpSdlTex, SDL_BLENDMODE_BLEND);
+        SDL_UpdateTexture(tmpSdlTex, 0, tmpBmPx, tmpBmWidth * sizeof(u32));
+
+        bool running = true;
         while (running) {
             globalTempArena.used = 0;
             inputBeginFrame(&input);
@@ -891,6 +942,13 @@ main(int argc, char* argv[]) {
                     memRectHeight,
                     stringFromCstring("REST")
                 );
+
+                // NOTE(khvorov) Temp texture
+                {
+                    SDL_Rect texRect = {.w = tmpBmWidth, .h = tmpBmHeight};
+                    SDL_Rect destRect = {.x = 500, .y = 500, .w = tmpBmWidth, .h = tmpBmHeight};
+                    SDL_RenderCopy(renderer.sdlRenderer, tmpSdlTex, &texRect, &destRect);
+                }
             }
 
             renderEnd(&renderer);
