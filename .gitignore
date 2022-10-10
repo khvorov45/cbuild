@@ -8,6 +8,7 @@
 /example/sdl
 /example/xlib
 /example/xproto
+/example/harfbuzz
 /example/build-*
 /msvc.env
 /*.rdbg

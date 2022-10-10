@@ -2,130 +2,145 @@
 
 typedef struct StaticLib {
     bool       success;
-    prb_String includeFlag;
     prb_String libFile;
 } StaticLib;
 
-typedef void (*PostDownloadCallback)(prb_String downloadDir);
+typedef enum DownloadStatus {
+    DownloadStatus_Downloaded,
+    DownloadStatus_Skipped,
+    DownloadStatus_Failed,
+} DownloadStatus;
 
-StaticLib
-downloadAndCompileStaticLib(
-    prb_String           name,
-    prb_String           downloadUrl,
-    char**               compileSourcesRelToDownload,
-    int32_t              compileSourcesRelToDownloadCount,
-    prb_String*          extraCompileFlags,
-    int32_t              extraCompileFlagsCount,
-    prb_String           compileCmdStart,
-    prb_String           rootDir,
-    prb_String           compileOutDir,
-    PostDownloadCallback postDownloadCallback
-) {
-    StaticLib  result = {0};
-    prb_String downloadDir = prb_pathJoin(rootDir, name);
+typedef struct DownloadResult {
+    DownloadStatus status;
+    prb_String     downloadDir;
+    prb_String     includeDir;
+    prb_String     includeFlag;
+} DownloadResult;
 
-    prb_CompletionStatus downloadStatus = prb_CompletionStatus_Success;
+DownloadResult
+downloadRepo(prb_String rootDir, prb_String name, prb_String downloadUrl, prb_String includeDirRelToDownload) {
+    prb_String     downloadDir = prb_pathJoin(rootDir, name);
+    DownloadStatus downloadStatus = DownloadStatus_Failed;
     if (!prb_isDirectory(downloadDir) || prb_directoryIsEmpty(downloadDir)) {
-        prb_String cmd = prb_fmtAndPrintln("git clone --depth 1 %s %s", downloadUrl, downloadDir);
-        downloadStatus = prb_execCmdAndWait(cmd);
-        if (downloadStatus == prb_CompletionStatus_Success && postDownloadCallback) {
-            postDownloadCallback(downloadDir);
+        prb_String           cmd = prb_fmtAndPrintln("git clone --depth 1 %s %s", downloadUrl, downloadDir);
+        prb_CompletionStatus status = prb_execCmdAndWait(cmd);
+        if (status == prb_CompletionStatus_Success) {
+            downloadStatus = DownloadStatus_Downloaded;
         }
     } else {
         prb_fmtAndPrintln("skip git clone %s", name);
+        downloadStatus = DownloadStatus_Skipped;
+    }
+    prb_String     includeDir = prb_pathJoin(downloadDir, includeDirRelToDownload);
+    DownloadResult result = {
+        .status = downloadStatus,
+        .downloadDir = downloadDir,
+        .includeDir = includeDir,
+        .includeFlag = prb_fmt("-I%s", includeDir),
+    };
+    return result;
+}
+
+StaticLib
+compileStaticLib(
+    prb_String     name,
+    prb_String     rootDir,
+    prb_String     compileOutDir,
+    prb_String     compileCmdStart,
+    DownloadResult download,
+    char**         compileSourcesRelToDownload,
+    int32_t        compileSourcesRelToDownloadCount,
+    prb_String*    extraCompileFlags,
+    int32_t        extraCompileFlagsCount
+) {
+    prb_String objDir = prb_pathJoin(compileOutDir, name);
+    prb_createDirIfNotExists(objDir);
+
+    prb_String cmdStart = prb_fmt(
+        "%s %s %s",
+        compileCmdStart,
+        download.includeFlag,
+        prb_stringsJoin(extraCompileFlags, extraCompileFlagsCount, " ")
+    );
+
+#if prb_PLATFORM_WINDOWS
+    prb_String pdbPath = prb_pathJoin(compileOutDir, prb_fmt("%s.pdb", name));
+    prb_String pdbOutputFlag = prb_fmt("/Fd%s", pdbPath);
+    cmdStart = prb_fmt("%s %s", cmdStart, pdbOutputFlag);
+#endif
+
+    int32_t     compileSourcesCount = compileSourcesRelToDownloadCount;
+    prb_String* compileSources = prb_allocArray(prb_String, compileSourcesCount);
+    for (int32_t sourceIndex = 0; sourceIndex < compileSourcesCount; sourceIndex++) {
+        compileSources[sourceIndex] = prb_pathJoin(download.downloadDir, compileSourcesRelToDownload[sourceIndex]);
     }
 
-    if (downloadStatus == prb_CompletionStatus_Success) {
-        prb_String objDir = prb_pathJoin(compileOutDir, name);
-        prb_createDirIfNotExists(objDir);
+    int32_t          allInputMatchesCount = compileSourcesCount;
+    prb_StringArray* allInputMatches = prb_allocArray(prb_StringArray, allInputMatchesCount);
+    int32_t          allInputFilepathsCount = 0;
+    for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesCount; inputPatternIndex++) {
+        prb_String      inputPattern = compileSources[inputPatternIndex];
+        prb_StringArray inputMatches = prb_getAllMatches(inputPattern);
+        // TODO(khvorov) Report no matches
+        allInputMatches[inputPatternIndex] = inputMatches;
+        allInputFilepathsCount += inputMatches.len;
+    }
 
-        prb_String includeDir = prb_pathJoin(downloadDir, "include");
-        prb_String includeFlag = prb_fmt("-I%s", includeDir);
+    // NOTE(khvorov) Recompile everything whenever any .h file changes
+    // TODO(khvorov) Probably just search the whole directory recursively for .h files
+    prb_String hfilesInIncludePattern = prb_pathJoin(download.includeDir, "*.h");
+    uint64_t   latestHFileChange = prb_getLatestLastModifiedFromPattern(hfilesInIncludePattern);
+    for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
+        prb_StringArray inputMatch = allInputMatches[inputMatchIndex];
+        for (int32_t inputFilepathIndex = 0; inputFilepathIndex < inputMatch.len; inputFilepathIndex++) {
+            prb_String inputFilepath = inputMatch.ptr[inputFilepathIndex];
+            prb_String inputDir = prb_getParentDir(inputFilepath);
+            prb_String adjacentHFilesPattern = prb_pathJoin(inputDir, "*.h");
+            latestHFileChange = prb_max(latestHFileChange, prb_getLatestLastModifiedFromPattern(adjacentHFilesPattern));
+        }
+    }
 
-        prb_String cmdStart = prb_fmt(
-            "%s %s %s",
-            compileCmdStart,
-            includeFlag,
-            prb_stringsJoin(extraCompileFlags, extraCompileFlagsCount, " ")
-        );
+    prb_String*        allOutputFilepaths = prb_allocArray(prb_String, allInputFilepathsCount);
+    prb_ProcessHandle* processes = prb_allocArray(prb_ProcessHandle, allInputFilepathsCount);
+    int32_t            processCount = 0;
+    int32_t            allOutputFilepathsCount = 0;
+    for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
+        prb_StringArray inputMatch = allInputMatches[inputMatchIndex];
+        for (int32_t inputFilepathIndex = 0; inputFilepathIndex < inputMatch.len; inputFilepathIndex++) {
+            prb_String inputFilepath = inputMatch.ptr[inputFilepathIndex];
+            prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
+            prb_String outputFilename = prb_replaceExt(inputFilename, "obj");
+            prb_String outputFilepath = prb_pathJoin(objDir, outputFilename);
 
+            allOutputFilepaths[allOutputFilepathsCount++] = outputFilepath;
+
+            uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(inputFilepath);
+            uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
+
+            if (sourceLastMod > outputLastMod || latestHFileChange > outputLastMod) {
 #if prb_PLATFORM_WINDOWS
-        prb_String pdbPath = prb_pathJoin(compileOutDir, prb_fmt("%s.pdb", name));
-        prb_String pdbOutputFlag = prb_fmt("/Fd%s"), pdbPath);
-        cmdStart = prb_fmt("%s %s", cmdStart, pdbOutputFlag);
-#endif
-
-        int32_t     compileSourcesCount = compileSourcesRelToDownloadCount;
-        prb_String* compileSources = prb_allocArray(prb_String, compileSourcesCount);
-        for (int32_t sourceIndex = 0; sourceIndex < compileSourcesCount; sourceIndex++) {
-            compileSources[sourceIndex] = prb_pathJoin(downloadDir, compileSourcesRelToDownload[sourceIndex]);
-        }
-
-        int32_t          allInputMatchesCount = compileSourcesCount;
-        prb_StringArray* allInputMatches = prb_allocArray(prb_StringArray, allInputMatchesCount);
-        int32_t          allInputFilepathsCount = 0;
-        for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesCount; inputPatternIndex++) {
-            prb_String      inputPattern = compileSources[inputPatternIndex];
-            prb_StringArray inputMatches = prb_getAllMatches(inputPattern);
-            // TODO(khvorov) Report no matches
-            allInputMatches[inputPatternIndex] = inputMatches;
-            allInputFilepathsCount += inputMatches.len;
-        }
-
-        // NOTE(khvorov) Recompile everything whenever any .h file changes
-        // TODO(khvorov) Probably just search the whole directory recursively for .h files
-        prb_String hfilesInIncludePattern = prb_pathJoin(includeDir, "*.h");
-        uint64_t   latestHFileChange = prb_getLatestLastModifiedFromPattern(hfilesInIncludePattern);
-        for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
-            prb_StringArray inputMatch = allInputMatches[inputMatchIndex];
-            for (int32_t inputFilepathIndex = 0; inputFilepathIndex < inputMatch.len; inputFilepathIndex++) {
-                prb_String inputFilepath = inputMatch.ptr[inputFilepathIndex];
-                prb_String inputDir = prb_getParentDir(inputFilepath);
-                prb_String adjacentHFilesPattern = prb_pathJoin(inputDir, "*.h");
-                latestHFileChange =
-                    prb_max(latestHFileChange, prb_getLatestLastModifiedFromPattern(adjacentHFilesPattern));
-            }
-        }
-
-        prb_String*        allOutputFilepaths = prb_allocArray(prb_String, allInputFilepathsCount);
-        prb_ProcessHandle* processes = prb_allocArray(prb_ProcessHandle, allInputFilepathsCount);
-        int32_t            processCount = 0;
-        int32_t            allOutputFilepathsCount = 0;
-        for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
-            prb_StringArray inputMatch = allInputMatches[inputMatchIndex];
-            for (int32_t inputFilepathIndex = 0; inputFilepathIndex < inputMatch.len; inputFilepathIndex++) {
-                prb_String inputFilepath = inputMatch.ptr[inputFilepathIndex];
-                prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
-                prb_String outputFilename = prb_replaceExt(inputFilename, "obj");
-                prb_String outputFilepath = prb_pathJoin(objDir, outputFilename);
-
-                allOutputFilepaths[allOutputFilepathsCount++] = outputFilepath;
-
-                uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(inputFilepath);
-                uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
-
-                if (sourceLastMod > outputLastMod || latestHFileChange > outputLastMod) {
-#if prb_PLATFORM_WINDOWS
-                    prb_fmt("/Fo%s/", objDir);
+                prb_fmt("/Fo%s/", objDir);
 #elif prb_PLATFORM_LINUX
-                    prb_String cmd = prb_fmt("%s -c -o %s %s", cmdStart, outputFilepath, inputFilepath);
+                prb_String cmd = prb_fmt("%s -c -o %s %s", cmdStart, outputFilepath, inputFilepath);
 #endif
-                    prb_println(cmd);
-                    processes[processCount++] = prb_execCmdAndDontWait(cmd);
-                }
+                prb_println(cmd);
+                processes[processCount++] = prb_execCmdAndDontWait(cmd);
             }
         }
+    }
 
-        if (processCount == 0) {
-            prb_fmtAndPrintln("skip compile %s", name);
-        }
+    if (processCount == 0) {
+        prb_fmtAndPrintln("skip compile %s", name);
+    }
 
-        prb_CompletionStatus compileStatus = prb_waitForProcesses(processes, processCount);
-        if (compileStatus == prb_CompletionStatus_Success) {
+    StaticLib            result = {0};
+    prb_CompletionStatus compileStatus = prb_waitForProcesses(processes, processCount);
+    if (compileStatus == prb_CompletionStatus_Success) {
 #if prb_PLATFORM_WINDOWS
             prb_String staticLibFileExt = "lib");
 #elif prb_PLATFORM_LINUX
-            prb_String staticLibFileExt = "a";
+        prb_String staticLibFileExt = "a";
 #endif
             prb_String libFile = prb_pathJoin(compileOutDir, prb_fmt("%s.%s", name, staticLibFileExt));
 
@@ -133,7 +148,7 @@ downloadAndCompileStaticLib(
 #if prb_PLATFORM_WINDOWS
             prb_String libCmd = prb_fmt("lib /nologo -out:%s %s", libFile, objsPattern);
 #elif prb_PLATFORM_LINUX
-            prb_String libCmd = prb_fmt("ar rcs %s %s", libFile, objsPathsString);
+        prb_String libCmd = prb_fmt("ar rcs %s %s", libFile, objsPathsString);
 #endif
 
             uint64_t sourceLastMod = prb_getLatestLastModifiedFromPatterns(allOutputFilepaths, allOutputFilepathsCount);
@@ -148,45 +163,11 @@ downloadAndCompileStaticLib(
             }
 
             if (libStatus == prb_CompletionStatus_Success) {
-                result = (StaticLib) {.success = true, .includeFlag = includeFlag, .libFile = libFile};
+                result = (StaticLib) {.success = true, .libFile = libFile};
             }
-        }
     }
 
     return result;
-}
-
-void
-sdlMods(prb_String downloadDir) {
-    // NOTE(khvorov) Purge dynamic api because otherwise you have to compile a lot more of sdl
-    prb_String dynapiPath = prb_pathJoin(downloadDir, "src/dynapi/SDL_dynapi.h");
-    prb_textfileReplace(dynapiPath, "#define SDL_DYNAMIC_API 1", "#define SDL_DYNAMIC_API 0");
-
-    // NOTE(khvorov) This XMissingExtension function is in X11 extensions and SDL doesn't use it.
-    // Saves us from having to -lXext for no reason
-    prb_String x11sym = prb_pathJoin(downloadDir, "src/video/x11/SDL_x11sym.h");
-    prb_textfileReplace(
-        x11sym,
-        "SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return)",
-        "//SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return"
-    );
-
-    // NOTE(khvorov) SDL would normally overwrite this "minimal" config with a generated one on linux
-    prb_String configMinimal = prb_pathJoin(downloadDir, "include/SDL_config_minimal.h");
-    prb_textfileReplace(configMinimal, "#define SDL_THREADS_DISABLED    1", "#define SDL_THREADS_DISABLED    0");
-    prb_textfileReplace(configMinimal, "#define SDL_TIMERS_DISABLED 1", "#define SDL_TIMERS_DISABLED 0");
-
-    // NOTE(khvorov) SDL allocates the pixels in the X11 framebuffer using
-    // SDL_malloc but then frees it using XDestroyImage which will call libc
-    // free. So even SDL's own custom malloc won't work because libc free will
-    // crash when trying to free a pointer allocated with something other than
-    // libc malloc.
-    prb_String x11FrameBuffer = prb_pathJoin(downloadDir, "src/video/x11/SDL_x11framebuffer.c");
-    prb_textfileReplace(
-        x11FrameBuffer,
-        "XDestroyImage(data->ximage);",
-        "SDL_free(data->ximage->data);data->ximage->data = 0;XDestroyImage(data->ximage);"
-    );
 }
 
 int
@@ -209,8 +190,22 @@ main() {
 #endif
 
     //
-    // SECTION Freetype
+    // SECTION Freetype and harfbuzz (they depend on each other)
     //
+
+    char*          freetypeName = "freetype";
+    DownloadResult freetypeDownload =
+        downloadRepo(rootDir, freetypeName, "https://github.com/freetype/freetype", "include");
+    if (freetypeDownload.status == DownloadStatus_Failed) {
+        return 1;
+    }
+
+    prb_String     harfbuzzName = "harfbuzz";
+    DownloadResult harfbuzzDownload =
+        downloadRepo(rootDir, harfbuzzName, "https://github.com/harfbuzz/harfbuzz", "src");
+    if (harfbuzzDownload.status == DownloadStatus_Failed) {
+        return 1;
+    }
 
     char* freetypeCompileSources[] = {
         // Required
@@ -271,24 +266,52 @@ main() {
     };
 
     char* freetypeCompileFlags[] = {
+        harfbuzzDownload.includeFlag,
         "-DFT2_BUILD_LIBRARY",
         "-DFT_CONFIG_OPTION_DISABLE_STREAM_SUPPORT",
+        "-DFT_CONFIG_OPTION_USE_HARFBUZZ",
     };
 
-    StaticLib freetype = downloadAndCompileStaticLib(
-        "freetype",
-        "https://github.com/freetype/freetype",
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, freetypeName));
+    StaticLib freetype = compileStaticLib(
+        freetypeName,
+        rootDir,
+        compileOutDir,
+        compileCmdStart,
+        freetypeDownload,
         freetypeCompileSources,
         prb_arrayLength(freetypeCompileSources),
         freetypeCompileFlags,
-        prb_arrayLength(freetypeCompileFlags),
-        compileCmdStart,
-        rootDir,
-        compileOutDir,
-        0
+        prb_arrayLength(freetypeCompileFlags)
     );
 
     if (!freetype.success) {
+        return 1;
+    };
+
+    char* harfbuzzCompileSources[] = {
+        "src/harfbuzz.cc",
+    };
+
+    char* harfbuzzCompileFlags[] = {
+        freetypeDownload.includeFlag,
+        "-DHAVE_FREETYPE=1",
+    };
+
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, harfbuzzName));
+    StaticLib harfbuzz = compileStaticLib(
+        harfbuzzName,
+        rootDir,
+        compileOutDir,
+        compileCmdStart,
+        harfbuzzDownload,
+        harfbuzzCompileSources,
+        prb_arrayLength(harfbuzzCompileSources),
+        harfbuzzCompileFlags,
+        prb_arrayLength(harfbuzzCompileFlags)
+    );
+
+    if (!harfbuzz.success) {
         return 1;
     };
 
@@ -360,17 +383,56 @@ main() {
 #endif
     };
 
-    StaticLib sdl = downloadAndCompileStaticLib(
-        "sdl",
-        "https://github.com/libsdl-org/SDL",
+    char*          sdlName = "sdl";
+    DownloadResult sdlDownload = downloadRepo(rootDir, sdlName, "https://github.com/libsdl-org/SDL", "include");
+    if (sdlDownload.status == DownloadStatus_Failed) {
+        return 1;
+    }
+
+    if (sdlDownload.status == DownloadStatus_Downloaded) {
+        prb_String downloadDir = sdlDownload.downloadDir;
+
+        // NOTE(khvorov) Purge dynamic api because otherwise you have to compile a lot more of sdl
+        prb_String dynapiPath = prb_pathJoin(downloadDir, "src/dynapi/SDL_dynapi.h");
+        prb_textfileReplace(dynapiPath, "#define SDL_DYNAMIC_API 1", "#define SDL_DYNAMIC_API 0");
+
+        // NOTE(khvorov) This XMissingExtension function is in X11 extensions and SDL doesn't use it.
+        // Saves us from having to -lXext for no reason
+        prb_String x11sym = prb_pathJoin(downloadDir, "src/video/x11/SDL_x11sym.h");
+        prb_textfileReplace(
+            x11sym,
+            "SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return)",
+            "//SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return"
+        );
+
+        // NOTE(khvorov) SDL would normally overwrite this "minimal" config with a generated one on linux
+        prb_String configMinimal = prb_pathJoin(downloadDir, "include/SDL_config_minimal.h");
+        prb_textfileReplace(configMinimal, "#define SDL_THREADS_DISABLED    1", "#define SDL_THREADS_DISABLED    0");
+        prb_textfileReplace(configMinimal, "#define SDL_TIMERS_DISABLED 1", "#define SDL_TIMERS_DISABLED 0");
+
+        // NOTE(khvorov) SDL allocates the pixels in the X11 framebuffer using
+        // SDL_malloc but then frees it using XDestroyImage which will call libc
+        // free. So even SDL's own custom malloc won't work because libc free will
+        // crash when trying to free a pointer allocated with something other than
+        // libc malloc.
+        prb_String x11FrameBuffer = prb_pathJoin(downloadDir, "src/video/x11/SDL_x11framebuffer.c");
+        prb_textfileReplace(
+            x11FrameBuffer,
+            "XDestroyImage(data->ximage);",
+            "SDL_free(data->ximage->data);data->ximage->data = 0;XDestroyImage(data->ximage);"
+        );
+    }
+
+    StaticLib sdl = compileStaticLib(
+        sdlName,
+        rootDir,
+        compileOutDir,
+        compileCmdStart,
+        sdlDownload,
         sdlCompileSources,
         prb_arrayLength(sdlCompileSources),
         sdlCompileFlags,
-        prb_arrayLength(sdlCompileFlags),
-        compileCmdStart,
-        rootDir,
-        compileOutDir,
-        sdlMods
+        prb_arrayLength(sdlCompileFlags)
     );
 
     if (!sdl.success) {
@@ -392,8 +454,8 @@ main() {
     //
 
     prb_String mainFlags[] = {
-        freetype.includeFlag,
-        sdl.includeFlag,
+        freetypeDownload.includeFlag,
+        sdlDownload.includeFlag,
         "-Wall -Wextra -Wno-unused-function",
 #if prb_PLATFORM_WINDOWS
         "-Zi"),
@@ -409,18 +471,17 @@ main() {
         prb_pathJoin(rootDir, "example.c"),
         freetype.libFile,
         sdl.libFile,
+        harfbuzz.libFile,
 #if prb_PLATFORM_LINUX
 #endif
     };
 
 #if prb_PLATFORM_WINDOWS
-    prb_String mainLinkFlags = 
+    prb_String mainLinkFlags =
         " -link -incremental:no -subsystem:windows "
-        "Ole32.lib Advapi32.lib Winmm.lib User32.lib Gdi32.lib OleAut32.lib "
-        "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
-    );
+        "User32.lib "
 #elif prb_PLATFORM_LINUX
-    prb_String mainLinkFlags = "-lX11 -lpthread";
+    prb_String mainLinkFlags = "-lX11 -lpthread -lm -lstdc++";
 #endif
 
     prb_String mainCmd = prb_fmtAndPrintln(
