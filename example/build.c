@@ -296,6 +296,7 @@ main() {
     char* harfbuzzCompileFlags[] = {
         freetypeDownload.includeFlag,
         "-DHAVE_FREETYPE=1",
+        "-DHB_CUSTOM_MALLOC"
     };
 
     // prb_clearDirectory(prb_pathJoin(compileOutDir, harfbuzzName));
@@ -456,6 +457,7 @@ main() {
     prb_String mainFlags[] = {
         freetypeDownload.includeFlag,
         sdlDownload.includeFlag,
+        harfbuzzDownload.includeFlag,
         "-Wall -Wextra -Wno-unused-function",
 #if prb_PLATFORM_WINDOWS
         "-Zi"),
@@ -481,6 +483,7 @@ main() {
         " -link -incremental:no -subsystem:windows "
         "User32.lib "
 #elif prb_PLATFORM_LINUX
+    // TODO(khvorov) Get rid of -lm
     prb_String mainLinkFlags = "-lX11 -lpthread -lm -lstdc++";
 #endif
 

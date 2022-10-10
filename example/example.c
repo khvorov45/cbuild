@@ -5,6 +5,9 @@
 #include <freetype/freetype.h>
 #include <freetype/ftbitmap.h>
 
+#include <hb.h>
+#include <hb-ft.h>
+
 #include <SDL.h>
 
 // NOTE(khvorov) SDL provides platform detection
@@ -171,18 +174,12 @@ sdlCallocWrapper(usize n, usize size) {
 
 function void*
 sdlReallocWrapper(void* ptr, usize size) {
-    usize sizeBefore = 0;
     if (ptr) {
-        sizeBefore = *((usize*)ptr - 1);
+        atomic_fetch_sub(&globalSDLMemoryUsed, *((usize*)ptr - 1));
     }
     void* result = dlrealloc(ptr, size);
     if (result) {
-        usize sizeAfter = *((usize*)result - 1);
-        if (sizeAfter > sizeBefore) {
-            atomic_fetch_add(&globalSDLMemoryUsed, sizeAfter - sizeBefore);
-        } else {
-            atomic_fetch_sub(&globalSDLMemoryUsed, sizeBefore - sizeAfter);
-        }
+        atomic_fetch_add(&globalSDLMemoryUsed, *((usize*)result - 1));
     }
     return result;
 }
@@ -192,6 +189,50 @@ sdlFreeWrapper(void* ptr) {
     if (ptr) {
         usize* size = (usize*)ptr - 1;
         atomic_fetch_sub(&globalSDLMemoryUsed, *size);
+    }
+    dlfree(ptr);
+}
+
+// NOTE(khvorov) Harfbuzz is single-threaded
+global_variable usize globalHBMemoryUsed;
+
+void*
+hb_malloc_impl(usize size) {
+    void* result = dlmalloc(size);
+    if (result) {
+        usize sizeActual = *((usize*)result - 1);
+        globalHBMemoryUsed += sizeActual;
+    }
+    return result;
+}
+
+void*
+hb_calloc_impl(usize n, usize size) {
+    void* result = dlcalloc(n, size);
+    if (result) {
+        usize sizeActual = *((usize*)result - 1);
+        globalHBMemoryUsed += sizeActual;
+    }
+    return result;
+}
+
+void*
+hb_realloc_impl(void* ptr, usize size) {
+    if (ptr) {
+        globalHBMemoryUsed -= *((usize*)ptr - 1);
+    }
+    void* result = dlrealloc(ptr, size);
+    if (result) {
+        globalHBMemoryUsed += *((usize*)result - 1);
+    }
+    return result;
+}
+
+void
+hb_free_impl(void* ptr) {
+    if (ptr) {
+        usize size = *((usize*)ptr - 1);
+        globalHBMemoryUsed -= size;
     }
     dlfree(ptr);
 }
@@ -830,6 +871,29 @@ main(int argc, char* argv[]) {
         Input       input = {0};
         EditorState editorState = createEditorState();
 
+        hb_buffer_t* hbBuf = hb_buffer_create();
+        hb_buffer_add_utf8(hbBuf, "hbtest", -1, 0, -1);
+        hb_buffer_set_direction(hbBuf, HB_DIRECTION_LTR);
+        hb_buffer_set_script(hbBuf, HB_SCRIPT_LATIN);
+        hb_buffer_set_language(hbBuf, hb_language_from_string("en", -1));
+
+        hb_font_t* hbFont = hb_ft_font_create_referenced(renderer.font.ftFace);
+        hb_shape(hbFont, hbBuf, 0, 0);
+
+        u32                  hbGlyphCount = 0;
+        hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(hbBuf, &hbGlyphCount);
+        hb_glyph_position_t* hbGlyphPositions = hb_buffer_get_glyph_positions(hbBuf, &hbGlyphCount);
+
+        hb_position_t hbPosX = 0;
+        hb_position_t hbPosY = 0;
+        for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
+            hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
+            hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
+            hbPosX += pos.x_advance;
+            hbPosY += pos.y_advance;
+            SDL_Log("codepoint: %d\n", glyphid);
+        }
+
         bool running = true;
         while (running) {
             globalTempArena.used = 0;
@@ -849,7 +913,7 @@ main(int argc, char* argv[]) {
             // NOTE(khvorov) Visualize memory usage
             {
                 assert(globalSDLMemoryUsed <= INT32_MAX);
-                i32 totalMemoryUsed = globalSDLMemoryUsed + globalFTMemoryUsed + virtualArena.size;
+                i32 totalMemoryUsed = globalSDLMemoryUsed + globalFTMemoryUsed + globalHBMemoryUsed + virtualArena.size;
                 i32 memRectHeight = 20;
                 i32 toprightX = drawMemRect(
                     &renderer,
@@ -873,6 +937,18 @@ main(int argc, char* argv[]) {
                     memRectHeight,
                     (Color) {.r = 100, .b = 100, .a = 255},
                     stringFromCstring("FT")
+                );
+
+                toprightX = drawMemRect(
+                    &renderer,
+                    toprightX,
+                    0,
+                    3,
+                    globalHBMemoryUsed,
+                    totalMemoryUsed,
+                    memRectHeight,
+                    (Color) {.g = 100, .b = 100, .a = 255},
+                    stringFromCstring("HB")
                 );
 
                 toprightX = drawArenaUsage(
