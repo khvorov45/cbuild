@@ -401,19 +401,13 @@ main() {
         prb_stringJoin2("-Fe"), prb_pathJoin(compileOutDir, "example.exe"))),
         prb_stringJoin2("-Fd"), prb_pathJoin(compileOutDir, "example.pdb"))),
 #elif prb_PLATFORM_LINUX
-        // TODO(khvorov) See if we can compile without 9000 *-dev packages on linux
-        "-I/usr/include/pango-1.0/",
-        "-I/usr/include/glib-2.0/",
-        "-I/usr/include/harfbuzz/",
-        "-I/usr/include/cairo/",
-        "-I/usr/lib/x86_64-linux-gnu/glib-2.0/include/",
         prb_fmt("-o %s/example.bin", compileOutDir),
 #endif
     };
 
     prb_String mainFiles[] = {
         prb_pathJoin(rootDir, "example.c"),
-        // freetype.libFile,
+        freetype.libFile,
         sdl.libFile,
 #if prb_PLATFORM_LINUX
 #endif
@@ -426,7 +420,7 @@ main() {
         "Imm32.lib Shell32.lib Version.lib Cfgmgr32.lib Hid.lib "
     );
 #elif prb_PLATFORM_LINUX
-    prb_String mainLinkFlags = "-lX11 -lpthread -lpango-1.0 -lpangoft2-1.0 -lfreetype";
+    prb_String mainLinkFlags = "-lX11 -lpthread";
 #endif
 
     prb_String mainCmd = prb_fmtAndPrintln(
