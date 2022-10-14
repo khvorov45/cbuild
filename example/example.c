@@ -405,19 +405,20 @@ typedef struct Glyph {
 } Glyph;
 
 typedef struct Font {
-    FT_Face ftFace;
-    i32     lineHeight;
-    i32     fontHeight;
-    Glyph   loadedGlyph;
-    u32*    loadedGlyphPx;
-    i32     loadedGlyphPxWidth, loadedGlyphPxHeight;
+    FT_Face      ftFace;
+    hb_buffer_t* hbBuf;
+    hb_font_t*   hbFont;
+    i32          lineHeight;
+    i32          fontHeight;
+    Glyph        loadedGlyph;
+    u32*         loadedGlyphPx;
+    i32          loadedGlyphPxWidth, loadedGlyphPxHeight;
 } Font;
 
 function CompletionStatus
-loadGlyph(Font* font, u32 ch) {
+loadGlyph(Font* font, i32 chIndex) {
     CompletionStatus result = CompletionStatus_Failure;
-    u32              ftGlyphIndex = FT_Get_Char_Index(font->ftFace, ch);
-    FT_Error         loadGlyphResult = FT_Load_Glyph(font->ftFace, ftGlyphIndex, FT_LOAD_DEFAULT);
+    FT_Error         loadGlyphResult = FT_Load_Glyph(font->ftFace, chIndex, FT_LOAD_DEFAULT);
     if (loadGlyphResult == FT_Err_Ok) {
         if (font->ftFace->glyph->format != FT_GLYPH_FORMAT_BITMAP) {
             FT_Error renderGlyphResult = FT_Render_Glyph(font->ftFace->glyph, FT_RENDER_MODE_NORMAL);
@@ -468,12 +469,17 @@ loadFont(Allocator allocator) {
             i32      fontHeight = 14;
             FT_Error ftSetPxSizeResult = FT_Set_Pixel_Sizes(ftFace, 0, fontHeight);
             if (ftSetPxSizeResult == FT_Err_Ok) {
-                i32  lineHeight = FT_MulFix(ftFace->height, ftFace->size->metrics.y_scale) >> 6;
-                i32  pxBufferWidth = 100;
-                i32  pxBufferHeight = 100;
-                u32* pxBuffer = allocArray(allocator, u32, pxBufferWidth * pxBufferWidth);
+                i32          lineHeight = FT_MulFix(ftFace->height, ftFace->size->metrics.y_scale) >> 6;
+                i32          pxBufferWidth = 100;
+                i32          pxBufferHeight = 100;
+                u32*         pxBuffer = allocArray(allocator, u32, pxBufferWidth * pxBufferWidth);
+                hb_buffer_t* hbBuf = hb_buffer_create();
+                hb_font_t*   hbFont = hb_ft_font_create_referenced(ftFace);
+
                 Font font = {
                     .ftFace = ftFace,
+                    .hbBuf = hbBuf,
+                    .hbFont = hbFont,
                     .lineHeight = lineHeight,
                     .fontHeight = fontHeight,
                     .loadedGlyphPx = pxBuffer,
@@ -643,9 +649,9 @@ drawRectOutline(Renderer* renderer, Rect2i rect, Color color, i32 thickness) {
 }
 
 function CompletionStatus
-drawGlyph(Renderer* renderer, u32 ch, i32 topleftX, i32 topleftY) {
+drawGlyph(Renderer* renderer, i32 chIndex, i32 topleftX, i32 topleftY) {
     CompletionStatus result = CompletionStatus_Failure;
-    CompletionStatus glyphResult = loadGlyph(&renderer->font, ch);
+    CompletionStatus glyphResult = loadGlyph(&renderer->font, chIndex);
     if (glyphResult == CompletionStatus_Sucess) {
         Glyph glyph = renderer->font.loadedGlyph;
         int   updateTexResult = SDL_UpdateTexture(
@@ -703,14 +709,25 @@ createUtfIter(String str) {
 
 function void
 drawTextline(Renderer* renderer, String text, Rect2i rect) {
-    i32 curTopleftX = rect.x;  // + rect.w / 2 - textlineWidth / 2;
-    i32 topleftY = rect.y + (rect.h - renderer->font.lineHeight) / 2;
-    for (UtfIter iter = createUtfIter(text); utfIterNext(&iter) == CompletionStatus_Sucess;) {
-        u32              ch = iter.lastCh;
-        CompletionStatus glyphResult = drawGlyph(renderer, ch, curTopleftX, topleftY);
-        if (glyphResult == CompletionStatus_Sucess) {
-            curTopleftX += renderer->font.loadedGlyph.advanceX;
-        }
+    hb_buffer_clear_contents(renderer->font.hbBuf);
+    hb_buffer_add_utf8(renderer->font.hbBuf, text.ptr, text.len, 0, text.len);
+    hb_buffer_set_direction(renderer->font.hbBuf, HB_DIRECTION_LTR);
+    hb_buffer_set_script(renderer->font.hbBuf, HB_SCRIPT_LATIN);
+    hb_buffer_set_language(renderer->font.hbBuf, hb_language_from_string("en", -1));
+    hb_shape(renderer->font.hbFont, renderer->font.hbBuf, 0, 0);
+
+    u32                  hbGlyphCount = 0;
+    hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->font.hbBuf, &hbGlyphCount);
+    hb_glyph_position_t* hbGlyphPositions = hb_buffer_get_glyph_positions(renderer->font.hbBuf, &hbGlyphCount);
+
+    hb_position_t hbPosX = 0;
+    hb_position_t hbPosY = 0;
+    for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
+        hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
+        hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
+        drawGlyph(renderer, glyphid, rect.x + hbPosX, rect.y + hbPosY);
+        hbPosX += pos.x_advance >> 6;
+        hbPosY += pos.y_advance >> 6;
     }
 }
 
@@ -793,8 +810,6 @@ rect2iCenterDim(i32 centerX, i32 centerY, i32 dimX, i32 dimY) {
     return result;
 }
 
-// Position units are proportions of the screen
-// Time is in ms (including for velocity)
 typedef struct EditorState {
     i32 tmp;
 } EditorState;
@@ -811,7 +826,7 @@ editorUpdateAndRender(EditorState* editorState, Renderer* renderer, Input* input
     UNUSED(input);
     UNUSED(renderer);
     // TODO(khvorov) Implement
-    Rect2i editorRect = {.x = 0, .y = 50, .w = renderer->width, .h = renderer->height};
+    Rect2i editorRect = {.x = 0, .y = 150, .w = renderer->width, .h = renderer->height};
     drawTextline(renderer, stringFromCstring("Mārtiņš Možeiko"), editorRect);
     // drawEntireFontTexture(renderer);
 }
@@ -870,29 +885,6 @@ main(int argc, char* argv[]) {
         SDL_Window* sdlWindow = renderer.sdlWindow;
         Input       input = {0};
         EditorState editorState = createEditorState();
-
-        hb_buffer_t* hbBuf = hb_buffer_create();
-        hb_buffer_add_utf8(hbBuf, "hbtest", -1, 0, -1);
-        hb_buffer_set_direction(hbBuf, HB_DIRECTION_LTR);
-        hb_buffer_set_script(hbBuf, HB_SCRIPT_LATIN);
-        hb_buffer_set_language(hbBuf, hb_language_from_string("en", -1));
-
-        hb_font_t* hbFont = hb_ft_font_create_referenced(renderer.font.ftFace);
-        hb_shape(hbFont, hbBuf, 0, 0);
-
-        u32                  hbGlyphCount = 0;
-        hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(hbBuf, &hbGlyphCount);
-        hb_glyph_position_t* hbGlyphPositions = hb_buffer_get_glyph_positions(hbBuf, &hbGlyphCount);
-
-        hb_position_t hbPosX = 0;
-        hb_position_t hbPosY = 0;
-        for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
-            hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
-            hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
-            hbPosX += pos.x_advance;
-            hbPosY += pos.y_advance;
-            SDL_Log("codepoint: %d\n", glyphid);
-        }
 
         bool running = true;
         while (running) {
