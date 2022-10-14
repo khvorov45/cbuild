@@ -190,6 +190,99 @@ main() {
 #endif
 
     //
+    // SECTION ICU
+    //
+
+    prb_String     icuName = "icu";
+    DownloadResult icuDownload =
+        downloadRepo(rootDir, icuName, "https://github.com/unicode-org/icu", "icu4c/source/common");
+
+    if (icuDownload.status == DownloadStatus_Failed) {
+        return 1;
+    }
+
+    char* icuCompileSources[] = {
+        "icu4c/source/common/uchar.cpp",
+        "icu4c/source/common/utrie.cpp",
+        "icu4c/source/common/utrie2.cpp",
+        "icu4c/source/common/cmemory.cpp",
+        "icu4c/source/common/utf_impl.cpp",
+        "icu4c/source/common/normalizer2.cpp",
+        "icu4c/source/common/normalizer2impl.cpp",
+        "icu4c/source/common/uobject.cpp",
+        "icu4c/source/common/edits.cpp",
+        "icu4c/source/common/unistr.cpp",
+        "icu4c/source/common/appendable.cpp",
+        "icu4c/source/common/ustring.cpp",
+        "icu4c/source/common/cstring.cpp",
+        "icu4c/source/common/uinvchar.cpp",
+        "icu4c/source/common/udataswp.cpp",
+        "icu4c/source/common/putil.cpp",
+        "icu4c/source/common/charstr.cpp",
+        "icu4c/source/common/umutex.cpp",
+        "icu4c/source/common/ucln_cmn.cpp",
+        "icu4c/source/common/utrace.cpp",
+        "icu4c/source/common/stringpiece.cpp",
+        "icu4c/source/common/ustrtrns.cpp",
+        "icu4c/source/common/util.cpp",
+        "icu4c/source/common/patternprops.cpp",
+        "icu4c/source/common/uniset.cpp",
+        "icu4c/source/common/unifilt.cpp",
+        "icu4c/source/common/unifunct.cpp",
+        "icu4c/source/common/uvector.cpp",
+        "icu4c/source/common/uarrsort.cpp",
+        "icu4c/source/common/unisetspan.cpp",
+        "icu4c/source/common/bmpset.cpp",
+        "icu4c/source/common/ucptrie.cpp",
+        "icu4c/source/common/bytesinkutil.cpp",
+        "icu4c/source/common/bytestream.cpp",
+        "icu4c/source/common/umutablecptrie.cpp",
+        "icu4c/source/common/utrie_swap.cpp",
+        "icu4c/source/common/ubidi_props.cpp",
+        "icu4c/source/common/uprops.cpp",
+        "icu4c/source/common/unistr_case.cpp",
+        "icu4c/source/common/ustrcase.cpp",
+        "icu4c/source/common/ucase.cpp",
+        "icu4c/source/common/loadednormalizer2impl.cpp",
+        "icu4c/source/common/uhash.cpp",
+        "icu4c/source/common/udatamem.cpp",
+        "icu4c/source/common/ucmndata.cpp",
+        "icu4c/source/common/umapfile.cpp",
+        "icu4c/source/common/udata.cpp",
+        "icu4c/source/common/emojiprops.cpp",
+        "icu4c/source/common/ucharstrieiterator.cpp",
+        "icu4c/source/common/uvectr32.cpp",
+        "icu4c/source/common/umath.cpp",
+        "icu4c/source/common/ucharstrie.cpp",
+        "icu4c/source/common/propname.cpp",
+        "icu4c/source/common/bytestrie.cpp",
+        "icu4c/source/stubdata/stubdata.cpp", // NOTE(khvorov) We won't need to access data here
+    };
+
+    char* icuFlags[] = {
+        "-DU_COMMON_IMPLEMENTATION=1",
+        "-DU_COMBINED_IMPLEMENTATION=1",
+        "-DU_STATIC_IMPLEMENTATION=1",
+    };
+
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, icuName));
+    StaticLib icu = compileStaticLib(
+        icuName,
+        rootDir,
+        compileOutDir,
+        compileCmdStart,
+        icuDownload,
+        icuCompileSources,
+        prb_arrayLength(icuCompileSources),
+        icuFlags,
+        prb_arrayLength(icuFlags)
+    );
+
+    if (!icu.success) {
+        return 1;
+    }
+
+    //
     // SECTION Freetype and harfbuzz (they depend on each other)
     //
 
@@ -291,12 +384,15 @@ main() {
 
     char* harfbuzzCompileSources[] = {
         "src/harfbuzz.cc",
+        "src/hb-icu.cc",
     };
 
     char* harfbuzzCompileFlags[] = {
+        icuDownload.includeFlag,
         freetypeDownload.includeFlag,
+        "-DHAVE_ICU=1",
         "-DHAVE_FREETYPE=1",
-        "-DHB_CUSTOM_MALLOC"
+        "-DHB_CUSTOM_MALLOC=1",
     };
 
     // prb_clearDirectory(prb_pathJoin(compileOutDir, harfbuzzName));
@@ -458,6 +554,7 @@ main() {
         freetypeDownload.includeFlag,
         sdlDownload.includeFlag,
         harfbuzzDownload.includeFlag,
+        icuDownload.includeFlag,
         "-Wall -Wextra -Wno-unused-function",
 #if prb_PLATFORM_WINDOWS
         "-Zi"),
@@ -474,6 +571,7 @@ main() {
         freetype.libFile,
         sdl.libFile,
         harfbuzz.libFile,
+        icu.libFile,
 #if prb_PLATFORM_LINUX
 #endif
     };
@@ -481,10 +579,10 @@ main() {
 #if prb_PLATFORM_WINDOWS
     prb_String mainLinkFlags =
         " -link -incremental:no -subsystem:windows "
-        "User32.lib "
+        "User32.lib ";
 #elif prb_PLATFORM_LINUX
-    // TODO(khvorov) Get rid of -lm
-    prb_String mainLinkFlags = "-lX11 -lpthread -lm -lstdc++";
+    // TODO(khvorov) Get rid of -lm and -ldl
+    prb_String mainLinkFlags = "-lX11 -lpthread -lm -lstdc++ -ldl";
 #endif
 
     prb_String mainCmd = prb_fmtAndPrintln(

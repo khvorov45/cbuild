@@ -7,6 +7,9 @@
 
 #include <hb.h>
 #include <hb-ft.h>
+#include <hb-icu.h>
+
+#include <unicode/uscript.h>
 
 #include <SDL.h>
 
@@ -709,25 +712,43 @@ createUtfIter(String str) {
 
 function void
 drawTextline(Renderer* renderer, String text, Rect2i rect) {
+    // TODO(khvorov) Handle text with mixed languages
+
     hb_buffer_clear_contents(renderer->font.hbBuf);
     hb_buffer_add_utf8(renderer->font.hbBuf, text.ptr, text.len, 0, text.len);
-    hb_buffer_set_direction(renderer->font.hbBuf, HB_DIRECTION_LTR);
-    hb_buffer_set_script(renderer->font.hbBuf, HB_SCRIPT_LATIN);
-    hb_buffer_set_language(renderer->font.hbBuf, hb_language_from_string("en", -1));
-    hb_shape(renderer->font.hbFont, renderer->font.hbBuf, 0, 0);
 
-    u32                  hbGlyphCount = 0;
-    hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->font.hbBuf, &hbGlyphCount);
-    hb_glyph_position_t* hbGlyphPositions = hb_buffer_get_glyph_positions(renderer->font.hbBuf, &hbGlyphCount);
+    u32 firstCodepoint = 0;
+    i32 textOffset = 0;
+    U8_NEXT(text.ptr, textOffset, text.len, firstCodepoint);
 
-    hb_position_t hbPosX = 0;
-    hb_position_t hbPosY = 0;
-    for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
-        hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
-        hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
-        drawGlyph(renderer, glyphid, rect.x + hbPosX, rect.y + hbPosY);
-        hbPosX += pos.x_advance >> 6;
-        hbPosY += pos.y_advance >> 6;
+    UErrorCode  icuError = U_ZERO_ERROR;
+    UScriptCode icuScript = uscript_getScript(firstCodepoint, &icuError);
+    if (icuError == U_ZERO_ERROR) {
+        hb_script_t hbScript = hb_icu_script_to_script(icuScript);
+        hb_buffer_set_script(renderer->font.hbBuf, hbScript);
+
+        hb_direction_t hbDir = hb_script_get_horizontal_direction(hbScript);
+        hb_buffer_set_direction(renderer->font.hbBuf, hbDir);
+
+        // TODO(khvorov) How important is this?
+        // hb_language_t hbLang = hb_language_from_string("en-US", -1);
+        // hb_buffer_set_language(renderer->font.hbBuf, hbLang);
+
+        hb_shape(renderer->font.hbFont, renderer->font.hbBuf, 0, 0);
+
+        u32                  hbGlyphCount = 0;
+        hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->font.hbBuf, &hbGlyphCount);
+        hb_glyph_position_t* hbGlyphPositions = hb_buffer_get_glyph_positions(renderer->font.hbBuf, &hbGlyphCount);
+
+        hb_position_t hbPosX = 0;
+        hb_position_t hbPosY = 0;
+        for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
+            hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
+            hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
+            drawGlyph(renderer, glyphid, rect.x + hbPosX, rect.y + hbPosY);
+            hbPosX += pos.x_advance >> 6;
+            hbPosY += pos.y_advance >> 6;
+        }
     }
 }
 
@@ -828,6 +849,7 @@ editorUpdateAndRender(EditorState* editorState, Renderer* renderer, Input* input
     // TODO(khvorov) Implement
     Rect2i editorRect = {.x = 0, .y = 150, .w = renderer->width, .h = renderer->height};
     drawTextline(renderer, stringFromCstring("Mārtiņš Možeiko"), editorRect);
+    // drawTextline(renderer, stringFromCstring("اللغة"), editorRect);
     // drawEntireFontTexture(renderer);
 }
 
