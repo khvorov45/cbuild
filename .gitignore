@@ -9,6 +9,8 @@
 /example/xlib
 /example/xproto
 /example/harfbuzz
+/example/fribidi
+/example/icu
 /example/build-*
 /msvc.env
 /*.rdbg
