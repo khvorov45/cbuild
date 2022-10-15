@@ -170,6 +170,31 @@ compileStaticLib(
     return result;
 }
 
+void
+compileAndRunBidiGenTab(prb_String src, prb_String compileCmdStart, prb_String runArgs, prb_String outpath) {
+    if (!prb_isFile(outpath)) {
+#if prb_PLATFORM_LINUX
+        prb_String exeExt = "bin";
+#endif
+        prb_String exeFilename = prb_replaceExt(src, exeExt);
+#if prb_PLATFORM_LINUX
+        prb_String compileCommandEnd = prb_fmt("-o %s", exeFilename);
+#endif
+
+        prb_String           cmd = prb_fmtAndPrintln("%s %s %s", compileCmdStart, compileCommandEnd, src);
+        prb_CompletionStatus status = prb_execCmdAndWait(cmd);
+        if (status != prb_CompletionStatus_Success) {
+            prb_terminate(1);
+        }
+
+        prb_String           cmdRun = prb_fmtAndPrintln("%s %s", exeFilename, runArgs);
+        prb_CompletionStatus statusRun = prb_execCmdAndWaitRedirectStdout(cmdRun, outpath);
+        if (statusRun != prb_CompletionStatus_Success) {
+            prb_terminate(1);
+        }
+    }
+}
+
 int
 main() {
     // TODO(khvorov) Argument parsing
@@ -190,9 +215,106 @@ main() {
 #endif
 
     //
+    // SECTION Fribidi
+    //
+
+    prb_String     fribidiName = "fribidi";
+    DownloadResult fribidiDownload = downloadRepo(rootDir, fribidiName, "https://github.com/fribidi/fribidi", "lib");
+    if (fribidiDownload.status == DownloadStatus_Failed) {
+        return 1;
+    }
+
+    prb_String fribidiNoConfigFlag = "-DDONT_HAVE_FRIBIDI_CONFIG_H -DDONT_HAVE_FRIBIDI_UNICODE_VERSION_H";
+
+    // NOTE(khvorov) Generate fribidi tables
+    {
+        prb_String gentabDir = prb_pathJoin(fribidiDownload.downloadDir, "gen.tab");
+        prb_String cmd = prb_fmt(
+            "%s %s %s -DHAVE_STDLIB_H=1 -DHAVE_STRING_H -DHAVE_STRINGIZE %s",
+            compileCmdStart,
+            fribidiNoConfigFlag,
+            fribidiDownload.includeFlag,
+            prb_pathJoin(gentabDir, "packtab.c")
+        );
+        prb_String datadir = prb_pathJoin(gentabDir, "unidata");
+        prb_String unidat = prb_pathJoin(datadir, "UnicodeData.txt");
+
+        // TODO(khvorov) WTF does max-depth do?
+        int32_t maxDepth = 2;
+
+        compileAndRunBidiGenTab(
+            prb_pathJoin(gentabDir, "gen-brackets-tab.c"),
+            cmd,
+            prb_fmt("%d %s %s", maxDepth, prb_pathJoin(datadir, "BidiBrackets.txt"), unidat),
+            prb_pathJoin(fribidiDownload.includeDir, "brackets.tab.i")
+        );
+
+        compileAndRunBidiGenTab(
+            prb_pathJoin(gentabDir, "gen-arabic-shaping-tab.c"),
+            cmd,
+            prb_fmt("%d %s", maxDepth, unidat),
+            prb_pathJoin(fribidiDownload.includeDir, "arabic-shaping.tab.i")
+        );
+
+        compileAndRunBidiGenTab(
+            prb_pathJoin(gentabDir, "gen-joining-type-tab.c"),
+            cmd,
+            prb_fmt("%d %s %s", maxDepth, unidat, prb_pathJoin(datadir, "ArabicShaping.txt")),
+            prb_pathJoin(fribidiDownload.includeDir, "joining-type.tab.i")
+        );
+
+        compileAndRunBidiGenTab(
+            prb_pathJoin(gentabDir, "gen-brackets-type-tab.c"),
+            cmd,
+            prb_fmt("%d %s", maxDepth, prb_pathJoin(datadir, "BidiBrackets.txt")),
+            prb_pathJoin(fribidiDownload.includeDir, "brackets-type.tab.i")
+        );
+
+        compileAndRunBidiGenTab(
+            prb_pathJoin(gentabDir, "gen-mirroring-tab.c"),
+            cmd,
+            prb_fmt("%d %s", maxDepth, prb_pathJoin(datadir, "BidiMirroring.txt")),
+            prb_pathJoin(fribidiDownload.includeDir, "mirroring.tab.i")
+        );
+
+        compileAndRunBidiGenTab(
+            prb_pathJoin(gentabDir, "gen-bidi-type-tab.c"),
+            cmd,
+            prb_fmt("%d %s", maxDepth, unidat),
+            prb_pathJoin(fribidiDownload.includeDir, "bidi-type.tab.i")
+        );
+    }
+
+    char* fribidiCompileSources[] = {"lib/*.c"};
+
+    char* fribidiCompileFlags[] = {
+        fribidiNoConfigFlag,
+        // TODO(khvorov) Custom allocators for fribidi
+        "-DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1",
+        "-DHAVE_STRINGIZE=1",
+    };
+
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, fribidiName));
+    StaticLib fribidi = compileStaticLib(
+        fribidiName,
+        rootDir,
+        compileOutDir,
+        compileCmdStart,
+        fribidiDownload,
+        fribidiCompileSources,
+        prb_arrayLength(fribidiCompileSources),
+        fribidiCompileFlags,
+        prb_arrayLength(fribidiCompileFlags)
+    );
+    if (!fribidi.success) {
+        return 1;
+    }
+
+    //
     // SECTION ICU
     //
 
+    // TODO(khvorov) Custom allocation for ICU
     prb_String     icuName = "icu";
     DownloadResult icuDownload =
         downloadRepo(rootDir, icuName, "https://github.com/unicode-org/icu", "icu4c/source/common");
@@ -256,7 +378,7 @@ main() {
         "icu4c/source/common/ucharstrie.cpp",
         "icu4c/source/common/propname.cpp",
         "icu4c/source/common/bytestrie.cpp",
-        "icu4c/source/stubdata/stubdata.cpp", // NOTE(khvorov) We won't need to access data here
+        "icu4c/source/stubdata/stubdata.cpp",  // NOTE(khvorov) We won't need to access data here
     };
 
     char* icuFlags[] = {
@@ -540,7 +662,8 @@ main() {
     // SECTION Pack font into a C array
     //
 
-    prb_String fontFilePath = prb_pathJoin(rootDir, "LiberationMono-Regular.ttf");
+    // prb_String fontFilePath = prb_pathJoin(rootDir, "LiberationMono-Regular.ttf");
+    prb_String fontFilePath = prb_pathJoin(rootDir, "NotoSansArabic-Regular.ttf");
     prb_String fontArrayPath = prb_pathJoin(rootDir, "fontdata.c");
     if (!prb_isFile(fontArrayPath)) {
         prb_binaryToCArray(fontFilePath, fontArrayPath, "fontdata");
@@ -555,6 +678,8 @@ main() {
         sdlDownload.includeFlag,
         harfbuzzDownload.includeFlag,
         icuDownload.includeFlag,
+        fribidiDownload.includeFlag,
+        fribidiNoConfigFlag,        
         "-Wall -Wextra -Wno-unused-function",
 #if prb_PLATFORM_WINDOWS
         "-Zi"),
@@ -572,6 +697,7 @@ main() {
         sdl.libFile,
         harfbuzz.libFile,
         icu.libFile,
+        fribidi.libFile,
 #if prb_PLATFORM_LINUX
 #endif
     };

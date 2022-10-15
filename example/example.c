@@ -11,6 +11,8 @@
 
 #include <unicode/uscript.h>
 
+#include <fribidi.h>
+
 #include <SDL.h>
 
 // NOTE(khvorov) SDL provides platform detection
@@ -302,7 +304,8 @@ FT_Done_Memory(FT_Memory memory) {
     dlfree(memory);
 }
 
-global_variable Arena globalTempArena;
+global_variable Arena     globalTempArena;
+global_variable Allocator globalTempArenaAllocator = {&globalTempArena, arenaAllocAndZero};
 
 //
 // SECTION Strings
@@ -713,41 +716,81 @@ createUtfIter(String str) {
 function void
 drawTextline(Renderer* renderer, String text, Rect2i rect) {
     // TODO(khvorov) Handle text with mixed languages
+    if (text.len > 0) {
+        FriBidiChar* ogStringUtf32 = allocArray(globalTempArenaAllocator, FriBidiChar, text.len + 1);
+        i32          utf32Length = 0;
+        {
+            u32 codepoint = 0;
+            i32 textOffset = 0;
+            while (textOffset < text.len) {
+                U8_NEXT(text.ptr, textOffset, text.len, codepoint);
+                ogStringUtf32[utf32Length++] = codepoint;
+            }
+        }
 
-    hb_buffer_clear_contents(renderer->font.hbBuf);
-    hb_buffer_add_utf8(renderer->font.hbBuf, text.ptr, text.len, 0, text.len);
+        // TODO(khvorov) Just break the string into ltr/rtl and figure it out from there rather than
+        // reversing it like this
+        FriBidiCharType  fribidiBaseDirection = FRIBIDI_TYPE_ON;
+        FriBidiChar*     visualStr = allocArray(globalTempArenaAllocator, FriBidiChar, utf32Length + 1);
+        FriBidiStrIndex* posLtoV = 0;
+        FriBidiStrIndex* posVtoL = 0;
+        FriBidiLevel*    embeddingLevels = 0;
+        FriBidiLevel     bidiStatus = fribidi_log2vis(
+            ogStringUtf32,
+            utf32Length,
+            &fribidiBaseDirection,
+            visualStr,
+            posLtoV,
+            posVtoL,
+            embeddingLevels
+        );
 
-    u32 firstCodepoint = 0;
-    i32 textOffset = 0;
-    U8_NEXT(text.ptr, textOffset, text.len, firstCodepoint);
+        if (bidiStatus != 0) {
+            // TODO(khvorov) Better script detection
+            UErrorCode  icuError = U_ZERO_ERROR;
+            UScriptCode icuScript = uscript_getScript(ogStringUtf32[0], &icuError);
+            if (icuError == U_ZERO_ERROR) {
 
-    UErrorCode  icuError = U_ZERO_ERROR;
-    UScriptCode icuScript = uscript_getScript(firstCodepoint, &icuError);
-    if (icuError == U_ZERO_ERROR) {
-        hb_script_t hbScript = hb_icu_script_to_script(icuScript);
-        hb_buffer_set_script(renderer->font.hbBuf, hbScript);
+                hb_script_t hbScript = hb_icu_script_to_script(icuScript);
+                hb_buffer_set_script(renderer->font.hbBuf, hbScript);
 
-        hb_direction_t hbDir = hb_script_get_horizontal_direction(hbScript);
-        hb_buffer_set_direction(renderer->font.hbBuf, hbDir);
+                hb_direction_t hbDir = hb_script_get_horizontal_direction(hbScript);                
 
-        // TODO(khvorov) How important is this?
-        // hb_language_t hbLang = hb_language_from_string("en-US", -1);
-        // hb_buffer_set_language(renderer->font.hbBuf, hbLang);
+                // TODO(khvorov) Remove when not reversing with fribidi
+                if (hbDir == HB_DIRECTION_RTL) {
+                    for (i32 utf32Index = 0; utf32Index < utf32Length / 2; utf32Index++) {
+                        i32 otherIndex = utf32Length - 1 - utf32Index;
+                        u32 temp = visualStr[utf32Index];
+                        visualStr[utf32Index] = visualStr[otherIndex];
+                        visualStr[otherIndex] = temp;
+                    }
+                }
 
-        hb_shape(renderer->font.hbFont, renderer->font.hbBuf, 0, 0);
+                hb_buffer_clear_contents(renderer->font.hbBuf);
+                hb_buffer_add_utf32(renderer->font.hbBuf, visualStr, utf32Length, 0, utf32Length);
+                hb_buffer_set_direction(renderer->font.hbBuf, hbDir); // NOTE(khvorov) This has to be done after contents
 
-        u32                  hbGlyphCount = 0;
-        hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->font.hbBuf, &hbGlyphCount);
-        hb_glyph_position_t* hbGlyphPositions = hb_buffer_get_glyph_positions(renderer->font.hbBuf, &hbGlyphCount);
+                // TODO(khvorov) How important is this?
+                // hb_language_t hbLang = hb_language_from_string("en-US", -1);
+                // hb_buffer_set_language(renderer->font.hbBuf, hbLang);
 
-        hb_position_t hbPosX = 0;
-        hb_position_t hbPosY = 0;
-        for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
-            hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
-            hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
-            drawGlyph(renderer, glyphid, rect.x + hbPosX, rect.y + hbPosY);
-            hbPosX += pos.x_advance >> 6;
-            hbPosY += pos.y_advance >> 6;
+                hb_shape(renderer->font.hbFont, renderer->font.hbBuf, 0, 0);
+
+                u32                  hbGlyphCount = 0;
+                hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->font.hbBuf, &hbGlyphCount);
+                hb_glyph_position_t* hbGlyphPositions =
+                    hb_buffer_get_glyph_positions(renderer->font.hbBuf, &hbGlyphCount);
+
+                hb_position_t hbPosX = 0;
+                hb_position_t hbPosY = 0;
+                for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
+                    hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
+                    hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
+                    drawGlyph(renderer, glyphid, rect.x + hbPosX, rect.y + hbPosY);
+                    hbPosX += pos.x_advance >> 6;
+                    hbPosY += pos.y_advance >> 6;
+                }
+            }
         }
     }
 }
@@ -848,8 +891,8 @@ editorUpdateAndRender(EditorState* editorState, Renderer* renderer, Input* input
     UNUSED(renderer);
     // TODO(khvorov) Implement
     Rect2i editorRect = {.x = 0, .y = 150, .w = renderer->width, .h = renderer->height};
-    drawTextline(renderer, stringFromCstring("Mārtiņš Možeiko"), editorRect);
-    // drawTextline(renderer, stringFromCstring("اللغة"), editorRect);
+    // drawTextline(renderer, stringFromCstring("Mārtiņš Možeiko"), editorRect);
+    drawTextline(renderer, stringFromCstring("من 467 مليون"), editorRect);
     // drawEntireFontTexture(renderer);
 }
 

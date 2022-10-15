@@ -145,6 +145,7 @@ typedef struct prb_ProcessHandle {
 
 // SECTION Core
 void prb_init(void);
+void prb_terminate(int32_t code);
 
 // SECTION Memory
 void*   prb_memcpy(void* restrict dest, const void* restrict src, size_t n);
@@ -221,6 +222,8 @@ void                   prb_resetPrintColor(void);
 // SECTION Processes
 prb_CompletionStatus prb_execCmdAndWait(prb_String cmd);
 prb_CompletionStatus prb_execCmdAndWaitRedirectStdout(prb_String cmd, prb_String stdoutPath);
+prb_CompletionStatus prb_execCmdAndWaitRedirectStderr(prb_String cmd, prb_String stderrPath);
+prb_CompletionStatus prb_execCmdAndWaitRedirectStdoutAndStderr(prb_String cmd, prb_String stdoutAndErrPath);
 prb_ProcessHandle    prb_execCmdAndDontWait(prb_String cmd);
 prb_CompletionStatus prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
 
@@ -1078,6 +1081,11 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     #include <time.h>
     #include <fcntl.h>
 
+void
+prb_terminate(int32_t code) {
+    _exit(code);
+}
+
 void*
 prb_vmemAllocate(int32_t size) {
     void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -1180,6 +1188,62 @@ prb_execCmdAndWaitRedirectStdout(prb_String cmd, prb_String stdoutPath) {
                 &fileActions,
                 STDOUT_FILENO,
                 stdoutPath,
+                O_WRONLY | O_CREAT | O_TRUNC,
+                S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
+            )
+            == 0) {
+            pid_t   pid;
+            int32_t spawnResult = posix_spawnp(&pid, args[0], &fileActions, 0, args, __environ);
+            if (spawnResult == 0) {
+                int32_t status;
+                pid_t   waitResult = waitpid(pid, &status, 0);
+                if (waitResult == pid && status == 0) {
+                    cmdStatus = prb_CompletionStatus_Success;
+                }
+            }
+        }
+    }
+    return cmdStatus;
+}
+
+prb_CompletionStatus
+prb_execCmdAndWaitRedirectStderr(prb_String cmd, prb_String stderrPath) {
+    char**                     args = prb_getArgArrayFromString(cmd);
+    prb_CompletionStatus       cmdStatus = prb_CompletionStatus_Failure;
+    posix_spawn_file_actions_t fileActions = {0};
+    if (posix_spawn_file_actions_init(&fileActions) == 0) {
+        if (posix_spawn_file_actions_addopen(
+                &fileActions,
+                STDERR_FILENO,
+                stderrPath,
+                O_WRONLY | O_CREAT | O_TRUNC,
+                S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
+            )
+            == 0) {
+            pid_t   pid;
+            int32_t spawnResult = posix_spawnp(&pid, args[0], &fileActions, 0, args, __environ);
+            if (spawnResult == 0) {
+                int32_t status;
+                pid_t   waitResult = waitpid(pid, &status, 0);
+                if (waitResult == pid && status == 0) {
+                    cmdStatus = prb_CompletionStatus_Success;
+                }
+            }
+        }
+    }
+    return cmdStatus;
+}
+
+prb_CompletionStatus
+prb_execCmdAndWaitRedirectStdoutAndStderr(prb_String cmd, prb_String stdoutAndErrPath) {
+    char**                     args = prb_getArgArrayFromString(cmd);
+    prb_CompletionStatus       cmdStatus = prb_CompletionStatus_Failure;
+    posix_spawn_file_actions_t fileActions = {0};
+    if (posix_spawn_file_actions_init(&fileActions) == 0) {
+        if (posix_spawn_file_actions_addopen(
+                &fileActions,
+                STDOUT_FILENO,
+                stdoutAndErrPath,
                 O_WRONLY | O_CREAT | O_TRUNC,
                 S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
             )
@@ -1651,8 +1715,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                     fl |= STBSP__LEADINGZERO;
                     ++f;
                     goto flags_done;
-                default:
-                    goto flags_done;
+                default: goto flags_done;
             }
         }
     flags_done:
@@ -1726,8 +1789,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                     ++f;
                 }
                 break;
-            default:
-                break;
+            default: break;
         }
 
         // handle each replacement
