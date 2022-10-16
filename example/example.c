@@ -679,44 +679,10 @@ drawGlyph(Renderer* renderer, i32 chIndex, i32 topleftX, i32 topleftY) {
     return result;
 }
 
-typedef struct UtfIter {
-    String str;
-    i32    read;
-    u32    lastCh;
-} UtfIter;
-
-function CompletionStatus
-utfIterNext(UtfIter* iter) {
-    u32 result = CompletionStatus_Failure;
-    if (iter->read < iter->str.len) {
-        char* charBytes = iter->str.ptr + iter->read;
-        u8    firstByte = charBytes[0];
-        i32   leading1sCount = firstByte ? __builtin_clz(~(firstByte << 24)) : 0;
-        i32   mask = (1 << (8 - leading1sCount)) - 1;
-        u32   value = firstByte & mask;
-        i32   extraBytesLeft = leading1sCount == 0 ? 0 : leading1sCount - 1;
-        iter->read += 1 + extraBytesLeft;
-        for (u8 byte = charBytes[leading1sCount - extraBytesLeft]; extraBytesLeft > 0;
-             byte = charBytes[leading1sCount - (--extraBytesLeft)]) {
-            value <<= 6;
-            value += (byte & 0x3F);
-        }
-        iter->lastCh = value;
-        result = CompletionStatus_Sucess;
-    }
-    return result;
-}
-
-function UtfIter
-createUtfIter(String str) {
-    UtfIter iter = {.str = str};
-    return iter;
-}
-
 function void
 drawTextline(Renderer* renderer, String text, Rect2i rect) {
-    // TODO(khvorov) Handle text with mixed languages
     if (text.len > 0) {
+        // NOTE(khvorov) Convert to UTF32 from UTF8
         FriBidiChar* ogStringUtf32 = allocArray(globalTempArenaAllocator, FriBidiChar, text.len + 1);
         i32          utf32Length = 0;
         {
@@ -728,67 +694,84 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
             }
         }
 
-        // TODO(khvorov) Just break the string into ltr/rtl and figure it out from there rather than
-        // reversing it like this
-        FriBidiCharType  fribidiBaseDirection = FRIBIDI_TYPE_ON;
-        FriBidiChar*     visualStr = allocArray(globalTempArenaAllocator, FriBidiChar, utf32Length + 1);
-        FriBidiStrIndex* posLtoV = 0;
-        FriBidiStrIndex* posVtoL = 0;
-        FriBidiLevel*    embeddingLevels = 0;
-        FriBidiLevel     bidiStatus = fribidi_log2vis(
-            ogStringUtf32,
-            utf32Length,
-            &fribidiBaseDirection,
-            visualStr,
-            posLtoV,
-            posVtoL,
-            embeddingLevels
-        );
+        // TODO(khvorov) Handle text with mixed scripts
+        UErrorCode  icuError = U_ZERO_ERROR;
+        UScriptCode icuScript = uscript_getScript(ogStringUtf32[0], &icuError);
+        if (icuError == U_ZERO_ERROR) {
+            hb_script_t    hbScript = hb_icu_script_to_script(icuScript);
+            hb_direction_t hbDir = hb_script_get_horizontal_direction(hbScript);
 
-        if (bidiStatus != 0) {
-            // TODO(khvorov) Better script detection
-            UErrorCode  icuError = U_ZERO_ERROR;
-            UScriptCode icuScript = uscript_getScript(ogStringUtf32[0], &icuError);
-            if (icuError == U_ZERO_ERROR) {
+            FriBidiCharType* bidiTypes = allocArray(globalTempArenaAllocator, FriBidiCharType, utf32Length);
+            fribidi_get_bidi_types(ogStringUtf32, utf32Length, bidiTypes);
 
-                hb_script_t hbScript = hb_icu_script_to_script(icuScript);
-                hb_buffer_set_script(renderer->font.hbBuf, hbScript);
+            FriBidiBracketType* fribidiBracketTypes =
+                allocArray(globalTempArenaAllocator, FriBidiBracketType, utf32Length);
+            fribidi_get_bracket_types(ogStringUtf32, utf32Length, bidiTypes, fribidiBracketTypes);
 
-                hb_direction_t hbDir = hb_script_get_horizontal_direction(hbScript);                
+            FriBidiParType fribidiBaseDirection = hbDir == HB_DIRECTION_RTL ? FRIBIDI_TYPE_RTL : FRIBIDI_TYPE_LTR;
+            FriBidiLevel*  firbidiEmbeddingLevels = allocArray(globalTempArenaAllocator, FriBidiLevel, utf32Length);
+            FriBidiLevel   embeddingResult = fribidi_get_par_embedding_levels_ex(
+                bidiTypes,
+                fribidiBracketTypes,
+                utf32Length,
+                &fribidiBaseDirection,
+                firbidiEmbeddingLevels
+            );
 
-                // TODO(khvorov) Remove when not reversing with fribidi
-                if (hbDir == HB_DIRECTION_RTL) {
-                    for (i32 utf32Index = 0; utf32Index < utf32Length / 2; utf32Index++) {
-                        i32 otherIndex = utf32Length - 1 - utf32Index;
-                        u32 temp = visualStr[utf32Index];
-                        visualStr[utf32Index] = visualStr[otherIndex];
-                        visualStr[otherIndex] = temp;
+            if (embeddingResult != 0) {
+                FriBidiChar* visualStr = allocArray(globalTempArenaAllocator, FriBidiChar, utf32Length + 1);
+                SDL_memcpy(visualStr, ogStringUtf32, utf32Length * sizeof(FriBidiChar));
+
+                FriBidiLevel reorderResult = fribidi_reorder_line(
+                    0,
+                    bidiTypes,
+                    utf32Length,
+                    0,
+                    fribidiBaseDirection,
+                    firbidiEmbeddingLevels,
+                    visualStr,
+                    0
+                );
+
+                if (reorderResult != 0) {
+                    // NOTE(khvorov) Fribidi reverses arabic but not numbers - the oppposite of what we want.
+                    // So reverse it again here (so that the arabic is in the correct logical order but the numbers are reversed)
+                    if (hbDir == HB_DIRECTION_RTL) {
+                        for (i32 utf32Index = 0; utf32Index < utf32Length / 2; utf32Index++) {
+                            i32 otherIndex = utf32Length - 1 - utf32Index;
+                            u32 temp = visualStr[utf32Index];
+                            visualStr[utf32Index] = visualStr[otherIndex];
+                            visualStr[otherIndex] = temp;
+                        }
                     }
-                }
 
-                hb_buffer_clear_contents(renderer->font.hbBuf);
-                hb_buffer_add_utf32(renderer->font.hbBuf, visualStr, utf32Length, 0, utf32Length);
-                hb_buffer_set_direction(renderer->font.hbBuf, hbDir); // NOTE(khvorov) This has to be done after contents
+                    hb_buffer_clear_contents(renderer->font.hbBuf);
+                    hb_buffer_add_utf32(renderer->font.hbBuf, visualStr, utf32Length, 0, utf32Length);
 
-                // TODO(khvorov) How important is this?
-                // hb_language_t hbLang = hb_language_from_string("en-US", -1);
-                // hb_buffer_set_language(renderer->font.hbBuf, hbLang);
+                    // NOTE(khvorov) This has to be done after contents
+                    hb_buffer_set_script(renderer->font.hbBuf, hbScript);
+                    hb_buffer_set_direction(renderer->font.hbBuf, hbDir);
 
-                hb_shape(renderer->font.hbFont, renderer->font.hbBuf, 0, 0);
+                    // TODO(khvorov) How important is this?
+                    // hb_language_t hbLang = hb_language_from_string("en-US", -1);
+                    // hb_buffer_set_language(renderer->font.hbBuf, HB_LANGUAGE_INVALID);
 
-                u32                  hbGlyphCount = 0;
-                hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->font.hbBuf, &hbGlyphCount);
-                hb_glyph_position_t* hbGlyphPositions =
-                    hb_buffer_get_glyph_positions(renderer->font.hbBuf, &hbGlyphCount);
+                    hb_shape(renderer->font.hbFont, renderer->font.hbBuf, 0, 0);
 
-                hb_position_t hbPosX = 0;
-                hb_position_t hbPosY = 0;
-                for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
-                    hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
-                    hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
-                    drawGlyph(renderer, glyphid, rect.x + hbPosX, rect.y + hbPosY);
-                    hbPosX += pos.x_advance >> 6;
-                    hbPosY += pos.y_advance >> 6;
+                    u32                  hbGlyphCount = 0;
+                    hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->font.hbBuf, &hbGlyphCount);
+                    hb_glyph_position_t* hbGlyphPositions =
+                        hb_buffer_get_glyph_positions(renderer->font.hbBuf, &hbGlyphCount);
+
+                    hb_position_t hbPosX = 0;
+                    hb_position_t hbPosY = 0;
+                    for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
+                        hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
+                        hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
+                        drawGlyph(renderer, glyphid, rect.x + hbPosX, rect.y + hbPosY);
+                        hbPosX += pos.x_advance >> 6;
+                        hbPosY += pos.y_advance >> 6;
+                    }
                 }
             }
         }
