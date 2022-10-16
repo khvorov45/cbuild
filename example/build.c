@@ -708,7 +708,7 @@ main() {
         "User32.lib ";
 #elif prb_PLATFORM_LINUX
     // TODO(khvorov) Get rid of -lm and -ldl
-    prb_String mainLinkFlags = "-lX11 -lpthread -lm -lstdc++ -ldl";
+    prb_String mainLinkFlags = "-lX11 -lpthread -lm -lstdc++ -ldl -lfontconfig";
 #endif
 
     prb_String mainCmd = prb_fmtAndPrintln(

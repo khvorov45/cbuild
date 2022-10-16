@@ -5,6 +5,9 @@
 #include <freetype/freetype.h>
 #include <freetype/ftbitmap.h>
 
+#include <fontconfig/fontconfig.h>
+#include <fontconfig/fcfreetype.h>
+
 #include <hb.h>
 #include <hb-ft.h>
 #include <hb-icu.h>
@@ -933,6 +936,30 @@ main(int argc, char* argv[]) {
         SDL_Window* sdlWindow = renderer.sdlWindow;
         Input       input = {0};
         EditorState editorState = createEditorState();
+
+        FcConfig*  fcConfig = FcInitLoadConfigAndFonts();
+        FcPattern* fcPattern = FcPatternCreate();
+
+        FcPatternAddInteger(fcPattern, FC_WEIGHT, FC_WEIGHT_MEDIUM);
+        FcPatternAddInteger(fcPattern, FC_SLANT, FC_SLANT_ROMAN);
+        // FcPatternAddString(fcPattern, FC_CAPABILITY, (const FcChar8*)"otlayout:latn");
+        // FcPatternAddInteger(fcPattern, FC_SPACING, FC_PROPORTIONAL);
+        // FcPatternAddString(fcPattern, FC_FONTFORMAT, (const FcChar8*)"TrueType");
+
+        FcLangSet* fcLangSet = FcLangSetCreate();
+        FcLangSetAdd(fcLangSet, (FcChar8*)"zh-cn");
+        FcPatternAddLangSet(fcPattern, FC_LANG, fcLangSet);
+        FcPatternPrint(fcPattern);
+
+        FcConfigSubstitute(fcConfig, fcPattern, FcMatchPattern);
+        FcDefaultSubstitute(fcPattern);
+
+        FcResult   matchResult = FcResultNoMatch;
+        FcPattern* matchFont = FcFontMatch(fcConfig, fcPattern, &matchResult);
+        FcPatternPrint(matchFont);
+
+        char* matchFontFilename = 0;
+        FcPatternGetString(matchFont, FC_FILE, 0, (FcChar8**)&matchFontFilename);
 
         bool running = true;
         while (running) {
