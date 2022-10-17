@@ -74,21 +74,34 @@ vmemAlloc(i32 size) {
 
 #endif
 
+bool
+memeq(void* ptr1, void* ptr2, i32 bytes) {
+    assert(bytes >= 0);
+    u8 *l = ptr1, *r = ptr2;
+    i32 left = bytes;
+    for (; left > 0 && *l == *r; left--, l++, r++) {}
+    bool result = left == 0;
+    return result;
+}
+
 typedef struct ByteSlice {
     u8* ptr;
     i32 len;
 } ByteSlice;
 
 typedef void* (*AllocatorAllocAndZero)(void* data, i32 size, i32 align);
+typedef void (*AllocatorFree)(void* data, void* ptr);
 
 typedef struct Allocator {
     void*                 data;
     AllocatorAllocAndZero allocAndZero;
+    AllocatorFree         free;
 } Allocator;
 
 #define allocStruct(allocator, type) (type*)(allocator).allocAndZero((allocator).data, sizeof(type), _Alignof(type))
 #define allocArray(allocator, type, count) \
     (type*)(allocator).allocAndZero((allocator).data, sizeof(type) * (count), _Alignof(type))
+#define freeMemory(allocator, ptr) (allocator).free((allocator).data, ptr)
 
 function ByteSlice
 alignPtr(void* ptr, i32 size, i32 align) {
@@ -103,12 +116,13 @@ typedef struct Arena {
     u8* base;
     i32 size;
     i32 used;
+    i32 tempCount;
 } Arena;
 
 function Arena
 createArena(i32 size, Allocator allocator) {
     u8*   base = allocArray(allocator, u8, size);
-    Arena arena = {.base = base, .size = size, .used = 0};
+    Arena arena = {.base = base, .size = size};
     return arena;
 }
 
@@ -152,13 +166,67 @@ createArenaAllocator(Arena* arena) {
     return allocator;
 }
 
-global_variable volatile usize globalSDLMemoryUsed;
+typedef struct TempMemory {
+    Arena* arena;
+    i32    usedWhenBegan;
+} TempMemory;
+
+function TempMemory
+arenaBeginTemp(Arena* arena) {
+    assert(arena->tempCount < INT32_MAX && arena->tempCount >= 0);
+    arena->tempCount += 1;
+    TempMemory tempMemory = {.arena = arena, .usedWhenBegan = arena->used};
+    return tempMemory;
+}
+
+function void
+endTempMemory(TempMemory tempMemory) {
+    Arena* arena = tempMemory.arena;
+    assert(arena->tempCount > 0);
+    arena->tempCount -= 1;
+    arena->used = tempMemory.usedWhenBegan;
+}
 
 // NOTE(khvorov) SDL has these, it just doesn't expose them
 void* dlmalloc(size_t);
 void* dlcalloc(size_t, size_t);
 void* dlrealloc(void*, size_t);
 void  dlfree(void*);
+
+typedef struct GeneralPurposeAllocatorData {
+    usize used;
+} GeneralPurposeAllocatorData;
+
+function void*
+gpaAllocAndZero(void* data, i32 size, i32 align) {
+    assert((usize)align <= _Alignof(void*));
+    GeneralPurposeAllocatorData* gpa = (GeneralPurposeAllocatorData*)data;
+    void*                        result = dlcalloc(size, 1);
+    if (result) {
+        usize sizeActual = *((usize*)result - 1);
+        gpa->used += sizeActual;
+    }
+    return result;
+}
+
+function void
+gpaFree(void* data, void* ptr) {
+    GeneralPurposeAllocatorData* gpa = (GeneralPurposeAllocatorData*)data;
+    if (ptr) {
+        usize sizeActual = *((usize*)ptr - 1);
+        gpa->used -= sizeActual;
+    }
+    dlfree(ptr);
+}
+
+function Allocator
+createGpaAllocator(GeneralPurposeAllocatorData* data) {
+    Allocator allocator = {.data = data, .allocAndZero = gpaAllocAndZero, .free = gpaFree};
+    return allocator;
+}
+
+// TODO(khvorov) Disable SDL threads
+global_variable volatile usize globalSDLMemoryUsed;
 
 function void*
 sdlMallocWrapper(usize size) {
@@ -307,8 +375,8 @@ FT_Done_Memory(FT_Memory memory) {
     dlfree(memory);
 }
 
-global_variable Arena     globalTempArena;
-global_variable Allocator globalTempArenaAllocator = {&globalTempArena, arenaAllocAndZero};
+global_variable Arena     globalFrameArena;
+global_variable Allocator globalTempArenaAllocator = {&globalFrameArena, arenaAllocAndZero, 0};
 
 //
 // SECTION Strings
@@ -331,13 +399,50 @@ function String
 fmtTempString(char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    char* ptr = (char*)(globalTempArena.base + globalTempArena.used);
-    i32   len = SDL_vsnprintf(ptr, globalTempArena.size - globalTempArena.used, fmt, ap);
-    globalTempArena.used += len;
+    char* ptr = (char*)(globalFrameArena.base + globalFrameArena.used);
+    i32   len = SDL_vsnprintf(ptr, globalFrameArena.size - globalFrameArena.used, fmt, ap);
+    globalFrameArena.used += len;
     va_end(ap);
     String result = {ptr, len};
     return result;
 }
+
+bool
+streq(String str1, String str2) {
+    bool result = false;
+    if (str1.len == str2.len) {
+        result = memeq(str1.ptr, str2.ptr, str1.len);
+    }
+    return result;
+}
+
+//
+// SECTION Filesystem
+//
+
+#if PLATFORM_WINDOWS
+
+    #error unimlemented
+
+#elif PLATFORM_LINUX
+    #include <unistd.h>
+    #include <fcntl.h>
+
+ByteSlice
+readEntireFile(String path, Allocator allocator) {
+    int handle = open(path.ptr, O_RDONLY, 0);
+    assert(handle != -1);
+    struct stat statBuf = {0};
+    assert(fstat(handle, &statBuf) == 0);
+    u8* buf = allocArray(allocator, u8, statBuf.st_size);
+    i32 readResult = read(handle, buf, statBuf.st_size);
+    assert(readResult == statBuf.st_size);
+    close(handle);
+    ByteSlice result = {buf, readResult};
+    return result;
+}
+
+#endif
 
 //
 // SECTION Input
@@ -405,8 +510,6 @@ wasUnpressed(Input* input, InputKeyID keyID) {
 // SECTION Font
 //
 
-#include "fontdata.c"
-
 typedef struct Glyph {
     i32 width, height, pitch;
     i32 offsetX, offsetY;
@@ -414,52 +517,23 @@ typedef struct Glyph {
 } Glyph;
 
 typedef struct Font {
-    FT_Face      ftFace;
-    hb_buffer_t* hbBuf;
-    hb_font_t*   hbFont;
-    i32          lineHeight;
-    i32          fontHeight;
-    Glyph        loadedGlyph;
-    u32*         loadedGlyphPx;
-    i32          loadedGlyphPxWidth, loadedGlyphPxHeight;
+    FT_Face    ftFace;
+    hb_font_t* hbFont;
+    String     path;
+    ByteSlice  fileContents;
+    i32        lineHeight;
+    i32        fontHeight;
 } Font;
 
-function CompletionStatus
-loadGlyph(Font* font, i32 chIndex) {
-    CompletionStatus result = CompletionStatus_Failure;
-    FT_Error         loadGlyphResult = FT_Load_Glyph(font->ftFace, chIndex, FT_LOAD_DEFAULT);
-    if (loadGlyphResult == FT_Err_Ok) {
-        if (font->ftFace->glyph->format != FT_GLYPH_FORMAT_BITMAP) {
-            FT_Error renderGlyphResult = FT_Render_Glyph(font->ftFace->glyph, FT_RENDER_MODE_NORMAL);
-            if (renderGlyphResult == FT_Err_Ok) {
-                FT_GlyphSlot ftGlyph = font->ftFace->glyph;
-                FT_Bitmap    bm = ftGlyph->bitmap;
-
-                font->loadedGlyph = (Glyph) {
-                    .advanceX = ftGlyph->advance.x >> 6,
-                    .width = bm.width,
-                    .height = bm.rows,
-                    .pitch = bm.pitch,
-                    .offsetX = ftGlyph->bitmap_left,
-                    .offsetY = font->fontHeight - ftGlyph->bitmap_top,
-                };
-
-                for (i32 bmRow = 0; bmRow < (i32)bm.rows; bmRow++) {
-                    for (i32 bmCol = 0; bmCol < (i32)bm.width; bmCol++) {
-                        i32 bmIndex = bmRow * bm.pitch + bmCol;
-                        i32 alpha = bm.buffer[bmIndex];
-                        i32 fullColorRGBA = 0xFFFFFF00 | alpha;
-                        i32 bufIndex = bmRow * font->loadedGlyphPxWidth + bmCol;
-                        font->loadedGlyphPx[bufIndex] = fullColorRGBA;
-                    }
-                }
-
-                result = CompletionStatus_Sucess;
-            };
-        }
-    }
-    return result;
-}
+typedef struct FontManager {
+    FcConfig*    fcConfig;
+    FcPattern*   fcPattern;
+    FT_Library   ftLib;
+    Font*        fonts;
+    FcCharSet**  fcCharSets;
+    hb_buffer_t* hbBuf;
+    Allocator    fontFileContentsAllocator;
+} FontManager;
 
 typedef struct LoadFontResult {
     bool success;
@@ -467,36 +541,131 @@ typedef struct LoadFontResult {
 } LoadFontResult;
 
 function LoadFontResult
-loadFont(Allocator allocator) {
+loadFont(FT_Library ftLib, String path, ByteSlice fileContents) {
     LoadFontResult result = {0};
-    FT_Library     ftLib;
-    FT_Error       ftInitResult = FT_Init_FreeType(&ftLib);
-    if (ftInitResult == FT_Err_Ok) {
-        FT_Face  ftFace;
-        FT_Error ftFaceResult = FT_New_Memory_Face(ftLib, fontdata, sizeof(fontdata), 0, &ftFace);
-        if (ftFaceResult == FT_Err_Ok) {
-            i32      fontHeight = 14;
-            FT_Error ftSetPxSizeResult = FT_Set_Pixel_Sizes(ftFace, 0, fontHeight);
-            if (ftSetPxSizeResult == FT_Err_Ok) {
-                i32          lineHeight = FT_MulFix(ftFace->height, ftFace->size->metrics.y_scale) >> 6;
-                i32          pxBufferWidth = 100;
-                i32          pxBufferHeight = 100;
-                u32*         pxBuffer = allocArray(allocator, u32, pxBufferWidth * pxBufferWidth);
-                hb_buffer_t* hbBuf = hb_buffer_create();
-                hb_font_t*   hbFont = hb_ft_font_create_referenced(ftFace);
+    FT_Face        ftFace = 0;
+    FT_Error       ftFaceResult = FT_New_Memory_Face(ftLib, fileContents.ptr, fileContents.len, 0, &ftFace);
+    if (ftFaceResult == FT_Err_Ok) {
+        i32      fontHeight = 14;
+        FT_Error ftSetPxSizeResult = FT_Set_Pixel_Sizes(ftFace, 0, fontHeight);
+        if (ftSetPxSizeResult == FT_Err_Ok) {
+            i32        lineHeight = FT_MulFix(ftFace->height, ftFace->size->metrics.y_scale) >> 6;
+            hb_font_t* hbFont = hb_ft_font_create_referenced(ftFace);
 
-                Font font = {
-                    .ftFace = ftFace,
-                    .hbBuf = hbBuf,
-                    .hbFont = hbFont,
-                    .lineHeight = lineHeight,
-                    .fontHeight = fontHeight,
-                    .loadedGlyphPx = pxBuffer,
-                    .loadedGlyphPxWidth = pxBufferWidth,
-                    .loadedGlyphPxHeight = pxBufferHeight,
-                };
-                result = (LoadFontResult) {.success = true, .font = font};
+            Font font = {
+                .ftFace = ftFace,
+                .hbFont = hbFont,
+                .path = path,
+                .fileContents = fileContents,
+                .lineHeight = lineHeight,
+                .fontHeight = fontHeight,
+            };
+            result = (LoadFontResult) {.success = true, .font = font};
+        }
+    }
+    return result;
+}
+
+function void
+unloadFont(FontManager* fontManager, Font* font) {
+    if (font->ftFace) {
+        hb_font_destroy(font->hbFont);
+        FT_Error doneResult = FT_Done_Face(font->ftFace);
+        assert(doneResult == FT_Err_Ok);
+        freeMemory(fontManager->fontFileContentsAllocator, font->fileContents.ptr);
+    }
+    *font = (Font) {0};
+}
+
+typedef struct GetFontResult {
+    bool  success;
+    Font* font;
+} GetFontResult;
+
+function GetFontResult
+getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriBidiChar* chars, i32 chCount) {
+    GetFontResult result = {0};
+    if (script >= 0 && script < USCRIPT_CODE_LIMIT) {
+        Font*      font = fontManager->fonts + script;
+        FcCharSet* fcCharSet = fontManager->fcCharSets[script];
+
+        for (i32 charIndex = 0; charIndex < chCount; charIndex++) {
+            FriBidiChar ch = chars[charIndex];
+            if (!FcCharSetHasChar(fcCharSet, ch)) {
+                FcCharSetAddChar(fcCharSet, ch);
             }
+        }
+
+        FcPatternDel(fontManager->fcPattern, FC_CHARSET);
+        FcPatternAddCharSet(fontManager->fcPattern, FC_CHARSET, fcCharSet);
+
+        FcResult   matchResult = FcResultNoMatch;
+        FcPattern* matchFont = FcFontMatch(fontManager->fcConfig, fontManager->fcPattern, &matchResult);
+
+        char* matchFontFilename = 0;
+        FcPatternGetString(matchFont, FC_FILE, 0, (FcChar8**)&matchFontFilename);
+
+        String fontpath = stringFromCstring(matchFontFilename);
+        if (font->ftFace == 0 || !streq(font->path, fontpath)) {
+            // TODO(khvorov) Avoid reading the same file twice
+            ByteSlice      fontFileContents = readEntireFile(fontpath, fontManager->fontFileContentsAllocator);
+            LoadFontResult loadFontResult = loadFont(fontManager->ftLib, fontpath, fontFileContents);
+            if (loadFontResult.success) {
+                unloadFont(fontManager, font);
+                *font = loadFontResult.font;
+            }
+        }
+
+        if (font->ftFace) {
+            result = (GetFontResult) {.success = true, .font = font};
+        }
+    }
+    return result;
+}
+
+typedef struct CreateFontManagerResult {
+    bool        success;
+    FontManager fontManager;
+} CreateFontManagerResult;
+
+function CreateFontManagerResult
+createFontManager(Allocator permanentAllocator, Allocator fontFileContentsAllocator) {
+    CreateFontManagerResult result = {0};
+    FT_Library              ftLib = 0;
+    FT_Error                ftInitResult = FT_Init_FreeType(&ftLib);
+    if (ftInitResult == FT_Err_Ok) {
+        i32         fontCount = USCRIPT_CODE_LIMIT;
+        FontManager fontManager = {
+            .fcConfig = FcInitLoadConfigAndFonts(),
+            .fcPattern = FcPatternCreate(),
+            .ftLib = ftLib,
+            .fonts = allocArray(permanentAllocator, Font, fontCount),
+            .fcCharSets = allocArray(permanentAllocator, FcCharSet*, fontCount),
+            .hbBuf = hb_buffer_create(),
+            .fontFileContentsAllocator = fontFileContentsAllocator,
+        };
+        for (i32 fontIndex = 0; fontIndex < fontCount; fontIndex++) {
+            fontManager.fcCharSets[fontIndex] = FcCharSetCreate();
+        }
+
+        FcPatternAddInteger(fontManager.fcPattern, FC_WEIGHT, FC_WEIGHT_MEDIUM);
+        FcPatternAddInteger(fontManager.fcPattern, FC_SLANT, FC_SLANT_ROMAN);
+
+        FcConfigSubstitute(fontManager.fcConfig, fontManager.fcPattern, FcMatchPattern);
+        FcDefaultSubstitute(fontManager.fcPattern);
+
+        FriBidiChar ascii[] = {
+            ' ', '!', '"', '#',  '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2',
+            '3', '4', '5', '6',  '7', '8', '9', ':',  ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E',
+            'F', 'G', 'H', 'I',  'J', 'K', 'L', 'M',  'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
+            'Y', 'Z', '[', '\\', ']', '^', '_', '`',  'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k',
+            'l', 'm', 'n', 'o',  'p', 'q', 'r', 's',  't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~',
+        };
+        GetFontResult getDefaultFontResult =
+            getFontForScriptAndUtf32Chars(&fontManager, USCRIPT_LATIN, ascii, arrayLen(ascii));
+
+        if (getDefaultFontResult.success) {
+            result = (CreateFontManagerResult) {.success = true, .fontManager = fontManager};
         }
     }
     return result;
@@ -532,7 +701,8 @@ typedef struct Renderer {
     SDL_Window*   sdlWindow;
     SDL_Renderer* sdlRenderer;
     SDL_Texture*  sdlFontTexture;
-    Font          font;
+    i32           fontTexWidth, fontTexHeight;
+    FontManager   fontManager;
     i32           width, height;
 } Renderer;
 
@@ -542,12 +712,12 @@ typedef struct CreateRendererResult {
 } CreateRendererResult;
 
 function CreateRendererResult
-createRenderer(Allocator allocator) {
-    CreateRendererResult result = {0};
-    LoadFontResult       loadFontResult = loadFont(allocator);
-    if (loadFontResult.success) {
-        Font font = loadFontResult.font;
-        int  initResult = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
+createRenderer(Allocator permanentAllocator, Allocator fontFileContentsAllocator) {
+    CreateRendererResult    result = {0};
+    CreateFontManagerResult createFontManagerResult = createFontManager(permanentAllocator, fontFileContentsAllocator);
+    if (createFontManagerResult.success) {
+        FontManager fontManager = createFontManagerResult.fontManager;
+        int         initResult = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
         if (initResult == 0) {
             i32         windowWidth = 1000;
             i32         windowHeight = 1000;
@@ -555,16 +725,25 @@ createRenderer(Allocator allocator) {
             if (sdlWindow) {
                 SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
                 if (sdlRenderer) {
-                    // TODO(khvorov) Fix this texture
-                    SDL_Texture* sdlTexture =
-                        SDL_CreateTexture(sdlRenderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, 100, 100);
+                    i32          texW = 100;
+                    i32          texH = 100;
+                    SDL_Texture* sdlTexture = SDL_CreateTexture(
+                        sdlRenderer,
+                        SDL_PIXELFORMAT_RGBA8888,
+                        SDL_TEXTUREACCESS_STREAMING,
+                        texW,
+                        texH
+                    );
+
                     if (sdlTexture) {
                         int setTexBlendModeResult = SDL_SetTextureBlendMode(sdlTexture, SDL_BLENDMODE_BLEND);
                         if (setTexBlendModeResult == 0) {
                             Renderer renderer = {
                                 .sdlWindow = sdlWindow,
                                 .sdlRenderer = sdlRenderer,
-                                .font = font,
+                                .fontManager = fontManager,
+                                .fontTexWidth = texW,
+                                .fontTexHeight = texH,
                                 .sdlFontTexture = sdlTexture,
                                 .width = windowWidth,
                                 .height = windowHeight,
@@ -604,8 +783,8 @@ renderEnd(Renderer* renderer) {
 function CompletionStatus
 drawEntireFontTexture(Renderer* renderer) {
     CompletionStatus result = CompletionStatus_Failure;
-    SDL_Rect destRect = {.y = 150, .w = renderer->font.loadedGlyphPxWidth, .h = renderer->font.loadedGlyphPxHeight};
-    int      renderCopyResult = SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlFontTexture, 0, &destRect);
+    SDL_Rect         destRect = {.y = 150, .w = renderer->fontTexWidth, .h = renderer->fontTexHeight};
+    int              renderCopyResult = SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlFontTexture, 0, &destRect);
     if (renderCopyResult == 0) {
         result = CompletionStatus_Sucess;
     }
@@ -657,34 +836,11 @@ drawRectOutline(Renderer* renderer, Rect2i rect, Color color, i32 thickness) {
     }
 }
 
-function CompletionStatus
-drawGlyph(Renderer* renderer, i32 chIndex, i32 topleftX, i32 topleftY) {
-    CompletionStatus result = CompletionStatus_Failure;
-    CompletionStatus glyphResult = loadGlyph(&renderer->font, chIndex);
-    if (glyphResult == CompletionStatus_Sucess) {
-        Glyph glyph = renderer->font.loadedGlyph;
-        int   updateTexResult = SDL_UpdateTexture(
-            renderer->sdlFontTexture,
-            0,
-            renderer->font.loadedGlyphPx,
-            renderer->font.loadedGlyphPxWidth * sizeof(u32)
-        );
-        if (updateTexResult == 0) {
-            SDL_Rect texRect = {.w = glyph.width, .h = glyph.height};
-            SDL_Rect destRect =
-                {.x = topleftX + glyph.offsetX, .y = topleftY + glyph.offsetY, .w = glyph.width, .h = glyph.height};
-            int copyResult = SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlFontTexture, &texRect, &destRect);
-            if (copyResult == 0) {
-                result = CompletionStatus_Sucess;
-            }
-        }
-    }
-    return result;
-}
-
 function void
 drawTextline(Renderer* renderer, String text, Rect2i rect) {
     if (text.len > 0) {
+        TempMemory tempMem = arenaBeginTemp(&globalFrameArena);
+
         // NOTE(khvorov) Convert to UTF32 from UTF8
         FriBidiChar* ogStringUtf32 = allocArray(globalTempArenaAllocator, FriBidiChar, text.len + 1);
         i32          utf32Length = 0;
@@ -697,87 +853,175 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
             }
         }
 
-        // TODO(khvorov) Handle text with mixed scripts
-        UErrorCode  icuError = U_ZERO_ERROR;
-        UScriptCode icuScript = uscript_getScript(ogStringUtf32[0], &icuError);
-        if (icuError == U_ZERO_ERROR) {
-            hb_script_t    hbScript = hb_icu_script_to_script(icuScript);
+        // NOTE(khvorov) Break string up into segments where the script doesn't change
+        Rect2i curRect = rect;
+        for (i32 curOffset = 0; curOffset < utf32Length;) {
+            UErrorCode  icuError = U_ZERO_ERROR;
+            UScriptCode curIcuScript = uscript_getScript(ogStringUtf32[curOffset], &icuError);
+            i32         nextOffset = curOffset + 1;
+            while (nextOffset < utf32Length) {
+                UScriptCode nextIcuScript = uscript_getScript(ogStringUtf32[nextOffset], &icuError);
+                if (nextIcuScript != curIcuScript && nextIcuScript != USCRIPT_COMMON
+                    && curIcuScript != USCRIPT_COMMON) {
+                    break;
+                }
+                nextOffset += 1;
+            }
+
+            // TODO(khvorov) What should happen if there is an error?
+            assert(icuError == U_ZERO_ERROR);
+
+            FriBidiChar* segmentStart = ogStringUtf32 + curOffset;
+            i32          segmentLength = nextOffset - curOffset;
+
+            // NOTE(khvorov) Reverse parts of the string segment for presentation if necessary
+            hb_script_t    hbScript = hb_icu_script_to_script(curIcuScript);
             hb_direction_t hbDir = hb_script_get_horizontal_direction(hbScript);
 
-            FriBidiCharType* bidiTypes = allocArray(globalTempArenaAllocator, FriBidiCharType, utf32Length);
-            fribidi_get_bidi_types(ogStringUtf32, utf32Length, bidiTypes);
+            FriBidiCharType* bidiTypes = allocArray(globalTempArenaAllocator, FriBidiCharType, segmentLength);
+            fribidi_get_bidi_types(segmentStart, segmentLength, bidiTypes);
 
             FriBidiBracketType* fribidiBracketTypes =
-                allocArray(globalTempArenaAllocator, FriBidiBracketType, utf32Length);
-            fribidi_get_bracket_types(ogStringUtf32, utf32Length, bidiTypes, fribidiBracketTypes);
+                allocArray(globalTempArenaAllocator, FriBidiBracketType, segmentLength);
+            fribidi_get_bracket_types(segmentStart, segmentLength, bidiTypes, fribidiBracketTypes);
 
             FriBidiParType fribidiBaseDirection = hbDir == HB_DIRECTION_RTL ? FRIBIDI_TYPE_RTL : FRIBIDI_TYPE_LTR;
-            FriBidiLevel*  firbidiEmbeddingLevels = allocArray(globalTempArenaAllocator, FriBidiLevel, utf32Length);
+            FriBidiLevel*  firbidiEmbeddingLevels = allocArray(globalTempArenaAllocator, FriBidiLevel, segmentLength);
             FriBidiLevel   embeddingResult = fribidi_get_par_embedding_levels_ex(
                 bidiTypes,
                 fribidiBracketTypes,
-                utf32Length,
+                segmentLength,
                 &fribidiBaseDirection,
                 firbidiEmbeddingLevels
             );
 
-            if (embeddingResult != 0) {
-                FriBidiChar* visualStr = allocArray(globalTempArenaAllocator, FriBidiChar, utf32Length + 1);
-                SDL_memcpy(visualStr, ogStringUtf32, utf32Length * sizeof(FriBidiChar));
+            // TODO(khvorov) What should happen here?
+            assert(embeddingResult != 0);
 
-                FriBidiLevel reorderResult = fribidi_reorder_line(
-                    0,
-                    bidiTypes,
-                    utf32Length,
-                    0,
-                    fribidiBaseDirection,
-                    firbidiEmbeddingLevels,
-                    visualStr,
-                    0
-                );
+            FriBidiChar* visualStr = allocArray(globalTempArenaAllocator, FriBidiChar, segmentLength);
+            SDL_memcpy(visualStr, segmentStart, segmentLength * sizeof(FriBidiChar));
 
-                if (reorderResult != 0) {
-                    // NOTE(khvorov) Fribidi reverses arabic but not numbers - the oppposite of what we want.
-                    // So reverse it again here (so that the arabic is in the correct logical order but the numbers are reversed)
-                    if (hbDir == HB_DIRECTION_RTL) {
-                        for (i32 utf32Index = 0; utf32Index < utf32Length / 2; utf32Index++) {
-                            i32 otherIndex = utf32Length - 1 - utf32Index;
-                            u32 temp = visualStr[utf32Index];
-                            visualStr[utf32Index] = visualStr[otherIndex];
-                            visualStr[otherIndex] = temp;
+            FriBidiLevel reorderResult = fribidi_reorder_line(
+                0,
+                bidiTypes,
+                segmentLength,
+                0,
+                fribidiBaseDirection,
+                firbidiEmbeddingLevels,
+                visualStr,
+                0
+            );
+
+            // TODO(khvorov) What should happen here?
+            assert(reorderResult != 0);
+
+            // NOTE(khvorov) Fribidi reverses arabic but not numbers - the oppposite of what we want.
+            // So reverse it again here (so that the arabic is in the correct logical order but the numbers are reversed)
+            if (hbDir == HB_DIRECTION_RTL) {
+                for (i32 segIndex = 0; segIndex < segmentLength / 2; segIndex++) {
+                    i32 otherIndex = segmentLength - 1 - segIndex;
+                    u32 temp = visualStr[segIndex];
+                    visualStr[segIndex] = visualStr[otherIndex];
+                    visualStr[otherIndex] = temp;
+                }
+            }
+
+            hb_buffer_clear_contents(renderer->fontManager.hbBuf);
+            hb_buffer_add_utf32(renderer->fontManager.hbBuf, visualStr, segmentLength, 0, segmentLength);
+
+            // NOTE(khvorov) This has to be done after contents
+            hb_buffer_set_script(renderer->fontManager.hbBuf, hbScript);
+            hb_buffer_set_direction(renderer->fontManager.hbBuf, hbDir);
+
+            // TODO(khvorov) How important is this?
+            // hb_language_t hbLang = hb_language_from_string("en-US", -1);
+            // hb_buffer_set_language(renderer->font.hbBuf, HB_LANGUAGE_INVALID);
+
+            GetFontResult getFontResult =
+                getFontForScriptAndUtf32Chars(&renderer->fontManager, curIcuScript, segmentStart, segmentLength);
+            if (getFontResult.success) {
+                Font* font = getFontResult.font;
+                hb_shape(font->hbFont, renderer->fontManager.hbBuf, 0, 0);
+
+                u32              hbGlyphCount = 0;
+                hb_glyph_info_t* hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->fontManager.hbBuf, &hbGlyphCount);
+                hb_glyph_position_t* hbGlyphPositions =
+                    hb_buffer_get_glyph_positions(renderer->fontManager.hbBuf, &hbGlyphCount);
+
+                hb_position_t hbPosX = 0;
+                hb_position_t hbPosY = 0;
+                for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
+                    hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
+                    hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
+
+                    FT_Error loadGlyphResult = FT_Load_Glyph(font->ftFace, glyphid, FT_LOAD_DEFAULT);
+                    if (loadGlyphResult == FT_Err_Ok) {
+                        FT_Error renderGlyphResult = FT_Err_Ok;
+                        if (font->ftFace->glyph->format != FT_GLYPH_FORMAT_BITMAP) {
+                            renderGlyphResult = FT_Render_Glyph(font->ftFace->glyph, FT_RENDER_MODE_NORMAL);
+                        }
+
+                        if (renderGlyphResult == FT_Err_Ok) {
+                            FT_GlyphSlot ftGlyph = font->ftFace->glyph;
+                            FT_Bitmap    bm = ftGlyph->bitmap;
+
+                            Glyph glyph = {
+                                .advanceX = ftGlyph->advance.x >> 6,
+                                .width = bm.width,
+                                .height = bm.rows,
+                                .pitch = bm.pitch,
+                                .offsetX = ftGlyph->bitmap_left,
+                                .offsetY = font->fontHeight - ftGlyph->bitmap_top,
+                            };
+
+                            TempMemory tempMemGlyph = arenaBeginTemp(&globalFrameArena);
+                            u32*       glyphPx = allocArray(globalTempArenaAllocator, u32, bm.rows * bm.width);
+                            for (i32 bmRow = 0; bmRow < (i32)bm.rows; bmRow++) {
+                                for (i32 bmCol = 0; bmCol < (i32)bm.width; bmCol++) {
+                                    i32 bmIndex = bmRow * bm.pitch + bmCol;
+                                    i32 alpha = bm.buffer[bmIndex];
+                                    u32 fullColorRGBA = 0xFFFFFF00 | alpha;
+                                    i32 bufIndex = bmRow * bm.width + bmCol;
+                                    glyphPx[bufIndex] = fullColorRGBA;
+                                }
+                            }
+
+                            int texPitch = bm.width * sizeof(*glyphPx);
+                            int updateTexResult = SDL_UpdateTexture(renderer->sdlFontTexture, 0, glyphPx, texPitch);
+                            if (updateTexResult == 0) {
+                                SDL_Rect texRect = {.w = glyph.width, .h = glyph.height};
+                                SDL_Rect destRect = {
+                                    .x = curRect.x + hbPosX + glyph.offsetX,
+                                    .y = curRect.y + hbPosY + glyph.offsetY,
+                                    .w = glyph.width,
+                                    .h = glyph.height};
+                                int copyResult = SDL_RenderCopy(
+                                    renderer->sdlRenderer,
+                                    renderer->sdlFontTexture,
+                                    &texRect,
+                                    &destRect
+                                );
+                                assert(copyResult == 0);
+                            }
+
+                            endTempMemory(tempMemGlyph);
                         }
                     }
 
-                    hb_buffer_clear_contents(renderer->font.hbBuf);
-                    hb_buffer_add_utf32(renderer->font.hbBuf, visualStr, utf32Length, 0, utf32Length);
-
-                    // NOTE(khvorov) This has to be done after contents
-                    hb_buffer_set_script(renderer->font.hbBuf, hbScript);
-                    hb_buffer_set_direction(renderer->font.hbBuf, hbDir);
-
-                    // TODO(khvorov) How important is this?
-                    // hb_language_t hbLang = hb_language_from_string("en-US", -1);
-                    // hb_buffer_set_language(renderer->font.hbBuf, HB_LANGUAGE_INVALID);
-
-                    hb_shape(renderer->font.hbFont, renderer->font.hbBuf, 0, 0);
-
-                    u32                  hbGlyphCount = 0;
-                    hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->font.hbBuf, &hbGlyphCount);
-                    hb_glyph_position_t* hbGlyphPositions =
-                        hb_buffer_get_glyph_positions(renderer->font.hbBuf, &hbGlyphCount);
-
-                    hb_position_t hbPosX = 0;
-                    hb_position_t hbPosY = 0;
-                    for (u32 glyphIndex = 0; glyphIndex < hbGlyphCount; glyphIndex++) {
-                        hb_codepoint_t      glyphid = hbGlyphInfos[glyphIndex].codepoint;
-                        hb_glyph_position_t pos = hbGlyphPositions[glyphIndex];
-                        drawGlyph(renderer, glyphid, rect.x + hbPosX, rect.y + hbPosY);
-                        hbPosX += pos.x_advance >> 6;
-                        hbPosY += pos.y_advance >> 6;
-                    }
+                    hbPosX += pos.x_advance >> 6;
+                    hbPosY += pos.y_advance >> 6;
                 }
+
+                curRect.x += hbPosX;
+                curRect.y += hbPosY;
+                curRect.w -= hbPosX;
+                curRect.h -= hbPosY;
             }
+
+            curOffset = nextOffset;
         }
+
+        endTempMemory(tempMem);
     }
 }
 
@@ -927,43 +1171,23 @@ main(int argc, char* argv[]) {
 
     Arena     virtualArena = createArenaFromVmem(3 * MEGABYTE);
     Allocator virtualArenaAllocator = createArenaAllocator(&virtualArena);
-    globalTempArena = createArena(1 * MEGABYTE, virtualArenaAllocator);
+    globalFrameArena = createArena(1 * MEGABYTE, virtualArenaAllocator);
     SDL_SetMemoryFunctions(sdlMallocWrapper, sdlCallocWrapper, sdlReallocWrapper, sdlFreeWrapper);
 
-    CreateRendererResult createRendererResult = createRenderer(virtualArenaAllocator);
+    GeneralPurposeAllocatorData gpaData = {0};
+    Allocator                   gpaAllocator = createGpaAllocator(&gpaData);
+
+    CreateRendererResult createRendererResult = createRenderer(virtualArenaAllocator, gpaAllocator);
     if (createRendererResult.success) {
         Renderer    renderer = createRendererResult.renderer;
         SDL_Window* sdlWindow = renderer.sdlWindow;
         Input       input = {0};
         EditorState editorState = createEditorState();
 
-        FcConfig*  fcConfig = FcInitLoadConfigAndFonts();
-        FcPattern* fcPattern = FcPatternCreate();
-
-        FcPatternAddInteger(fcPattern, FC_WEIGHT, FC_WEIGHT_MEDIUM);
-        FcPatternAddInteger(fcPattern, FC_SLANT, FC_SLANT_ROMAN);
-        // FcPatternAddString(fcPattern, FC_CAPABILITY, (const FcChar8*)"otlayout:latn");
-        // FcPatternAddInteger(fcPattern, FC_SPACING, FC_PROPORTIONAL);
-        // FcPatternAddString(fcPattern, FC_FONTFORMAT, (const FcChar8*)"TrueType");
-
-        FcLangSet* fcLangSet = FcLangSetCreate();
-        FcLangSetAdd(fcLangSet, (FcChar8*)"zh-cn");
-        FcPatternAddLangSet(fcPattern, FC_LANG, fcLangSet);
-        FcPatternPrint(fcPattern);
-
-        FcConfigSubstitute(fcConfig, fcPattern, FcMatchPattern);
-        FcDefaultSubstitute(fcPattern);
-
-        FcResult   matchResult = FcResultNoMatch;
-        FcPattern* matchFont = FcFontMatch(fcConfig, fcPattern, &matchResult);
-        FcPatternPrint(matchFont);
-
-        char* matchFontFilename = 0;
-        FcPatternGetString(matchFont, FC_FILE, 0, (FcChar8**)&matchFontFilename);
-
         bool running = true;
         while (running) {
-            globalTempArena.used = 0;
+            assert(globalFrameArena.tempCount == 0);
+            globalFrameArena.used = 0;
             inputBeginFrame(&input);
 
             // NOTE(khvorov) Process one event at a time since input doesn't store the order they come in in
@@ -978,9 +1202,11 @@ main(int argc, char* argv[]) {
             editorUpdateAndRender(&editorState, &renderer, &input);
 
             // NOTE(khvorov) Visualize memory usage
+            // TODO(khvorov) Do this vertically
             {
                 assert(globalSDLMemoryUsed <= INT32_MAX);
-                i32 totalMemoryUsed = globalSDLMemoryUsed + globalFTMemoryUsed + globalHBMemoryUsed + virtualArena.size;
+                i32 totalMemoryUsed =
+                    globalSDLMemoryUsed + globalFTMemoryUsed + globalHBMemoryUsed + virtualArena.size + gpaData.used;
                 i32 memRectHeight = 20;
                 i32 toprightX = drawMemRect(
                     &renderer,
@@ -1018,20 +1244,32 @@ main(int argc, char* argv[]) {
                     stringFromCstring("HB")
                 );
 
-                toprightX = drawArenaUsage(
+                toprightX = drawMemRect(
                     &renderer,
-                    globalTempArena.size,
-                    globalTempArena.used,
                     toprightX,
+                    0,
+                    4,
+                    gpaData.used,
                     totalMemoryUsed,
                     memRectHeight,
-                    stringFromCstring("TMP")
+                    (Color) {.g = 100, .b = 150, .a = 255},
+                    stringFromCstring("GPA")
                 );
 
                 toprightX = drawArenaUsage(
                     &renderer,
-                    virtualArena.size - globalTempArena.size,
-                    virtualArena.used - globalTempArena.size,
+                    globalFrameArena.size,
+                    globalFrameArena.used,
+                    toprightX,
+                    totalMemoryUsed,
+                    memRectHeight,
+                    stringFromCstring("FRAME")
+                );
+
+                toprightX = drawArenaUsage(
+                    &renderer,
+                    virtualArena.size - globalFrameArena.size,
+                    virtualArena.used - globalFrameArena.size,
                     toprightX,
                     totalMemoryUsed,
                     memRectHeight,

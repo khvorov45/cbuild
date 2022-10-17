@@ -659,17 +659,6 @@ main() {
     }
 
     //
-    // SECTION Pack font into a C array
-    //
-
-    // prb_String fontFilePath = prb_pathJoin(rootDir, "LiberationMono-Regular.ttf");
-    prb_String fontFilePath = prb_pathJoin(rootDir, "NotoSansArabic-Regular.ttf");
-    prb_String fontArrayPath = prb_pathJoin(rootDir, "fontdata.c");
-    if (!prb_isFile(fontArrayPath)) {
-        prb_binaryToCArray(fontFilePath, fontArrayPath, "fontdata");
-    }
-
-    //
     // SECTION Main program
     //
 
