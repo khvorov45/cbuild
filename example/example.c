@@ -457,7 +457,7 @@ loadFont(FT_Library ftLib, String path, ByteSlice fileContents) {
     FT_Face        ftFace = 0;
     FT_Error       ftFaceResult = FT_New_Memory_Face(ftLib, fileContents.ptr, fileContents.len, 0, &ftFace);
     if (ftFaceResult == FT_Err_Ok) {
-        i32      fontHeight = 14;
+        i32      fontHeight = 18;
         FT_Error ftSetPxSizeResult = FT_Set_Pixel_Sizes(ftFace, 0, fontHeight);
         if (ftSetPxSizeResult == FT_Err_Ok) {
             i32        lineHeight = FT_MulFix(ftFace->height, ftFace->size->metrics.y_scale) >> 6;
@@ -1002,39 +1002,6 @@ drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topleftX, i32 totalMe
 }
 
 //
-// SECTION Editor
-//
-
-function Rect2i
-rect2iCenterDim(i32 centerX, i32 centerY, i32 dimX, i32 dimY) {
-    assert(dimX >= 0 && dimY >= 0);
-    Rect2i result = {.x = centerX - dimX / 2, .y = centerY - dimY / 2, .w = dimX, .h = dimY};
-    return result;
-}
-
-typedef struct EditorState {
-    i32 tmp;
-} EditorState;
-
-function EditorState
-createEditorState(void) {
-    EditorState result = {0};
-    return result;
-}
-
-function void
-editorUpdateAndRender(EditorState* editorState, Renderer* renderer, Input* input) {
-    UNUSED(editorState);
-    UNUSED(input);
-    UNUSED(renderer);
-    // TODO(khvorov) Implement
-    Rect2i editorRect = {.x = 0, .y = 150, .w = renderer->width, .h = renderer->height};
-    // drawTextline(renderer, stringFromCstring("Mārtiņš Možeiko"), editorRect);
-    drawTextline(renderer, stringFromCstring("من 467 مليون"), editorRect);
-    // drawEntireFontTexture(renderer);
-}
-
-//
 // SECTION Main loop and events
 //
 
@@ -1086,7 +1053,14 @@ main(int argc, char* argv[]) {
             Renderer    renderer = createRendererResult.renderer;
             SDL_Window* sdlWindow = renderer.sdlWindow;
             Input       input = {0};
-            EditorState editorState = createEditorState();
+
+            String unicodeLines[] = {
+                stringFromCstring("The Sun is the star at يبلغ قطرها حوالي 1,392,684 كيلومتر 約佔太陽系總質量的99.86"),
+                stringFromCstring("銀河系の中ではありふれた массовое содержание водорода X ≈ 73"),
+                stringFromCstring("현 태양의 나이는 약 45억 และมีมวลประมาณ 330,000 เท่าของโลก"),
+                stringFromCstring("អង្កត់ផ្ចិតរបស់វាគឺប្រហែល 1,39 លានគីឡូម៉ែត្រពោលគឺ مقدار ۹۹٫۸۶٪ کل"),
+                stringFromCstring("किलोमीटर या ९,२९,६०,००० मील है तथा e très nombreux astéroïdes et comètes"),
+            };
 
             bool running = true;
             while (running) {
@@ -1102,7 +1076,14 @@ main(int argc, char* argv[]) {
 
                 // TODO(khvorov) Visualize timings
                 // TODO(khvorov) Hardware rendering?
-                editorUpdateAndRender(&editorState, &renderer, &input);
+                Rect2i textRect = {.x = 150, .y = 150, .w = renderer.width, .h = renderer.height};
+                for (usize lineIndex = 0; lineIndex < arrayLen(unicodeLines); lineIndex++) {
+                    String line = unicodeLines[lineIndex];
+                    drawTextline(&renderer, line, textRect);
+                    i32 arbitraryLineHeight = 50;
+                    textRect.y += arbitraryLineHeight;
+                    textRect.h -= arbitraryLineHeight;
+                }
 
                 // NOTE(khvorov) Visualize memory usage
                 // TODO(khvorov) Do this vertically
