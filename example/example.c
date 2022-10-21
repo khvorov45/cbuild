@@ -631,47 +631,35 @@ createRenderer(Arena* arena) {
     CreateFontManagerResult createFontManagerResult = createFontManager(arena);
     if (createFontManagerResult.success) {
         FontManager fontManager = createFontManagerResult.fontManager;
-        int         initResult = SDL_Init(SDL_INIT_VIDEO);
-        if (initResult == 0) {
-            i32         windowWidth = 1000;
-            i32         windowHeight = 1000;
-            SDL_Window* sdlWindow = SDL_CreateWindow("test", 0, 0, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
-            if (sdlWindow) {
-                SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
-                if (sdlRenderer) {
-                    i32          texW = 100;
-                    i32          texH = 100;
-                    SDL_Texture* sdlTexture = SDL_CreateTexture(
-                        sdlRenderer,
-                        SDL_PIXELFORMAT_RGBA8888,
-                        SDL_TEXTUREACCESS_STREAMING,
-                        texW,
-                        texH
-                    );
+        i32         windowWidth = 1000;
+        i32         windowHeight = 1000;
+        SDL_Window* sdlWindow = SDL_CreateWindow("test", 0, 0, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
+        if (sdlWindow) {
+            SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
+            if (sdlRenderer) {
+                i32          texW = 100;
+                i32          texH = 100;
+                SDL_Texture* sdlTexture =
+                    SDL_CreateTexture(sdlRenderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, texW, texH);
 
-                    if (sdlTexture) {
-                        int setTexBlendModeResult = SDL_SetTextureBlendMode(sdlTexture, SDL_BLENDMODE_BLEND);
-                        if (setTexBlendModeResult == 0) {
-                            Renderer renderer = {
-                                .sdlWindow = sdlWindow,
-                                .sdlRenderer = sdlRenderer,
-                                .fontManager = fontManager,
-                                .fontTexWidth = texW,
-                                .fontTexHeight = texH,
-                                .sdlFontTexture = sdlTexture,
-                                .width = windowWidth,
-                                .height = windowHeight,
-                                .arena = arena,
-                            };
-                            result = (CreateRendererResult) {.success = true, .renderer = renderer};
-                        }
+                if (sdlTexture) {
+                    int setTexBlendModeResult = SDL_SetTextureBlendMode(sdlTexture, SDL_BLENDMODE_BLEND);
+                    if (setTexBlendModeResult == 0) {
+                        Renderer renderer = {
+                            .sdlWindow = sdlWindow,
+                            .sdlRenderer = sdlRenderer,
+                            .fontManager = fontManager,
+                            .fontTexWidth = texW,
+                            .fontTexHeight = texH,
+                            .sdlFontTexture = sdlTexture,
+                            .width = windowWidth,
+                            .height = windowHeight,
+                            .arena = arena,
+                        };
+                        result = (CreateRendererResult) {.success = true, .renderer = renderer};
                     }
                 }
             }
-        } else {
-            // NOTE(khvorov) SDL log functions work even if it's not initialized
-            const char* sdlError = SDL_GetError();
-            SDL_LogError(0, "Failed to init SDL: %s\n", sdlError);
         }
     }
     return result;
@@ -1086,86 +1074,95 @@ int
 main(int argc, char* argv[]) {
     UNUSED(argc);
     UNUSED(argv);
+
     SDL_SetMemoryFunctions(sdlCustomMalloc, sdlCustomCalloc, sdlCustomRealloc, sdlFreeWrapper);
-    Arena                virtualArena = createArenaFromVmem(3 * MEGABYTE);
-    CreateRendererResult createRendererResult = createRenderer(&virtualArena);
-    if (createRendererResult.success) {
-        Renderer    renderer = createRendererResult.renderer;
-        SDL_Window* sdlWindow = renderer.sdlWindow;
-        Input       input = {0};
-        EditorState editorState = createEditorState();
+    int initResult = SDL_Init(SDL_INIT_VIDEO);
+    if (initResult == 0) {
+        Arena                virtualArena = createArenaFromVmem(3 * MEGABYTE);
+        CreateRendererResult createRendererResult = createRenderer(&virtualArena);
+        if (createRendererResult.success) {
+            Renderer    renderer = createRendererResult.renderer;
+            SDL_Window* sdlWindow = renderer.sdlWindow;
+            Input       input = {0};
+            EditorState editorState = createEditorState();
 
-        bool running = true;
-        while (running) {
-            assert(virtualArena.tempCount == 0);
-            inputBeginFrame(&input);
+            bool running = true;
+            while (running) {
+                assert(virtualArena.tempCount == 0);
+                inputBeginFrame(&input);
 
-            // NOTE(khvorov) Process one event at a time since input doesn't store the order they come in in
-            SDL_Event event;
-            assert(SDL_WaitEvent(&event) == 1);
-            processEvent(sdlWindow, &event, &running, &input);
+                // NOTE(khvorov) Process one event at a time since input doesn't store the order they come in in
+                SDL_Event event;
+                assert(SDL_WaitEvent(&event) == 1);
+                processEvent(sdlWindow, &event, &running, &input);
 
-            assert(renderBegin(&renderer) == CompletionStatus_Sucess);
+                assert(renderBegin(&renderer) == CompletionStatus_Sucess);
 
-            // TODO(khvorov) Visualize timings
-            // TODO(khvorov) Hardware rendering?
-            editorUpdateAndRender(&editorState, &renderer, &input);
+                // TODO(khvorov) Visualize timings
+                // TODO(khvorov) Hardware rendering?
+                editorUpdateAndRender(&editorState, &renderer, &input);
 
-            // NOTE(khvorov) Visualize memory usage
-            // TODO(khvorov) Do this vertically
-            {
-                i32 totalMemoryUsed =
-                    globalGPADataSDL.used + globalGPADataFT.used + globalGPADataHB.used + virtualArena.size;
-                i32 memRectHeight = 20;
-                i32 toprightX = drawMemRect(
-                    &renderer,
-                    0,
-                    0,
-                    1,
-                    globalGPADataSDL.used,
-                    totalMemoryUsed,
-                    memRectHeight,
-                    (Color) {.r = 100, .g = 100, .a = 255},
-                    stringFromCstring("SDL")
-                );
+                // NOTE(khvorov) Visualize memory usage
+                // TODO(khvorov) Do this vertically
+                {
+                    i32 totalMemoryUsed =
+                        globalGPADataSDL.used + globalGPADataFT.used + globalGPADataHB.used + virtualArena.size;
+                    i32 memRectHeight = 20;
+                    i32 toprightX = drawMemRect(
+                        &renderer,
+                        0,
+                        0,
+                        1,
+                        globalGPADataSDL.used,
+                        totalMemoryUsed,
+                        memRectHeight,
+                        (Color) {.r = 100, .g = 100, .a = 255},
+                        stringFromCstring("SDL")
+                    );
 
-                toprightX = drawMemRect(
-                    &renderer,
-                    toprightX,
-                    0,
-                    2,
-                    globalGPADataFT.used,
-                    totalMemoryUsed,
-                    memRectHeight,
-                    (Color) {.r = 100, .b = 100, .a = 255},
-                    stringFromCstring("FT")
-                );
+                    toprightX = drawMemRect(
+                        &renderer,
+                        toprightX,
+                        0,
+                        2,
+                        globalGPADataFT.used,
+                        totalMemoryUsed,
+                        memRectHeight,
+                        (Color) {.r = 100, .b = 100, .a = 255},
+                        stringFromCstring("FT")
+                    );
 
-                toprightX = drawMemRect(
-                    &renderer,
-                    toprightX,
-                    0,
-                    3,
-                    globalGPADataHB.used,
-                    totalMemoryUsed,
-                    memRectHeight,
-                    (Color) {.g = 100, .b = 100, .a = 255},
-                    stringFromCstring("HB")
-                );
+                    toprightX = drawMemRect(
+                        &renderer,
+                        toprightX,
+                        0,
+                        3,
+                        globalGPADataHB.used,
+                        totalMemoryUsed,
+                        memRectHeight,
+                        (Color) {.g = 100, .b = 100, .a = 255},
+                        stringFromCstring("HB")
+                    );
 
-                toprightX = drawArenaUsage(
-                    &renderer,
-                    virtualArena.size,
-                    virtualArena.used,
-                    toprightX,
-                    totalMemoryUsed,
-                    memRectHeight,
-                    stringFromCstring("REST")
-                );
+                    toprightX = drawArenaUsage(
+                        &renderer,
+                        virtualArena.size,
+                        virtualArena.used,
+                        toprightX,
+                        totalMemoryUsed,
+                        memRectHeight,
+                        stringFromCstring("REST")
+                    );
+                }
+
+                renderEnd(&renderer);
             }
-
-            renderEnd(&renderer);
         }
+    } else {
+        // NOTE(khvorov) SDL log functions work even if it's not initialized
+        const char* sdlError = SDL_GetError();
+        SDL_LogError(0, "Failed to init SDL: %s\n", sdlError);
     }
+
     return 0;
 }
