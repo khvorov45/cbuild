@@ -357,68 +357,6 @@ streq(String str1, String str2) {
 }
 
 //
-// SECTION Input
-//
-
-typedef struct InputKey {
-    i32  halfTransitionCount;
-    bool endedDown;
-} InputKey;
-
-typedef enum InputKeyID {
-    InputKeyID_MouseLeft,
-    InputKeyID_Count,
-} InputKeyID;
-
-typedef struct Input {
-    InputKey keys[InputKeyID_Count];
-    i32      cursorX;
-    i32      cursorY;
-} Input;
-
-function Input
-createInput() {
-    Input input = {0};
-    return input;
-}
-
-function void
-inputBeginFrame(Input* input) {
-    for (i32 keyIndex = 0; keyIndex < InputKeyID_Count; keyIndex += 1) {
-        InputKey* key = input->keys + keyIndex;
-        key->halfTransitionCount = 0;
-    }
-}
-
-function InputKey*
-getKey(Input* input, InputKeyID keyID) {
-    assert(keyID >= 0 && keyID < InputKeyID_Count);
-    InputKey* key = input->keys + keyID;
-    return key;
-}
-
-function void
-recordKey(Input* input, InputKeyID keyID, bool down) {
-    InputKey* key = getKey(input, keyID);
-    key->halfTransitionCount += 1;
-    key->endedDown = down;
-}
-
-function bool
-wasPressed(Input* input, InputKeyID keyID) {
-    InputKey* key = getKey(input, keyID);
-    bool      result = key->halfTransitionCount > 1 || (key->halfTransitionCount == 1 && key->endedDown);
-    return result;
-}
-
-function bool
-wasUnpressed(Input* input, InputKeyID keyID) {
-    InputKey* key = getKey(input, keyID);
-    bool      result = key->halfTransitionCount > 1 || (key->halfTransitionCount == 1 && !key->endedDown);
-    return result;
-}
-
-//
 // SECTION Font
 //
 
@@ -1005,7 +943,7 @@ drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topleftX, i32 totalMe
 //
 
 function void
-processEvent(SDL_Window* window, SDL_Event* event, bool* running, Input* input) {
+processEvent(SDL_Window* window, SDL_Event* event, bool* running) {
     switch (event->type) {
         case SDL_QUIT: {
             *running = false;
@@ -1015,25 +953,6 @@ processEvent(SDL_Window* window, SDL_Event* event, bool* running, Input* input) 
             if (event->window.event == SDL_WINDOWEVENT_CLOSE && event->window.windowID == SDL_GetWindowID(window)) {
                 *running = false;
             }
-        } break;
-
-        case SDL_MOUSEBUTTONDOWN:
-        case SDL_MOUSEBUTTONUP: {
-            bool       down = event->type == SDL_MOUSEBUTTONUP ? 0 : 1;
-            InputKeyID keyID = InputKeyID_Count;
-            switch (event->button.button) {
-                case SDL_BUTTON_LEFT: {
-                    keyID = InputKeyID_MouseLeft;
-                } break;
-            }
-            if (keyID != InputKeyID_Count) {
-                recordKey(input, keyID, down);
-            }
-        } break;
-
-        case SDL_MOUSEMOTION: {
-            input->cursorX = event->motion.x;
-            input->cursorY = event->motion.y;
         } break;
     }
 }
@@ -1051,7 +970,6 @@ main(int argc, char* argv[]) {
         if (createRendererResult.success) {
             Renderer    renderer = createRendererResult.renderer;
             SDL_Window* sdlWindow = renderer.sdlWindow;
-            Input       input = {0};
 
             String unicodeLines[] = {
                 stringFromCstring("The Sun is the star at يبلغ قطرها حوالي 1,392,684 كيلومتر 約佔太陽系總質量的99.86"),
@@ -1064,12 +982,13 @@ main(int argc, char* argv[]) {
             bool running = true;
             while (running) {
                 assert(virtualArena.tempCount == 0);
-                inputBeginFrame(&input);
 
-                // NOTE(khvorov) Process one event at a time since input doesn't store the order they come in in
-                SDL_Event event;
+                SDL_Event event = {0};
                 assert(SDL_WaitEvent(&event) == 1);
-                processEvent(sdlWindow, &event, &running, &input);
+                processEvent(sdlWindow, &event, &running);
+                while (SDL_PollEvent(&event)) {
+                    processEvent(sdlWindow, &event, &running);
+                }
 
                 assert(renderBegin(&renderer) == CompletionStatus_Sucess);
 
