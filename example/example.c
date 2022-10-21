@@ -22,7 +22,12 @@
 #define PLATFORM_WINDOWS __WIN32__
 #define PLATFORM_LINUX __LINUX__
 
-#define INFINITY __builtin_inff()
+#if PLATFORM_WINDOWS
+    #error unimlemented
+#elif PLATFORM_LINUX
+    #include <sys/mman.h>
+#endif
+
 #define function static
 #define global_variable static
 
@@ -59,21 +64,16 @@ typedef enum CompletionStatus {
 // SECTION Memory
 //
 
-#if PLATFORM_WINDOWS
-
-    #error unimlemented
-
-#elif PLATFORM_LINUX
-    #include <sys/mman.h>
-
 function void*
 vmemAlloc(i32 size) {
+#if PLATFORM_WINDOWS
+    #error unimplemented
+#elif PLATFORM_LINUX
     void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     assert(ptr != MAP_FAILED);
     return ptr;
-}
-
 #endif
+}
 
 bool
 memeq(void* ptr1, void* ptr2, i32 bytes) {
