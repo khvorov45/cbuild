@@ -39,6 +39,7 @@
 #define isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 #define arrayLen(arr) (sizeof(arr) / sizeof(arr[0]))
 #define assert(condition) do { if (!(condition)) { SDL_TriggerBreakpoint(); } } while (0)
+#define arenaAllocArray(arena, type, count) (type*)(arenaAllocAndZero(arena, sizeof(type) * (count), _Alignof(type)))
 // clang-format on
 
 typedef uint8_t  u8;
@@ -89,20 +90,6 @@ typedef struct ByteSlice {
     i32 len;
 } ByteSlice;
 
-typedef void* (*AllocatorAllocAndZero)(void* data, i32 size, i32 align);
-typedef void (*AllocatorFree)(void* data, void* ptr);
-
-typedef struct Allocator {
-    void*                 data;
-    AllocatorAllocAndZero allocAndZero;
-    AllocatorFree         free;
-} Allocator;
-
-#define allocStruct(allocator, type) (type*)(allocator).allocAndZero((allocator).data, sizeof(type), _Alignof(type))
-#define allocArray(allocator, type, count) \
-    (type*)(allocator).allocAndZero((allocator).data, sizeof(type) * (count), _Alignof(type))
-#define freeMemory(allocator, ptr) (allocator).free((allocator).data, ptr)
-
 function ByteSlice
 alignPtr(void* ptr, i32 size, i32 align) {
     assert(isPowerOf2(align));
@@ -120,22 +107,22 @@ typedef struct Arena {
 } Arena;
 
 function Arena
-createArena(i32 size, Allocator allocator) {
-    u8*   base = allocArray(allocator, u8, size);
+createArena(u8* base, i32 size) {
+    assert(base && size >= 0);
     Arena arena = {.base = base, .size = size};
     return arena;
 }
 
 function Arena
 createArenaFromVmem(i32 size) {
+    assert(size >= 0);
     u8*   base = vmemAlloc(size);
-    Arena arena = {.base = base, .size = size, .used = 0};
+    Arena arena = createArena(base, size);
     return arena;
 }
 
 function void*
-arenaAllocAndZero(void* data, i32 size, i32 align) {
-    Arena* arena = (Arena*)data;
+arenaAllocAndZero(Arena* arena, i32 size, i32 align) {
     assert(arena->used <= arena->size);
     ByteSlice aligned = alignPtr(arena->base + arena->used, size, align);
     i32       freeSize = arena->size - arena->used;
@@ -148,22 +135,6 @@ arenaAllocAndZero(void* data, i32 size, i32 align) {
         }
     }
     return result;
-}
-
-function void*
-arenaRealloc(void* data, void* ptr, i32 size, i32 align) {
-    Arena* arena = (Arena*)data;
-    void*  result = arenaAllocAndZero(arena, size, align);
-    if (result && ptr) {
-        SDL_memcpy(result, ptr, size);
-    }
-    return result;
-}
-
-function Allocator
-createArenaAllocator(Arena* arena) {
-    Allocator allocator = {.data = arena, .allocAndZero = arenaAllocAndZero};
-    return allocator;
 }
 
 typedef struct TempMemory {
@@ -197,120 +168,106 @@ typedef struct GeneralPurposeAllocatorData {
     usize used;
 } GeneralPurposeAllocatorData;
 
-function void*
-gpaAllocAndZero(void* data, i32 size, i32 align) {
-    assert((usize)align <= _Alignof(void*));
-    GeneralPurposeAllocatorData* gpa = (GeneralPurposeAllocatorData*)data;
-    void*                        result = dlcalloc(size, 1);
-    if (result) {
-        usize sizeActual = *((usize*)result - 1);
-        gpa->used += sizeActual;
+function usize
+getSizeFromMallocPtr(void* ptr) {
+    usize result = 0;
+    if (ptr) {
+        result = *((usize*)ptr - 1);
     }
     return result;
 }
 
 function void
-gpaFree(void* data, void* ptr) {
-    GeneralPurposeAllocatorData* gpa = (GeneralPurposeAllocatorData*)data;
-    if (ptr) {
-        usize sizeActual = *((usize*)ptr - 1);
-        gpa->used -= sizeActual;
-    }
+gpaAddSizeFromMallocPtr(GeneralPurposeAllocatorData* gpa, void* ptr) {
+    usize size = getSizeFromMallocPtr(ptr);
+    assert(size <= UINTPTR_MAX - gpa->used);
+    gpa->used += size;
+}
+
+function void
+gpaSubSizeFromMallocPtr(GeneralPurposeAllocatorData* gpa, void* ptr) {
+    usize size = getSizeFromMallocPtr(ptr);
+    assert(gpa->used >= size);
+    gpa->used -= size;
+}
+
+function void*
+gpaAlloc(GeneralPurposeAllocatorData* gpa, usize size) {
+    void* result = dlmalloc(size);
+    gpaAddSizeFromMallocPtr(gpa, result);
+    return result;
+}
+
+function void*
+gpaAllocAndZero(GeneralPurposeAllocatorData* gpa, usize size) {
+    void* result = dlcalloc(size, 1);
+    gpaAddSizeFromMallocPtr(gpa, result);
+    return result;
+}
+
+function void*
+gpaRealloc(GeneralPurposeAllocatorData* gpa, void* ptr, usize size) {
+    gpaSubSizeFromMallocPtr(gpa, ptr);
+    void* result = dlrealloc(ptr, size);
+    gpaAddSizeFromMallocPtr(gpa, result);
+    return result;
+}
+
+function void
+gpaFree(GeneralPurposeAllocatorData* gpa, void* ptr) {
+    gpaSubSizeFromMallocPtr(gpa, ptr);
     dlfree(ptr);
 }
 
-function Allocator
-createGpaAllocator(GeneralPurposeAllocatorData* data) {
-    Allocator allocator = {.data = data, .allocAndZero = gpaAllocAndZero, .free = gpaFree};
-    return allocator;
-}
-
 // TODO(khvorov) Disable SDL threads
-global_variable volatile usize globalSDLMemoryUsed;
+global_variable GeneralPurposeAllocatorData globalGPADataSDL;
 
 function void*
-sdlMallocWrapper(usize size) {
-    void* result = dlmalloc(size);
-    if (result) {
-        usize* sizeActual = (usize*)result - 1;
-        atomic_fetch_add(&globalSDLMemoryUsed, *sizeActual);
-    }
+sdlCustomMalloc(usize size) {
+    void* result = gpaAlloc(&globalGPADataSDL, size);
     return result;
 }
 
 function void*
-sdlCallocWrapper(usize n, usize size) {
-    void* result = dlcalloc(n, size);
-    if (result) {
-        usize* sizeActual = (usize*)result - 1;
-        atomic_fetch_add(&globalSDLMemoryUsed, *sizeActual);
-    }
+sdlCustomCalloc(usize n, usize size) {
+    void* result = gpaAllocAndZero(&globalGPADataSDL, n * size);
     return result;
 }
 
 function void*
-sdlReallocWrapper(void* ptr, usize size) {
-    if (ptr) {
-        atomic_fetch_sub(&globalSDLMemoryUsed, *((usize*)ptr - 1));
-    }
-    void* result = dlrealloc(ptr, size);
-    if (result) {
-        atomic_fetch_add(&globalSDLMemoryUsed, *((usize*)result - 1));
-    }
+sdlCustomRealloc(void* ptr, usize size) {
+    void* result = gpaRealloc(&globalGPADataSDL, ptr, size);
     return result;
 }
 
 function void
 sdlFreeWrapper(void* ptr) {
-    if (ptr) {
-        usize* size = (usize*)ptr - 1;
-        atomic_fetch_sub(&globalSDLMemoryUsed, *size);
-    }
-    dlfree(ptr);
+    gpaFree(&globalGPADataSDL, ptr);
 }
 
-// NOTE(khvorov) Harfbuzz is single-threaded
-global_variable usize globalHBMemoryUsed;
+global_variable GeneralPurposeAllocatorData globalGPADataHB;
 
 void*
 hb_malloc_impl(usize size) {
-    void* result = dlmalloc(size);
-    if (result) {
-        usize sizeActual = *((usize*)result - 1);
-        globalHBMemoryUsed += sizeActual;
-    }
+    void* result = gpaAlloc(&globalGPADataHB, size);
     return result;
 }
 
 void*
 hb_calloc_impl(usize n, usize size) {
-    void* result = dlcalloc(n, size);
-    if (result) {
-        usize sizeActual = *((usize*)result - 1);
-        globalHBMemoryUsed += sizeActual;
-    }
+    void* result = gpaAllocAndZero(&globalGPADataHB, n * size);
     return result;
 }
 
 void*
 hb_realloc_impl(void* ptr, usize size) {
-    if (ptr) {
-        globalHBMemoryUsed -= *((usize*)ptr - 1);
-    }
-    void* result = dlrealloc(ptr, size);
-    if (result) {
-        globalHBMemoryUsed += *((usize*)result - 1);
-    }
+    void* result = gpaRealloc(&globalGPADataHB, ptr, size);
     return result;
 }
 
 void
 hb_free_impl(void* ptr) {
-    if (ptr) {
-        usize size = *((usize*)ptr - 1);
-        globalHBMemoryUsed -= size;
-    }
-    dlfree(ptr);
+    gpaFree(&globalGPADataHB, ptr);
 }
 
 #include FT_CONFIG_CONFIG_H
@@ -320,63 +277,47 @@ hb_free_impl(void* ptr) {
 #include <freetype/fterrors.h>
 #include <freetype/fttypes.h>
 
-// NOTE(khvorov) Freetype is single-threaded
-global_variable usize globalFTMemoryUsed;
+global_variable GeneralPurposeAllocatorData globalGPADataFT;
 
 FT_CALLBACK_DEF(void*)
-ftAllocCustom(FT_Memory memory, long size) {
+ftCustomAlloc(FT_Memory memory, long size) {
     UNUSED(memory);
-    void* result = dlmalloc(size);
-    if (result) {
-        globalFTMemoryUsed += *((usize*)result - 1);
-    }
+    void* result = gpaAlloc(&globalGPADataFT, size);
     return result;
 }
 
 FT_CALLBACK_DEF(void*)
-ftReallocCustom(FT_Memory memory, long curSize, long newSize, void* block) {
+ftCustomRealloc(FT_Memory memory, long curSize, long newSize, void* block) {
     UNUSED(memory);
     UNUSED(curSize);
-    if (block) {
-        globalFTMemoryUsed -= *((usize*)block - 1);
-    }
-    void* result = dlrealloc(block, newSize);
-    if (result) {
-        globalFTMemoryUsed += *((usize*)result - 1);
-    }
+    void* result = gpaRealloc(&globalGPADataFT, block, newSize);
     return result;
 }
 
 FT_CALLBACK_DEF(void)
-ftFreeCustom(FT_Memory memory, void* block) {
+ftCustomFree(FT_Memory memory, void* block) {
     UNUSED(memory);
-    globalFTMemoryUsed -= *((usize*)block - 1);
-    dlfree(block);
+    gpaFree(&globalGPADataFT, block);
 }
 
 FT_BASE_DEF(FT_Memory)
 FT_New_Memory(void) {
-    FT_Memory memory = (FT_Memory)dlmalloc(sizeof(*memory));
-    globalFTMemoryUsed += *((usize*)memory - 1);
+    FT_Memory memory = (FT_Memory)gpaAlloc(&globalGPADataFT, sizeof(*memory));
     if (memory) {
         // NOTE(khvorov) This user pointer is very helpful and all but this
         // function doesn't take it, so freetype data has to be a global anyway
         memory->user = NULL;
-        memory->alloc = ftAllocCustom;
-        memory->realloc = ftReallocCustom;
-        memory->free = ftFreeCustom;
+        memory->alloc = ftCustomAlloc;
+        memory->realloc = ftCustomRealloc;
+        memory->free = ftCustomFree;
     }
     return memory;
 }
 
 FT_BASE_DEF(void)
 FT_Done_Memory(FT_Memory memory) {
-    globalFTMemoryUsed -= *((usize*)memory - 1);
-    dlfree(memory);
+    gpaFree(&globalGPADataFT, memory);
 }
-
-global_variable Arena     globalFrameArena;
-global_variable Allocator globalTempArenaAllocator = {&globalFrameArena, arenaAllocAndZero, 0};
 
 //
 // SECTION Strings
@@ -396,12 +337,12 @@ stringFromCstring(char* cstring) {
 }
 
 function String
-fmtTempString(char* fmt, ...) {
+stringFmt(Arena* arena, char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    char* ptr = (char*)(globalFrameArena.base + globalFrameArena.used);
-    i32   len = SDL_vsnprintf(ptr, globalFrameArena.size - globalFrameArena.used, fmt, ap);
-    globalFrameArena.used += len;
+    char* ptr = (char*)(arena->base + arena->used);
+    i32   len = SDL_vsnprintf(ptr, arena->size - arena->used, fmt, ap);
+    arena->used += len;
     va_end(ap);
     String result = {ptr, len};
     return result;
@@ -415,34 +356,6 @@ streq(String str1, String str2) {
     }
     return result;
 }
-
-//
-// SECTION Filesystem
-//
-
-#if PLATFORM_WINDOWS
-
-    #error unimlemented
-
-#elif PLATFORM_LINUX
-    #include <unistd.h>
-    #include <fcntl.h>
-
-ByteSlice
-readEntireFile(String path, Allocator allocator) {
-    int handle = open(path.ptr, O_RDONLY, 0);
-    assert(handle != -1);
-    struct stat statBuf = {0};
-    assert(fstat(handle, &statBuf) == 0);
-    u8* buf = allocArray(allocator, u8, statBuf.st_size);
-    i32 readResult = read(handle, buf, statBuf.st_size);
-    assert(readResult == statBuf.st_size);
-    close(handle);
-    ByteSlice result = {buf, readResult};
-    return result;
-}
-
-#endif
 
 //
 // SECTION Input
@@ -532,7 +445,6 @@ typedef struct FontManager {
     Font*        fonts;
     FcCharSet**  fcCharSets;
     hb_buffer_t* hbBuf;
-    Allocator    fontFileContentsAllocator;
 } FontManager;
 
 typedef struct LoadFontResult {
@@ -567,12 +479,12 @@ loadFont(FT_Library ftLib, String path, ByteSlice fileContents) {
 }
 
 function void
-unloadFont(FontManager* fontManager, Font* font) {
+unloadFont(Font* font) {
     if (font->ftFace) {
         hb_font_destroy(font->hbFont);
         FT_Error doneResult = FT_Done_Face(font->ftFace);
         assert(doneResult == FT_Err_Ok);
-        freeMemory(fontManager->fontFileContentsAllocator, font->fileContents.ptr);
+        SDL_free(font->fileContents.ptr);
     }
     *font = (Font) {0};
 }
@@ -608,10 +520,13 @@ getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriB
         String fontpath = stringFromCstring(matchFontFilename);
         if (font->ftFace == 0 || !streq(font->path, fontpath)) {
             // TODO(khvorov) Avoid reading the same file twice
-            ByteSlice      fontFileContents = readEntireFile(fontpath, fontManager->fontFileContentsAllocator);
+            usize fileSize = 0;
+            void* fileContents = SDL_LoadFile(matchFontFilename, &fileSize);
+            assert(fileSize <= INT32_MAX);
+            ByteSlice      fontFileContents = {fileContents, fileSize};
             LoadFontResult loadFontResult = loadFont(fontManager->ftLib, fontpath, fontFileContents);
             if (loadFontResult.success) {
-                unloadFont(fontManager, font);
+                unloadFont(font);
                 *font = loadFontResult.font;
             }
         }
@@ -629,7 +544,7 @@ typedef struct CreateFontManagerResult {
 } CreateFontManagerResult;
 
 function CreateFontManagerResult
-createFontManager(Allocator permanentAllocator, Allocator fontFileContentsAllocator) {
+createFontManager(Arena* arena) {
     CreateFontManagerResult result = {0};
     FT_Library              ftLib = 0;
     FT_Error                ftInitResult = FT_Init_FreeType(&ftLib);
@@ -639,10 +554,9 @@ createFontManager(Allocator permanentAllocator, Allocator fontFileContentsAlloca
             .fcConfig = FcInitLoadConfigAndFonts(),
             .fcPattern = FcPatternCreate(),
             .ftLib = ftLib,
-            .fonts = allocArray(permanentAllocator, Font, fontCount),
-            .fcCharSets = allocArray(permanentAllocator, FcCharSet*, fontCount),
+            .fonts = arenaAllocArray(arena, Font, fontCount),
+            .fcCharSets = arenaAllocArray(arena, FcCharSet*, fontCount),
             .hbBuf = hb_buffer_create(),
-            .fontFileContentsAllocator = fontFileContentsAllocator,
         };
         for (i32 fontIndex = 0; fontIndex < fontCount; fontIndex++) {
             fontManager.fcCharSets[fontIndex] = FcCharSetCreate();
@@ -704,6 +618,7 @@ typedef struct Renderer {
     i32           fontTexWidth, fontTexHeight;
     FontManager   fontManager;
     i32           width, height;
+    Arena*        arena;
 } Renderer;
 
 typedef struct CreateRendererResult {
@@ -712,9 +627,9 @@ typedef struct CreateRendererResult {
 } CreateRendererResult;
 
 function CreateRendererResult
-createRenderer(Allocator permanentAllocator, Allocator fontFileContentsAllocator) {
+createRenderer(Arena* arena) {
     CreateRendererResult    result = {0};
-    CreateFontManagerResult createFontManagerResult = createFontManager(permanentAllocator, fontFileContentsAllocator);
+    CreateFontManagerResult createFontManagerResult = createFontManager(arena);
     if (createFontManagerResult.success) {
         FontManager fontManager = createFontManagerResult.fontManager;
         int         initResult = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
@@ -747,6 +662,7 @@ createRenderer(Allocator permanentAllocator, Allocator fontFileContentsAllocator
                                 .sdlFontTexture = sdlTexture,
                                 .width = windowWidth,
                                 .height = windowHeight,
+                                .arena = arena,
                             };
                             result = (CreateRendererResult) {.success = true, .renderer = renderer};
                         }
@@ -839,10 +755,10 @@ drawRectOutline(Renderer* renderer, Rect2i rect, Color color, i32 thickness) {
 function void
 drawTextline(Renderer* renderer, String text, Rect2i rect) {
     if (text.len > 0) {
-        TempMemory tempMem = arenaBeginTemp(&globalFrameArena);
+        TempMemory tempMem = arenaBeginTemp(renderer->arena);
 
         // NOTE(khvorov) Convert to UTF32 from UTF8
-        FriBidiChar* ogStringUtf32 = allocArray(globalTempArenaAllocator, FriBidiChar, text.len + 1);
+        FriBidiChar* ogStringUtf32 = arenaAllocArray(renderer->arena, FriBidiChar, text.len + 1);
         i32          utf32Length = 0;
         {
             u32 codepoint = 0;
@@ -878,15 +794,15 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
             hb_script_t    hbScript = hb_icu_script_to_script(curIcuScript);
             hb_direction_t hbDir = hb_script_get_horizontal_direction(hbScript);
 
-            FriBidiCharType* bidiTypes = allocArray(globalTempArenaAllocator, FriBidiCharType, segmentLength);
+            FriBidiCharType* bidiTypes = arenaAllocArray(renderer->arena, FriBidiCharType, segmentLength);
             fribidi_get_bidi_types(segmentStart, segmentLength, bidiTypes);
 
             FriBidiBracketType* fribidiBracketTypes =
-                allocArray(globalTempArenaAllocator, FriBidiBracketType, segmentLength);
+                arenaAllocArray(renderer->arena, FriBidiBracketType, segmentLength);
             fribidi_get_bracket_types(segmentStart, segmentLength, bidiTypes, fribidiBracketTypes);
 
             FriBidiParType fribidiBaseDirection = hbDir == HB_DIRECTION_RTL ? FRIBIDI_TYPE_RTL : FRIBIDI_TYPE_LTR;
-            FriBidiLevel*  firbidiEmbeddingLevels = allocArray(globalTempArenaAllocator, FriBidiLevel, segmentLength);
+            FriBidiLevel*  firbidiEmbeddingLevels = arenaAllocArray(renderer->arena, FriBidiLevel, segmentLength);
             FriBidiLevel   embeddingResult = fribidi_get_par_embedding_levels_ex(
                 bidiTypes,
                 fribidiBracketTypes,
@@ -898,7 +814,7 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
             // TODO(khvorov) What should happen here?
             assert(embeddingResult != 0);
 
-            FriBidiChar* visualStr = allocArray(globalTempArenaAllocator, FriBidiChar, segmentLength);
+            FriBidiChar* visualStr = arenaAllocArray(renderer->arena, FriBidiChar, segmentLength);
             SDL_memcpy(visualStr, segmentStart, segmentLength * sizeof(FriBidiChar));
 
             FriBidiLevel reorderResult = fribidi_reorder_line(
@@ -974,8 +890,8 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
                                 .offsetY = font->fontHeight - ftGlyph->bitmap_top,
                             };
 
-                            TempMemory tempMemGlyph = arenaBeginTemp(&globalFrameArena);
-                            u32*       glyphPx = allocArray(globalTempArenaAllocator, u32, bm.rows * bm.width);
+                            TempMemory tempMemGlyph = arenaBeginTemp(renderer->arena);
+                            u32*       glyphPx = arenaAllocArray(renderer->arena, u32, bm.rows * bm.width);
                             for (i32 bmRow = 0; bmRow < (i32)bm.rows; bmRow++) {
                                 for (i32 bmCol = 0; bmCol < (i32)bm.width; bmCol++) {
                                     i32 bmIndex = bmRow * bm.pitch + bmCol;
@@ -1055,11 +971,12 @@ drawMemRect(
             sizeSmallEnough /= 1024.0f;
             divisions++;
         }
-        String memsizeString = fmtTempString("%s: %.1f%s", name.ptr, sizeSmallEnough, sizes[divisions]);
-
+        TempMemory tempMem = arenaBeginTemp(renderer->arena);
+        String memsizeString = stringFmt(renderer->arena, "%s: %.1f%s", name.ptr, sizeSmallEnough, sizes[divisions]);
         Rect2i textRect =
             {.x = topleftXText, .y = memRect.y + memRect.h * topleftYTextMultiplier, .w = memRect.w, .h = memRect.h};
         drawTextline(renderer, memsizeString, textRect);
+        endTempMemory(tempMem);
     }
 
     i32 toprightX = memRect.x + memRect.w;
@@ -1068,7 +985,8 @@ drawMemRect(
 
 function i32
 drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topleftX, i32 totalMemoryUsed, i32 height, String name) {
-    i32 toprightX = drawMemRect(
+    TempMemory tempMem = arenaBeginTemp(renderer->arena);
+    i32        toprightX = drawMemRect(
         renderer,
         topleftX,
         topleftX,
@@ -1077,7 +995,7 @@ drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topleftX, i32 totalMe
         totalMemoryUsed,
         height,
         (Color) {.r = 100, .a = 255},
-        fmtTempString("%s used", name)
+        stringFmt(renderer->arena, "%s used", name)
     );
     toprightX = drawMemRect(
         renderer,
@@ -1088,8 +1006,9 @@ drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topleftX, i32 totalMe
         totalMemoryUsed,
         height,
         (Color) {.g = 100, .a = 255},
-        fmtTempString("%s free", name)
+        stringFmt(renderer->arena, "%s free", name)
     );
+    endTempMemory(tempMem);
     return toprightX;
 }
 
@@ -1168,16 +1087,9 @@ int
 main(int argc, char* argv[]) {
     UNUSED(argc);
     UNUSED(argv);
-
-    Arena     virtualArena = createArenaFromVmem(3 * MEGABYTE);
-    Allocator virtualArenaAllocator = createArenaAllocator(&virtualArena);
-    globalFrameArena = createArena(1 * MEGABYTE, virtualArenaAllocator);
-    SDL_SetMemoryFunctions(sdlMallocWrapper, sdlCallocWrapper, sdlReallocWrapper, sdlFreeWrapper);
-
-    GeneralPurposeAllocatorData gpaData = {0};
-    Allocator                   gpaAllocator = createGpaAllocator(&gpaData);
-
-    CreateRendererResult createRendererResult = createRenderer(virtualArenaAllocator, gpaAllocator);
+    SDL_SetMemoryFunctions(sdlCustomMalloc, sdlCustomCalloc, sdlCustomRealloc, sdlFreeWrapper);
+    Arena                virtualArena = createArenaFromVmem(3 * MEGABYTE);
+    CreateRendererResult createRendererResult = createRenderer(&virtualArena);
     if (createRendererResult.success) {
         Renderer    renderer = createRendererResult.renderer;
         SDL_Window* sdlWindow = renderer.sdlWindow;
@@ -1186,8 +1098,7 @@ main(int argc, char* argv[]) {
 
         bool running = true;
         while (running) {
-            assert(globalFrameArena.tempCount == 0);
-            globalFrameArena.used = 0;
+            assert(virtualArena.tempCount == 0);
             inputBeginFrame(&input);
 
             // NOTE(khvorov) Process one event at a time since input doesn't store the order they come in in
@@ -1204,16 +1115,15 @@ main(int argc, char* argv[]) {
             // NOTE(khvorov) Visualize memory usage
             // TODO(khvorov) Do this vertically
             {
-                assert(globalSDLMemoryUsed <= INT32_MAX);
                 i32 totalMemoryUsed =
-                    globalSDLMemoryUsed + globalFTMemoryUsed + globalHBMemoryUsed + virtualArena.size + gpaData.used;
+                    globalGPADataSDL.used + globalGPADataFT.used + globalGPADataHB.used + virtualArena.size;
                 i32 memRectHeight = 20;
                 i32 toprightX = drawMemRect(
                     &renderer,
                     0,
                     0,
                     1,
-                    globalSDLMemoryUsed,
+                    globalGPADataSDL.used,
                     totalMemoryUsed,
                     memRectHeight,
                     (Color) {.r = 100, .g = 100, .a = 255},
@@ -1225,7 +1135,7 @@ main(int argc, char* argv[]) {
                     toprightX,
                     0,
                     2,
-                    globalFTMemoryUsed,
+                    globalGPADataFT.used,
                     totalMemoryUsed,
                     memRectHeight,
                     (Color) {.r = 100, .b = 100, .a = 255},
@@ -1237,39 +1147,17 @@ main(int argc, char* argv[]) {
                     toprightX,
                     0,
                     3,
-                    globalHBMemoryUsed,
+                    globalGPADataHB.used,
                     totalMemoryUsed,
                     memRectHeight,
                     (Color) {.g = 100, .b = 100, .a = 255},
                     stringFromCstring("HB")
                 );
 
-                toprightX = drawMemRect(
-                    &renderer,
-                    toprightX,
-                    0,
-                    4,
-                    gpaData.used,
-                    totalMemoryUsed,
-                    memRectHeight,
-                    (Color) {.g = 100, .b = 150, .a = 255},
-                    stringFromCstring("GPA")
-                );
-
                 toprightX = drawArenaUsage(
                     &renderer,
-                    globalFrameArena.size,
-                    globalFrameArena.used,
-                    toprightX,
-                    totalMemoryUsed,
-                    memRectHeight,
-                    stringFromCstring("FRAME")
-                );
-
-                toprightX = drawArenaUsage(
-                    &renderer,
-                    virtualArena.size - globalFrameArena.size,
-                    virtualArena.used - globalFrameArena.size,
+                    virtualArena.size,
+                    virtualArena.used,
                     toprightX,
                     totalMemoryUsed,
                     memRectHeight,
