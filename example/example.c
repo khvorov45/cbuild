@@ -741,6 +741,7 @@ drawRectOutline(Renderer* renderer, Rect2i rect, Color color, i32 thickness) {
     }
 }
 
+// Main limitation here is that it doesn't tolerate errors and will just trigger an assert if anything goes wrong
 function void
 drawTextline(Renderer* renderer, String text, Rect2i rect) {
     if (text.len > 0) {
@@ -773,7 +774,6 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
                 nextOffset += 1;
             }
 
-            // TODO(khvorov) What should happen if there is an error?
             assert(icuError == U_ZERO_ERROR);
 
             FriBidiChar* segmentStart = ogStringUtf32 + curOffset;
@@ -800,7 +800,6 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
                 firbidiEmbeddingLevels
             );
 
-            // TODO(khvorov) What should happen here?
             assert(embeddingResult != 0);
 
             FriBidiChar* visualStr = arenaAllocArray(renderer->arena, FriBidiChar, segmentLength);
@@ -817,7 +816,6 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
                 0
             );
 
-            // TODO(khvorov) What should happen here?
             assert(reorderResult != 0);
 
             // NOTE(khvorov) Fribidi reverses arabic but not numbers - the oppposite of what we want.
@@ -838,7 +836,8 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
             hb_buffer_set_script(renderer->fontManager.hbBuf, hbScript);
             hb_buffer_set_direction(renderer->fontManager.hbBuf, hbDir);
 
-            // TODO(khvorov) How important is this?
+            // NOTE(khvorov) We can also set the language here but it doesn't seem to make a difference to shaping
+            // and I don't know if trying to detect the language of an arbitrary unicode string segment is worth it
             // hb_language_t hbLang = hb_language_from_string("en-US", -1);
             // hb_buffer_set_language(renderer->font.hbBuf, HB_LANGUAGE_INVALID);
 
