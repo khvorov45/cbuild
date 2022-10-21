@@ -541,6 +541,7 @@ main() {
     char* sdlCompileSources[] = {
         "src/atomic/*.c",
         "src/thread/*.c",
+        "src/thread/generic/*.c",
         "src/events/*.c",
         "src/file/*.c",
         "src/stdlib/*.c",
@@ -558,13 +559,10 @@ main() {
         "src/core/windows/windows.c",
         "src/filesystem/windows/*.c",
         "src/timer/windows/*.c",
-        "src/thread/windows/*.c",
         "src/video/windows/*.c",
-        "src/loadso/windows/*.c",
         "src/locale/windows/*.c",
         "src/main/windows/*.c",
 #elif prb_PLATFORM_LINUX
-        "src/thread/pthread/*.c",
         "src/timer/unix/*.c",
         "src/filesystem/unix/*.c",
         "src/loadso/dlopen/*.c",
@@ -579,6 +577,9 @@ main() {
         "-DSDL_HAPTIC_DISABLED=1",
         "-DSDL_HIDAPI_DISABLED=1",
         "-DSDL_SENSOR_DISABLED=1",
+        "-DSDL_LOADSO_DISABLED=1",
+        "-DSDL_THREADS_DISABLED=1",
+        "-DSDL_TIMERS_DISABLED=1",
         "-DSDL_JOYSTICK_DISABLED=1",
         "-DSDL_VIDEO_RENDER_D3D=0",
         "-DSDL_VIDEO_RENDER_D3D11=0",
@@ -589,13 +590,11 @@ main() {
         "-Wno-deprecated-declarations",
         "-DHAVE_STRING_H=1",
         "-DHAVE_STDIO_H=1",
-        "-DSDL_TIMER_UNIX=1",
+        "-DSDL_TIMER_UNIX=1",  // NOTE(khvorov) We don't actually need the "timers" subsystem to use this
         "-DSDL_FILESYSTEM_UNIX=1",
-        "-DSDL_LOADSO_DLOPEN=1",
         "-DSDL_VIDEO_DRIVER_X11=1",
         "-DSDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS=1",
         "-DNO_SHARED_MEMORY=1",
-        "-DSDL_THREAD_PTHREAD=1",
         "-DHAVE_NANOSLEEP=1",
         "-DHAVE_CLOCK_GETTIME=1",
         "-DCLOCK_MONOTONIC_RAW=1",
@@ -624,11 +623,6 @@ main() {
             "//SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return"
         );
 
-        // NOTE(khvorov) SDL would normally overwrite this "minimal" config with a generated one on linux
-        prb_String configMinimal = prb_pathJoin(downloadDir, "include/SDL_config_minimal.h");
-        prb_textfileReplace(configMinimal, "#define SDL_THREADS_DISABLED    1", "#define SDL_THREADS_DISABLED    0");
-        prb_textfileReplace(configMinimal, "#define SDL_TIMERS_DISABLED 1", "#define SDL_TIMERS_DISABLED 0");
-
         // NOTE(khvorov) SDL allocates the pixels in the X11 framebuffer using
         // SDL_malloc but then frees it using XDestroyImage which will call libc
         // free. So even SDL's own custom malloc won't work because libc free will
@@ -642,6 +636,7 @@ main() {
         );
     }
 
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, sdlName));
     StaticLib sdl = compileStaticLib(
         sdlName,
         rootDir,
@@ -671,7 +666,7 @@ main() {
         fribidiNoConfigFlag,        
         "-Wall -Wextra -Wno-unused-function",
 #if prb_PLATFORM_WINDOWS
-        "-Zi"),
+        "-Zi",
         prb_stringJoin2("-Fo"), prb_pathJoin(compileOutDir, "example.obj"))),
         prb_stringJoin2("-Fe"), prb_pathJoin(compileOutDir, "example.exe"))),
         prb_stringJoin2("-Fd"), prb_pathJoin(compileOutDir, "example.pdb"))),
@@ -697,7 +692,7 @@ main() {
         "User32.lib ";
 #elif prb_PLATFORM_LINUX
     // TODO(khvorov) Get rid of -lm and -ldl
-    prb_String mainLinkFlags = "-lX11 -lpthread -lm -lstdc++ -ldl -lfontconfig";
+    prb_String mainLinkFlags = "-lX11 -lm -lstdc++ -ldl -lfontconfig";
 #endif
 
     prb_String mainCmd = prb_fmtAndPrintln(

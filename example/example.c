@@ -219,7 +219,6 @@ gpaFree(GeneralPurposeAllocatorData* gpa, void* ptr) {
     dlfree(ptr);
 }
 
-// TODO(khvorov) Disable SDL threads
 global_variable GeneralPurposeAllocatorData globalGPADataSDL;
 
 function void*
@@ -632,7 +631,7 @@ createRenderer(Arena* arena) {
     CreateFontManagerResult createFontManagerResult = createFontManager(arena);
     if (createFontManagerResult.success) {
         FontManager fontManager = createFontManagerResult.fontManager;
-        int         initResult = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
+        int         initResult = SDL_Init(SDL_INIT_VIDEO);
         if (initResult == 0) {
             i32         windowWidth = 1000;
             i32         windowHeight = 1000;
