@@ -240,7 +240,7 @@ sdlCustomRealloc(void* ptr, usize size) {
 }
 
 function void
-sdlFreeWrapper(void* ptr) {
+sdlCustomFree(void* ptr) {
     gpaFree(&globalGPADataSDL, ptr);
 }
 
@@ -962,7 +962,7 @@ main(int argc, char* argv[]) {
     UNUSED(argc);
     UNUSED(argv);
 
-    SDL_SetMemoryFunctions(sdlCustomMalloc, sdlCustomCalloc, sdlCustomRealloc, sdlFreeWrapper);
+    SDL_SetMemoryFunctions(sdlCustomMalloc, sdlCustomCalloc, sdlCustomRealloc, sdlCustomFree);
     int initResult = SDL_Init(SDL_INIT_VIDEO);
     if (initResult == 0) {
         Arena                virtualArena = createArenaFromVmem(3 * MEGABYTE);
