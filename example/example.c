@@ -493,6 +493,9 @@ typedef struct GetFontResult {
     Font* font;
 } GetFontResult;
 
+// This has some limitations:
+// - may read the same file twice if it supports multiple scripts
+// - treats USCRIPT_COMMON (numbers, punctuation, etc) as a distinct script
 function GetFontResult
 getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriBidiChar* chars, i32 chCount) {
     GetFontResult result = {0};
@@ -518,7 +521,6 @@ getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriB
 
         String fontpath = stringFromCstring(matchFontFilename);
         if (font->ftFace == 0 || !streq(font->path, fontpath)) {
-            // TODO(khvorov) Avoid reading the same file twice
             usize fileSize = 0;
             void* fileContents = SDL_LoadFile(matchFontFilename, &fileSize);
             assert(fileSize <= INT32_MAX);
