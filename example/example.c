@@ -1,12 +1,8 @@
 #include <stdbool.h>
-#include <stdatomic.h>
 
 #include <ft2build.h>
 #include <freetype/freetype.h>
 #include <freetype/ftbitmap.h>
-
-#include <fontconfig/fontconfig.h>
-#include <fontconfig/fcfreetype.h>
 
 #include <hb.h>
 #include <hb-ft.h>
@@ -26,6 +22,7 @@
     #error unimlemented
 #elif PLATFORM_LINUX
     #include <sys/mman.h>
+    #include <fontconfig/fontconfig.h>
 #endif
 
 #define function static
@@ -380,8 +377,12 @@ typedef struct FontManager {
     FcPattern*   fcPattern;
     FT_Library   ftLib;
     Font*        fonts;
-    FcCharSet**  fcCharSets;
     hb_buffer_t* hbBuf;
+#if PLATFORM_WINDOWS
+    #error unimplemented;
+#elif PLATFORM_LINUX
+    FcCharSet** fcCharSets;
+#endif
 } FontManager;
 
 typedef struct LoadFontResult {
@@ -437,6 +438,12 @@ typedef struct GetFontResult {
 function GetFontResult
 getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriBidiChar* chars, i32 chCount) {
     GetFontResult result = {0};
+
+#if PLATFORM_WINDOWS
+
+    #error unimplemented
+
+#elif PLATFORM_LINUX
     if (script >= 0 && script < USCRIPT_CODE_LIMIT) {
         Font*      font = fontManager->fonts + script;
         FcCharSet* fcCharSet = fontManager->fcCharSets[script];
@@ -474,6 +481,8 @@ getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriB
             result = (GetFontResult) {.success = true, .font = font};
         }
     }
+#endif
+
     return result;
 }
 
