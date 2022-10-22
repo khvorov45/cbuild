@@ -1087,7 +1087,7 @@ main(int argc, char* argv[]) {
     } else {
         // NOTE(khvorov) SDL log functions work even if it's not initialized
         const char* sdlError = SDL_GetError();
-        SDL_LogError(0, "Failed to init SDL: %s\n", sdlError);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to init SDL: %s\n", sdlError);
     }
 
     return 0;
