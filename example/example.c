@@ -984,8 +984,12 @@ main(int argc, char* argv[]) {
                 stringFromCstring("किलोमीटर या ९,२९,६०,००० मील है तथा e très nombreux astéroïdes et comètes"),
             };
 
+            u64  prevFrameTicks = 0;
+            u64  unicodeDrawTicks = 0;
+            f32  ticksPerMS = (f32)SDL_GetPerformanceFrequency() / 1000.0f;
             bool running = true;
             while (running) {
+                u64 frameStart = SDL_GetPerformanceCounter();
                 assert(virtualArena.tempCount == 0);
 
                 SDL_Event event = {0};
@@ -997,7 +1001,7 @@ main(int argc, char* argv[]) {
 
                 assert(renderBegin(&renderer) == CompletionStatus_Sucess);
 
-                // TODO(khvorov) Visualize timings
+                u64 unicodeDrawStart = SDL_GetPerformanceCounter();
                 i32 curTextTopY = 150;
                 for (usize lineIndex = 0; lineIndex < arrayLen(unicodeLines); lineIndex++) {
                     String line = unicodeLines[lineIndex];
@@ -1005,6 +1009,7 @@ main(int argc, char* argv[]) {
                     i32 arbitraryLineHeight = 50;
                     curTextTopY += arbitraryLineHeight;
                 }
+                unicodeDrawTicks = SDL_GetPerformanceCounter() - unicodeDrawStart;
 
                 // NOTE(khvorov) Visualize memory usage
                 {
@@ -1049,11 +1054,34 @@ main(int argc, char* argv[]) {
                         topY,
                         totalMemoryUsed,
                         memRectHeight,
-                        (MemRectText) {.str = stringFromCstring("ARN"), .xOff = textXPad, .yOff = 15}
+                        (MemRectText) {.str = stringFromCstring("Arena"), .xOff = textXPad, .yOff = 15}
                     );
                 }
 
+                // NOTE(khvorov) Print timings
+                {
+                    TempMemory tempMem = arenaBeginTemp(renderer.arena);
+                    f32        unicodeDrawMs = (f32)unicodeDrawTicks / ticksPerMS;
+                    f32        frameMs = (f32)prevFrameTicks / ticksPerMS;
+                    drawTextline(
+                        &renderer,
+                        stringFmt(renderer.arena, "unicode draw: %.1fms", unicodeDrawMs),
+                        400,
+                        600,
+                        (Color) {.r = 200, .g = 200, .b = 200, .a = 255}
+                    );
+                    drawTextline(
+                        &renderer,
+                        stringFmt(renderer.arena, "prev frame: %.1fms", frameMs),
+                        400,
+                        630,
+                        (Color) {.r = 200, .g = 200, .b = 200, .a = 255}
+                    );
+                    endTempMemory(tempMem);
+                }
+
                 renderEnd(&renderer);
+                prevFrameTicks = SDL_GetPerformanceCounter() - frameStart;
             }
         }
     } else {
