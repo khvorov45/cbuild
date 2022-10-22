@@ -11,6 +11,7 @@
 // TODO(khvorov) Make sure utf8 paths work on windows
 // TODO(khvorov) String regex ops
 // TODO(khvorov) File search by regex + recursive
+// TODO(khvorov) Reorganise platform-specific stuff to be per-function probably
 
 #include <stdint.h>
 #include <stddef.h>
