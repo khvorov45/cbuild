@@ -341,7 +341,7 @@ stringFmt(Arena* arena, char* fmt, ...) {
     va_start(ap, fmt);
     char* ptr = (char*)(arena->base + arena->used);
     i32   len = SDL_vsnprintf(ptr, arena->size - arena->used, fmt, ap);
-    arena->used += len;
+    arena->used += len + 1;  // NOTE(khvorov) Null terminator
     va_end(ap);
     String result = {ptr, len};
     return result;
@@ -573,7 +573,7 @@ createRenderer(Arena* arena) {
         FontManager fontManager = createFontManagerResult.fontManager;
         i32         windowWidth = 1000;
         i32         windowHeight = 1000;
-        SDL_Window* sdlWindow = SDL_CreateWindow("test", 0, 0, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
+        SDL_Window* sdlWindow = SDL_CreateWindow("example", 0, 0, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
         if (sdlWindow) {
             SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
             if (sdlRenderer) {
@@ -681,7 +681,7 @@ drawRectOutline(Renderer* renderer, Rect2i rect, Color color, i32 thickness) {
 
 // Main limitation here is that it doesn't tolerate errors and will just trigger an assert if anything goes wrong
 function void
-drawTextline(Renderer* renderer, String text, Rect2i rect) {
+drawTextline(Renderer* renderer, String text, i32 leftX, i32 topY, Color color) {
     if (text.len > 0) {
         TempMemory tempMem = arenaBeginTemp(renderer->arena);
 
@@ -698,7 +698,8 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
         }
 
         // NOTE(khvorov) Break string up into segments where the script doesn't change
-        Rect2i curRect = rect;
+        i32 curTopY = topY;
+        i32 curLeftX = leftX;
         for (i32 curOffset = 0; curOffset < utf32Length;) {
             UErrorCode  icuError = U_ZERO_ERROR;
             UScriptCode curIcuScript = uscript_getScript(ogStringUtf32[curOffset], &icuError);
@@ -822,7 +823,8 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
                                 for (i32 bmCol = 0; bmCol < (i32)bm.width; bmCol++) {
                                     i32 bmIndex = bmRow * bm.pitch + bmCol;
                                     i32 alpha = bm.buffer[bmIndex];
-                                    u32 fullColorRGBA = 0xFFFFFF00 | alpha;
+                                    u32 colorRGB = (color.r << 24) | (color.g << 16) | (color.b << 8) | (0);
+                                    u32 fullColorRGBA = colorRGB | alpha;
                                     i32 bufIndex = bmRow * bm.width + bmCol;
                                     glyphPx[bufIndex] = fullColorRGBA;
                                 }
@@ -833,8 +835,8 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
                             if (updateTexResult == 0) {
                                 SDL_Rect texRect = {.w = glyph.width, .h = glyph.height};
                                 SDL_Rect destRect = {
-                                    .x = curRect.x + hbPosX + glyph.offsetX,
-                                    .y = curRect.y + hbPosY + glyph.offsetY,
+                                    .x = curLeftX + hbPosX + glyph.offsetX,
+                                    .y = curTopY + hbPosY + glyph.offsetY,
                                     .w = glyph.width,
                                     .h = glyph.height};
                                 int copyResult = SDL_RenderCopy(
@@ -854,10 +856,8 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
                     hbPosY += pos.y_advance >> 6;
                 }
 
-                curRect.x += hbPosX;
-                curRect.y += hbPosY;
-                curRect.w -= hbPosX;
-                curRect.h -= hbPosY;
+                curLeftX += hbPosX;
+                curTopY += hbPosY;
             }
 
             curOffset = nextOffset;
@@ -867,75 +867,80 @@ drawTextline(Renderer* renderer, String text, Rect2i rect) {
     }
 }
 
+function String
+fmtMemUsage(Arena* arena, i32 memUsed) {
+    char* sizes[] = {"B", "KB", "MB", "GB", "TB"};
+    f32   sizeSmallEnough = (f32)memUsed;
+    usize divisions = 0;
+    while (sizeSmallEnough > 1024.0f && divisions < arrayLen(sizes) - 1) {
+        sizeSmallEnough /= 1024.0f;
+        divisions++;
+    }
+    String memsizeString = stringFmt(arena, "%.1f%s", sizeSmallEnough, sizes[divisions]);
+    return memsizeString;
+}
+
+typedef struct MemRectText {
+    String str;
+    i32    xOff, yOff;
+} MemRectText;
+
 function i32
-drawMemRect(
-    Renderer* renderer,
-    i32       topleftX,
-    i32       topleftXText,
-    i32       topleftYTextMultiplier,
-    i32       memUsed,
-    i32       totalMemoryUsed,
-    i32       height,
-    Color     color,
-    String    name
-) {
+drawMemRect(Renderer* renderer, i32 topY, i32 memUsed, i32 totalMemoryUsed, i32 width, Color color, MemRectText text) {
     Rect2i memRect = {
-        .x = topleftX,
-        .y = 0,
-        .w = (i32)((f32)memUsed / (f32)totalMemoryUsed * (f32)renderer->width + 0.5f),
-        .h = height,
+        .x = 0,
+        .y = topY,
+        .w = width,
+        .h = (i32)((f32)memUsed / (f32)totalMemoryUsed * (f32)renderer->width + 0.5f),
     };
     drawRect(renderer, memRect, color);
     drawRectOutline(renderer, memRect, (Color) {.a = 255}, 1);
 
     // NOTE(khvorov) Draw memory usage
-    {
-        char* sizes[] = {"B", "KB", "MB", "GB", "TB"};
-        f32   sizeSmallEnough = (f32)memUsed;
-        usize divisions = 0;
-        while (sizeSmallEnough > 1024.0f && divisions < arrayLen(sizes) - 1) {
-            sizeSmallEnough /= 1024.0f;
-            divisions++;
-        }
+    if (text.str.ptr) {
         TempMemory tempMem = arenaBeginTemp(renderer->arena);
-        String memsizeString = stringFmt(renderer->arena, "%s: %.1f%s", name.ptr, sizeSmallEnough, sizes[divisions]);
-        Rect2i textRect =
-            {.x = topleftXText, .y = memRect.y + memRect.h * topleftYTextMultiplier, .w = memRect.w, .h = memRect.h};
-        drawTextline(renderer, memsizeString, textRect);
+        String     memUsageStr = fmtMemUsage(renderer->arena, memUsed);
+        String     memsizeString = stringFmt(renderer->arena, "%s: %s", text.str.ptr, memUsageStr.ptr);
+        drawTextline(renderer, memsizeString, memRect.w + text.xOff, topY + text.yOff, color);
         endTempMemory(tempMem);
     }
 
-    i32 toprightX = memRect.x + memRect.w;
-    return toprightX;
+    i32 bottomY = memRect.y + memRect.h;
+    return bottomY;
 }
 
 function i32
-drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topleftX, i32 totalMemoryUsed, i32 height, String name) {
-    TempMemory tempMem = arenaBeginTemp(renderer->arena);
-    i32        toprightX = drawMemRect(
+drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topY, i32 totalMemoryUsed, i32 width, MemRectText text) {
+    i32 newtopY =
+        drawMemRect(renderer, topY, used, totalMemoryUsed, width, (Color) {.r = 100, .a = 255}, (MemRectText) {0});
+    newtopY = drawMemRect(
         renderer,
-        topleftX,
-        topleftX,
-        1,
-        used,
-        totalMemoryUsed,
-        height,
-        (Color) {.r = 100, .a = 255},
-        stringFmt(renderer->arena, "%s used", name)
-    );
-    toprightX = drawMemRect(
-        renderer,
-        toprightX,
-        topleftX,
-        2,
+        newtopY,
         size - used,
         totalMemoryUsed,
-        height,
+        width,
         (Color) {.g = 100, .a = 255},
-        stringFmt(renderer->arena, "%s free", name)
+        (MemRectText) {0}
+    );
+
+    TempMemory tempMem = arenaBeginTemp(renderer->arena);
+    String     usageStr = stringFmt(
+        renderer->arena,
+        "%s: %s/%s",
+        text.str.ptr,
+        fmtMemUsage(renderer->arena, used).ptr,
+        fmtMemUsage(renderer->arena, size).ptr
+    );
+    drawTextline(
+        renderer,
+        usageStr,
+        width + text.xOff,
+        topY + text.yOff,
+        (Color) {.r = 200, .g = 200, .b = 200, .a = 255}
     );
     endTempMemory(tempMem);
-    return toprightX;
+
+    return newtopY;
 }
 
 //
@@ -993,66 +998,58 @@ main(int argc, char* argv[]) {
                 assert(renderBegin(&renderer) == CompletionStatus_Sucess);
 
                 // TODO(khvorov) Visualize timings
-                // TODO(khvorov) Hardware rendering?
-                Rect2i textRect = {.x = 150, .y = 150, .w = renderer.width, .h = renderer.height};
+                i32 curTextTopY = 150;
                 for (usize lineIndex = 0; lineIndex < arrayLen(unicodeLines); lineIndex++) {
                     String line = unicodeLines[lineIndex];
-                    drawTextline(&renderer, line, textRect);
+                    drawTextline(&renderer, line, 150, curTextTopY, (Color) {.r = 200, .g = 200, .b = 200, .a = 255});
                     i32 arbitraryLineHeight = 50;
-                    textRect.y += arbitraryLineHeight;
-                    textRect.h -= arbitraryLineHeight;
+                    curTextTopY += arbitraryLineHeight;
                 }
 
                 // NOTE(khvorov) Visualize memory usage
-                // TODO(khvorov) Do this vertically
                 {
                     i32 totalMemoryUsed =
                         globalGPADataSDL.used + globalGPADataFT.used + globalGPADataHB.used + virtualArena.size;
                     i32 memRectHeight = 20;
-                    i32 toprightX = drawMemRect(
+                    i32 textXPad = 5;
+                    i32 topY = drawMemRect(
                         &renderer,
                         0,
-                        0,
-                        1,
                         globalGPADataSDL.used,
                         totalMemoryUsed,
                         memRectHeight,
                         (Color) {.r = 100, .g = 100, .a = 255},
-                        stringFromCstring("SDL")
+                        (MemRectText) {.str = stringFromCstring("SDL"), .xOff = textXPad}
                     );
 
-                    toprightX = drawMemRect(
+                    topY = drawMemRect(
                         &renderer,
-                        toprightX,
-                        0,
-                        2,
+                        topY,
                         globalGPADataFT.used,
                         totalMemoryUsed,
                         memRectHeight,
                         (Color) {.r = 100, .b = 100, .a = 255},
-                        stringFromCstring("FT")
+                        (MemRectText) {.str = stringFromCstring("FT"), .xOff = textXPad, .yOff = -5}
                     );
 
-                    toprightX = drawMemRect(
+                    topY = drawMemRect(
                         &renderer,
-                        toprightX,
-                        0,
-                        3,
+                        topY,
                         globalGPADataHB.used,
                         totalMemoryUsed,
                         memRectHeight,
                         (Color) {.g = 100, .b = 100, .a = 255},
-                        stringFromCstring("HB")
+                        (MemRectText) {.str = stringFromCstring("HB"), .xOff = textXPad, .yOff = 5}
                     );
 
-                    toprightX = drawArenaUsage(
+                    topY = drawArenaUsage(
                         &renderer,
                         virtualArena.size,
                         virtualArena.used,
-                        toprightX,
+                        topY,
                         totalMemoryUsed,
                         memRectHeight,
-                        stringFromCstring("REST")
+                        (MemRectText) {.str = stringFromCstring("ARN"), .xOff = textXPad, .yOff = 15}
                     );
                 }
 
