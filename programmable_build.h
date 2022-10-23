@@ -15,6 +15,7 @@ are running off a linear allocator that is not thread-safe,
 // TODO(khvorov) String regex ops
 // TODO(khvorov) File search by regex + recursive
 // TODO(khvorov) Reorganise platform-specific stuff to be per-function probably
+// TODO(khvorov) Check declarations/implementation placement in tests probably
 
 #include <stdint.h>
 #include <stddef.h>
@@ -27,6 +28,25 @@ are running off a linear allocator that is not thread-safe,
     #define prb_PLATFORM_LINUX 1
 #else
     #error unrecognized platform
+#endif
+
+#if prb_PLATFORM_WINDOWS
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+    #include <shellapi.h>
+
+    #pragma comment(lib, "Shell32.lib")
+#elif prb_PLATFORM_LINUX
+    #include <linux/limits.h>
+    #include <sys/mman.h>
+    #include <sys/stat.h>
+    #include <sys/wait.h>
+    #include <unistd.h>
+    #include <spawn.h>
+    #include <dirent.h>
+    #include <glob.h>
+    #include <time.h>
+    #include <fcntl.h>
 #endif
 
 #define prb_BYTE 1
@@ -137,21 +157,16 @@ typedef struct prb_Bytes {
     int32_t  len;
 } prb_Bytes;
 
+typedef struct prb_ProcessHandle {
 #if prb_PLATFORM_WINDOWS
-
-typedef struct prb_ProcessHandle {
     #error unimplemented
-} prb_ProcessHandle;
-
 #elif prb_PLATFORM_LINUX
-    #include <unistd.h>
-
-typedef struct prb_ProcessHandle {
     bool  valid;
     pid_t pid;
+#else
+    #error unimplemented
+#endif
 } prb_ProcessHandle;
-
-#endif  // prb_PLATFORM
 
 // SECTION Core
 void prb_init(int32_t virtualMemoryBytesToUse);
@@ -176,8 +191,8 @@ void            prb_removeFileOrDirectoryIfExists(prb_String path);
 void            prb_removeFileIfExists(prb_String path);
 void            prb_removeDirectoryIfExists(prb_String path);
 void            prb_clearDirectory(prb_String path);
-prb_String      prb_pathJoin(prb_String path1, prb_String path2);
 prb_String      prb_getCurrentWorkingDir(void);
+prb_String      prb_pathJoin(prb_String path1, prb_String path2);
 int32_t         prb_getLastPathSepIndex(prb_String path);
 prb_String      prb_getParentDir(prb_String path);
 prb_String      prb_getLastEntryInPath(prb_String path);
@@ -206,7 +221,7 @@ void                   prb_stringBuilderWrite(prb_StringBuilder* builder, const 
 prb_String             prb_stringBuilderGetString(prb_StringBuilder* builder);
 prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
 void                   prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
-prb_StringArray        prb_stringArrayFromCstrings(char** cstrings, int32_t cstringsCount);
+prb_StringArray        prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder);
 prb_String             prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
 prb_String             prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
 prb_StringArray        prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2);
@@ -325,19 +340,8 @@ struct {
 } prb_globalState;
 
 //
-// SECTION Implementation
+// SECTION Core (implementation)
 //
-
-bool
-prb_memeq(void* ptr1, void* ptr2, int32_t bytes) {
-    prb_assert(bytes >= 0);
-    uint8_t* l = (uint8_t*)ptr1;
-    uint8_t* r = (uint8_t*)ptr2;
-    int32_t  left = bytes;
-    for (; left > 0 && *l == *r; left--, l++, r++) {}
-    bool result = left == 0;
-    return result;
-}
 
 void
 prb_init(int32_t virtualMemoryBytesToUse) {
@@ -358,14 +362,24 @@ prb_init(int32_t virtualMemoryBytesToUse) {
     prb_globalState.terminalColorCodes[prb_ColorID_White] = "\x1b[37m";
 }
 
-int32_t
-prb_strlen(const char* string) {
-    const char* ptr = string;
-    for (; *ptr; ptr++) {}
-    size_t len = ptr - string;
-    prb_assert(len <= INT32_MAX);
-    return (int32_t)len;
+void
+prb_terminate(int32_t code) {
+    #if prb_PLATFORM_WINDOWS
+
+        #error unimplemented
+
+    #elif prb_PLATFORM_LINUX
+
+    _exit(code);
+
+    #else
+        #error unimplemented
+    #endif
 }
+
+//
+// SECTION Memory (implementation)
+//
 
 void*
 prb_memcpy(void* dest, const void* src, size_t n) {
@@ -375,6 +389,36 @@ prb_memcpy(void* dest, const void* src, size_t n) {
         *d++ = *s++;
     }
     return dest;
+}
+
+bool
+prb_memeq(void* ptr1, void* ptr2, int32_t bytes) {
+    prb_assert(bytes >= 0);
+    uint8_t* l = (uint8_t*)ptr1;
+    uint8_t* r = (uint8_t*)ptr2;
+    int32_t  left = bytes;
+    for (; left > 0 && *l == *r; left--, l++, r++) {}
+    bool result = left == 0;
+    return result;
+}
+
+void*
+prb_vmemAllocate(int32_t size) {
+    #if prb_PLATFORM_WINDOWS
+
+    void* ptr = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    prb_assert(ptr);
+    return ptr;
+
+    #elif prb_PLATFORM_LINUX
+
+    void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    prb_assert(ptr != MAP_FAILED);
+    return ptr;
+
+    #else
+        #error unimplemented
+    #endif
 }
 
 void
@@ -417,6 +461,477 @@ prb_globalArenaAlignTo_(int32_t align) {
     prb_assert(prb_globalState.arena.used <= prb_globalState.arena.size);
     void* result = prb_globalArenaCurrentFreePtr();
     return result;
+}
+
+//
+// SECTION Filesystem (implementation)
+//
+
+bool
+prb_isDirectory(prb_String path) {
+    int32_t pathlen = prb_strlen(path);
+    prb_assert(path && pathlen > 0);
+    bool result = false;
+
+    #if prb_PLATFORM_WINDOWS
+
+    prb_String pathNoTrailingSlash = path;
+    char       lastChar = path.ptr[path.len - 1];
+    if (lastChar == '/' || lastChar == '\\') {
+        pathNoTrailingSlash = prb_stringCopy(path, 0, path.len - 2);
+    }
+    bool             result = false;
+    WIN32_FIND_DATAA findData;
+    HANDLE           findHandle = FindFirstFileA(pathNoTrailingSlash.ptr, &findData);
+    if (findHandle != INVALID_HANDLE_VALUE) {
+        result = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    }
+
+    #elif prb_PLATFORM_LINUX
+
+    // TODO(khvorov) Test trailing slash
+    struct stat statBuf = {};
+    if (stat(path, &statBuf) == 0) {
+        result = S_ISDIR(statBuf.st_mode);
+    }
+
+    #else
+        #error unimplemented
+    #endif
+
+    return result;
+}
+
+bool
+prb_isFile(prb_String path) {
+    int32_t pathlen = prb_strlen(path);
+    prb_assert(path && pathlen > 0);
+    bool result = false;
+
+    #if prb_PLATFORM_WINDOWS
+
+        #error unimplemented
+
+    #elif prb_PLATFORM_LINUX
+
+    struct stat statBuf = {};
+    if (stat(path, &statBuf) == 0) {
+        prb_assert(!S_ISDIR(statBuf.st_mode));
+        result = true;
+    }
+
+    #else
+        #error unimplemented
+    #endif
+
+    return result;
+}
+
+bool
+prb_directoryIsEmpty(prb_String path) {
+    prb_assert(prb_isDirectory(path));
+    bool result = true;
+
+    #if prb_PLATFORM_WINDOWS
+
+    prb_String       search = prb_pathJoin2(path, prb_STR("*"));
+    WIN32_FIND_DATAA findData;
+    HANDLE           firstHandle = FindFirstFileA(search.ptr, &findData);
+    bool             result = true;
+    if (findData.cFileName[0] == '.' && findData.cFileName[1] == '\0') {
+        while (FindNextFileA(firstHandle, &findData)) {
+            if (findData.cFileName[0] == '.' && findData.cFileName[1] == '.' && findData.cFileName[2] == '\0') {
+                continue;
+            }
+            result = false;
+            break;
+        }
+    }
+
+    #elif prb_PLATFORM_LINUX
+
+    DIR* pathHandle = opendir(path);
+    prb_assert(pathHandle);
+    for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
+        bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
+        bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
+        if (!isDot && !isDoubleDot) {
+            result = false;
+            break;
+        }
+    }
+    closedir(pathHandle);
+
+    #else
+        #error unimplemented
+    #endif
+
+    return result;
+}
+
+void
+prb_createDirIfNotExists(prb_String path) {
+    #if prb_PLATFORM_WINDOWS
+
+    // TODO(khvorov) Check error
+    CreateDirectory(path.ptr, 0);
+
+    #elif prb_PLATFORM_LINUX
+
+    if (mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO) == -1) {
+        prb_assert(prb_isDirectory(path));
+    }
+
+    #else
+        #error unimplemented
+    #endif
+}
+
+void
+prb_removeFileOrDirectoryIfExists(prb_String path) {
+    if (prb_isDirectory(path)) {
+        prb_removeDirectoryIfExists(path);
+    } else {
+        prb_removeFileIfExists(path);
+    }
+}
+
+void
+prb_removeFileIfExists(prb_String path) {
+    prb_assert(!prb_isDirectory(path));
+
+    #if prb_PLATFORM_WINDOWS
+
+        #error unimplemented
+
+    #elif prb_PLATFORM_LINUX
+
+    unlink(path);
+
+    #else
+        #error unimplemented
+    #endif
+}
+
+void
+prb_removeDirectoryIfExists(prb_String path) {
+    #if prb_PLATFORM_WINDOWS
+
+    prb_StringBuilder doubleNullBuilder = prb_createStringBuilder(path.len + 2);
+    prb_stringBuilderWrite(&doubleNullBuilder, path);
+    SHFileOperationA(&(SHFILEOPSTRUCTA) {
+        .wFunc = FO_DELETE,
+        .pFrom = doubleNullBuilder.string.ptr,
+        .fFlags = FOF_NO_UI,
+    });
+
+    #elif prb_PLATFORM_LINUX
+
+    DIR* pathHandle = opendir(path);
+    if (pathHandle) {
+        for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
+            bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
+            bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
+            if (!isDot && !isDoubleDot) {
+                prb_String fullpath = prb_pathJoin(path, entry->d_name);
+                prb_removeFileOrDirectoryIfExists(fullpath);
+            }
+        }
+        prb_assert(prb_directoryIsEmpty(path));
+        int32_t rmdirResult = rmdir(path);
+        prb_assert(rmdirResult == 0);
+    }
+
+    #else
+        #error unimplemented
+    #endif
+}
+
+void
+prb_clearDirectory(prb_String path) {
+    prb_removeFileOrDirectoryIfExists(path);
+    prb_createDirIfNotExists(path);
+}
+
+prb_String
+prb_getCurrentWorkingDir(void) {
+    #if prb_PLATFORM_WINDOWS
+
+    // TODO(khvorov) Make sure long paths work
+    // TODO(khvorov) Check error
+    int32_t maxLen = MAX_PATH + 1;
+    char*   ptr = (char*)prb_allocAndZero(maxLen, 1);
+    GetCurrentDirectoryA(maxLen, ptr);
+    return ptr;
+
+    #elif prb_PLATFORM_LINUX
+
+    int32_t maxLen = PATH_MAX + 1;
+    char*   ptr = (char*)prb_allocAndZero(maxLen, 1);
+    prb_assert(getcwd(ptr, maxLen));
+    return ptr;
+
+    #else
+        #error unimplemented
+    #endif
+}
+
+prb_String
+prb_pathJoin(prb_String path1, prb_String path2) {
+    int32_t path1len = prb_strlen(path1);
+    int32_t path2len = prb_strlen(path2);
+    prb_assert(path1 && path1len > 0 && path2 && path2len > 0);
+    char              path1LastChar = path1[path1len - 1];
+    bool              path1EndsOnSep = prb_charIsSep(path1LastChar);
+    int32_t           totalLen = path1EndsOnSep ? path1len + path2len : path1len + 1 + path2len;
+    prb_StringBuilder builder = prb_createStringBuilder(totalLen);
+    prb_stringBuilderWrite(&builder, path1, path1len);
+    if (!path1EndsOnSep) {
+        // NOTE(khvorov) Windows seems to handle mixing \ and / just fine
+        prb_stringBuilderWrite(&builder, "/", 1);
+    }
+    prb_stringBuilderWrite(&builder, path2, path2len);
+    prb_String result = prb_stringBuilderGetString(&builder);
+    return result;
+}
+
+int32_t
+prb_getLastPathSepIndex(prb_String path) {
+    int32_t pathlen = prb_strlen(path);
+    prb_assert(path && pathlen > 0);
+    int32_t lastPathSepIndex = -1;
+    for (int32_t index = pathlen - 1; index >= 0; index--) {
+        char ch = path[index];
+        if (ch == '/' || ch == '\\') {
+            lastPathSepIndex = index;
+            break;
+        }
+    }
+    return lastPathSepIndex;
+}
+
+prb_String
+prb_getParentDir(prb_String path) {
+    int32_t    lastPathSepIndex = prb_getLastPathSepIndex(path);
+    prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, 0, lastPathSepIndex) : prb_getCurrentWorkingDir();
+    return result;
+}
+
+prb_String
+prb_getLastEntryInPath(prb_String path) {
+    int32_t    pathlen = prb_strlen(path);
+    int32_t    lastPathSepIndex = prb_getLastPathSepIndex(path);
+    prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, lastPathSepIndex + 1, pathlen - 1) : path;
+    return result;
+}
+
+prb_String
+prb_replaceExt(prb_String path, prb_String newExt) {
+    int32_t    dotIndex = prb_strFindIndexFromRight(path, '.');
+    prb_String result = prb_fmt("%.*s.%s", dotIndex, path, newExt);
+    return result;
+}
+
+prb_StringArray
+prb_getAllMatches(prb_String pattern) {
+    prb_StringArray result = {};
+
+    #if prb_PLATFORM_WINDOWS
+
+        #error unimplemented
+
+    #elif prb_PLATFORM_LINUX
+
+    glob_t globResult = {};
+    if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
+        prb_assert(globResult.gl_pathc <= INT32_MAX && globResult.gl_pathc > 0);
+        result.len = (int32_t)globResult.gl_pathc;
+        result.ptr = prb_allocArray(prb_String, result.len);
+        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
+            char*   path = globResult.gl_pathv[resultIndex];
+            int32_t pathlen = prb_strlen(path);
+            result.ptr[resultIndex] = prb_stringCopy(path, 0, pathlen - 1);
+        }
+    }
+    globfree(&globResult);
+
+    #else
+        #error unimplemented
+    #endif
+
+    return result;
+}
+
+uint64_t
+prb_getLatestLastModifiedFromPattern(prb_String pattern) {
+    uint64_t result = 0;
+
+    #if prb_PLATFORM_WINDOWS
+
+    WIN32_FIND_DATAA findData = {};
+    HANDLE           firstHandle = FindFirstFileA(pattern, &findData);
+    if (firstHandle != INVALID_HANDLE_VALUE) {
+        uint64_t thisLastMod =
+            ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+        result = prb_max(result, thisLastMod);
+        while (FindNextFileA(firstHandle, &findData)) {
+            thisLastMod =
+                ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+            result = prb_max(result, thisLastMod);
+        }
+        FindClose(firstHandle);
+    }
+
+    #elif prb_PLATFORM_LINUX
+
+    glob_t globResult = {};
+    if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
+        prb_assert(globResult.gl_pathc <= INT32_MAX);
+        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
+            char*       path = globResult.gl_pathv[resultIndex];
+            struct stat statBuf = {};
+            if (stat(path, &statBuf) == 0) {
+                uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
+                result = prb_max(result, thisLastMod);
+            }
+        }
+    }
+    globfree(&globResult);
+
+    #else
+        #error unimplemented
+    #endif
+
+    return result;
+}
+
+uint64_t
+prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
+    uint64_t result = UINT64_MAX;
+
+    #if prb_PLATFORM_WINDOWS
+
+    WIN32_FIND_DATAA findData;
+    HANDLE           firstHandle = FindFirstFileA(pattern, &findData);
+    if (firstHandle != INVALID_HANDLE_VALUE) {
+        uint64_t thisLastMod =
+            ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+        result = prb_min(result, thisLastMod);
+        while (FindNextFileA(firstHandle, &findData)) {
+            thisLastMod =
+                ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+            result = prb_min(result, thisLastMod);
+        }
+        FindClose(firstHandle);
+    } else {
+        result = 0;
+    }
+
+    #elif prb_PLATFORM_LINUX
+
+    glob_t globResult = {};
+    if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
+        prb_assert(globResult.gl_pathc <= INT32_MAX);
+        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
+            char*       path = globResult.gl_pathv[resultIndex];
+            struct stat statBuf = {};
+            if (stat(path, &statBuf) == 0) {
+                uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
+                result = prb_min(result, thisLastMod);
+            }
+        }
+    } else {
+        result = 0;
+    }
+    globfree(&globResult);
+
+    #else
+        #error unimplemented
+    #endif
+
+    return result;
+}
+
+uint64_t
+prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
+    uint64_t result = 0;
+    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
+        result = prb_max(result, prb_getLatestLastModifiedFromPattern(patterns[patternIndex]));
+    }
+    return result;
+}
+
+uint64_t
+prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
+    uint64_t result = UINT64_MAX;
+    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
+        result = prb_min(result, prb_getEarliestLastModifiedFromPattern(patterns[patternIndex]));
+    }
+    return result;
+}
+
+void
+prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
+    prb_Bytes  content = prb_readEntireFile(path);
+    prb_String newContent = prb_strReplace((char*)content.data, pattern, replacement);
+    int32_t    newContentLen = prb_strlen(newContent);
+    prb_writeEntireFile(path, (prb_Bytes) {(uint8_t*)newContent, newContentLen});
+}
+
+prb_Bytes
+prb_readEntireFile(prb_String path) {
+    #if prb_PLATFORM_WINDOWS
+
+        #error unimplemented
+
+    #elif prb_PLATFORM_LINUX
+
+    int32_t handle = open(path, O_RDONLY, 0);
+    prb_assert(handle != -1);
+    struct stat statBuf = {};
+    prb_assert(fstat(handle, &statBuf) == 0);
+    uint8_t* buf = (uint8_t*)prb_allocAndZero(statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
+    int32_t  readResult = read(handle, buf, statBuf.st_size);
+    prb_assert(readResult == statBuf.st_size);
+    close(handle);
+    prb_Bytes result = {buf, readResult};
+    return result;
+
+    #else
+        #error unimplemented
+    #endif
+}
+
+void
+prb_writeEntireFile(prb_String path, prb_Bytes content) {
+    #if prb_PLATFORM_WINDOWS
+
+        #error unimplemented
+
+    #elif prb_PLATFORM_LINUX
+
+    int32_t handle = open(path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
+    prb_assert(handle != -1);
+    int32_t writeResult = write(handle, content.data, content.len);
+    prb_assert(writeResult == content.len);
+    close(handle);
+
+    #else
+        #error unimplemented
+    #endif
+}
+
+//
+// SECTION Strings (implementation)
+//
+
+int32_t
+prb_strlen(const char* string) {
+    const char* ptr = string;
+    for (; *ptr; ptr++) {}
+    size_t len = ptr - string;
+    prb_assert(len <= INT32_MAX);
+    return (int32_t)len;
 }
 
 bool
@@ -565,6 +1080,26 @@ prb_stringBuilderGetString(prb_StringBuilder* builder) {
     return result;
 }
 
+prb_StringArrayBuilder
+prb_createStringArrayBuilder(int32_t len) {
+    prb_StringArrayBuilder builder = {.ptr = prb_allocArray(prb_String, len), .capacity = len, .written = 0};
+    return builder;
+}
+
+void
+prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr) {
+    prb_assert(builder->capacity >= arr.len + builder->written);
+    prb_memcpy(builder->ptr + builder->written, arr.ptr, arr.len * sizeof(prb_String));
+    builder->written += arr.len;
+}
+
+prb_StringArray
+prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder) {
+    prb_assert(builder->capacity == builder->written);
+    prb_StringArray result = {builder->ptr, builder->written};
+    return result;
+}
+
 prb_String
 prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
     int32_t sourcelen = prb_strlen(source);
@@ -577,97 +1112,6 @@ prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
     prb_stringBuilderWrite(&builder, source + fromInclusive, len);
     prb_String result = prb_stringBuilderGetString(&builder);
     return result;
-}
-
-int32_t
-prb_getLastPathSepIndex(prb_String path) {
-    int32_t pathlen = prb_strlen(path);
-    prb_assert(path && pathlen > 0);
-    int32_t lastPathSepIndex = -1;
-    for (int32_t index = pathlen - 1; index >= 0; index--) {
-        char ch = path[index];
-        if (ch == '/' || ch == '\\') {
-            lastPathSepIndex = index;
-            break;
-        }
-    }
-    return lastPathSepIndex;
-}
-
-prb_String
-prb_getParentDir(prb_String path) {
-    int32_t    lastPathSepIndex = prb_getLastPathSepIndex(path);
-    prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, 0, lastPathSepIndex) : prb_getCurrentWorkingDir();
-    return result;
-}
-
-prb_String
-prb_getLastEntryInPath(prb_String path) {
-    int32_t    pathlen = prb_strlen(path);
-    int32_t    lastPathSepIndex = prb_getLastPathSepIndex(path);
-    prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, lastPathSepIndex + 1, pathlen - 1) : path;
-    return result;
-}
-
-char**
-prb_getArgArrayFromString(prb_String string) {
-    int32_t stringlen = prb_strlen(string);
-    int32_t spacesCount = 0;
-    for (int32_t strIndex = 0; strIndex < stringlen; strIndex++) {
-        char ch = string[strIndex];
-        if (ch == ' ') {
-            spacesCount++;
-        }
-    }
-
-    int32_t* spacesIndices = prb_allocArray(int32_t, spacesCount);
-    {
-        int32_t index = 0;
-        for (int32_t strIndex = 0; strIndex < stringlen; strIndex++) {
-            char ch = string[strIndex];
-            if (ch == ' ') {
-                spacesIndices[index++] = strIndex;
-            }
-        }
-    }
-
-    int32_t argCount = 0;
-    // NOTE(khvorov) Arg array needs a null at the end
-    char** args = prb_allocArray(char*, spacesCount + 1 + 1);
-    for (int32_t spaceIndex = 0; spaceIndex <= spacesCount; spaceIndex++) {
-        int32_t spaceBefore = spaceIndex == 0 ? -1 : spacesIndices[spaceIndex - 1];
-        int32_t spaceAfter = spaceIndex == spacesCount ? stringlen : spacesIndices[spaceIndex];
-        char*   argStart = string + spaceBefore + 1;
-        int32_t argLen = spaceAfter - spaceBefore - 1;
-        if (argLen > 0) {
-            prb_String argString = prb_stringCopy(argStart, 0, argLen - 1);
-            args[argCount++] = argString;
-        }
-    }
-
-    return args;
-}
-
-prb_String
-prb_replaceExt(prb_String path, prb_String newExt) {
-    int32_t    dotIndex = prb_strFindIndexFromRight(path, '.');
-    prb_String result = prb_fmt("%.*s.%s", dotIndex, path, newExt);
-    return result;
-}
-
-void
-prb_removeFileOrDirectoryIfExists(prb_String path) {
-    if (prb_isDirectory(path)) {
-        prb_removeDirectoryIfExists(path);
-    } else {
-        prb_removeFileIfExists(path);
-    }
-}
-
-void
-prb_clearDirectory(prb_String path) {
-    prb_removeFileOrDirectoryIfExists(path);
-    prb_createDirIfNotExists(path);
 }
 
 prb_String
@@ -696,45 +1140,6 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
     return result;
 }
 
-prb_String
-prb_pathJoin(prb_String path1, prb_String path2) {
-    int32_t path1len = prb_strlen(path1);
-    int32_t path2len = prb_strlen(path2);
-    prb_assert(path1 && path1len > 0 && path2 && path2len > 0);
-    char              path1LastChar = path1[path1len - 1];
-    bool              path1EndsOnSep = prb_charIsSep(path1LastChar);
-    int32_t           totalLen = path1EndsOnSep ? path1len + path2len : path1len + 1 + path2len;
-    prb_StringBuilder builder = prb_createStringBuilder(totalLen);
-    prb_stringBuilderWrite(&builder, path1, path1len);
-    if (!path1EndsOnSep) {
-        // NOTE(khvorov) Windows seems to handle mixing \ and / just fine
-        prb_stringBuilderWrite(&builder, "/", 1);
-    }
-    prb_stringBuilderWrite(&builder, path2, path2len);
-    prb_String result = prb_stringBuilderGetString(&builder);
-    return result;
-}
-
-prb_StringArrayBuilder
-prb_createStringArrayBuilder(int32_t len) {
-    prb_StringArrayBuilder builder = {.ptr = prb_allocArray(prb_String, len), .capacity = len, .written = 0};
-    return builder;
-}
-
-void
-prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr) {
-    prb_assert(builder->capacity >= arr.len + builder->written);
-    prb_memcpy(builder->ptr + builder->written, arr.ptr, arr.len * sizeof(prb_String));
-    builder->written += arr.len;
-}
-
-prb_StringArray
-prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder) {
-    prb_assert(builder->capacity == builder->written);
-    prb_StringArray result = {builder->ptr, builder->written};
-    return result;
-}
-
 prb_StringArray
 prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2) {
     prb_StringArrayBuilder builder = prb_createStringArrayBuilder(arr1.len + arr2.len);
@@ -742,32 +1147,6 @@ prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2) {
     prb_stringArrayBuilderCopy(&builder, arr2);
     prb_StringArray result = prb_stringArrayBuilderGetArray(&builder);
     return result;
-}
-
-uint64_t
-prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
-    uint64_t result = 0;
-    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
-        result = prb_max(result, prb_getLatestLastModifiedFromPattern(patterns[patternIndex]));
-    }
-    return result;
-}
-
-uint64_t
-prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
-    uint64_t result = UINT64_MAX;
-    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
-        result = prb_min(result, prb_getEarliestLastModifiedFromPattern(patterns[patternIndex]));
-    }
-    return result;
-}
-
-void
-prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
-    prb_Bytes  content = prb_readEntireFile(path);
-    prb_String newContent = prb_strReplace((char*)content.data, pattern, replacement);
-    int32_t    newContentLen = prb_strlen(newContent);
-    prb_writeEntireFile(path, (prb_Bytes) {(uint8_t*)newContent, newContentLen});
 }
 
 prb_String
@@ -883,6 +1262,24 @@ prb_vfmtAndPrintlnColor(prb_ColorID color, const char* fmt, va_list args) {
 }
 
 void
+prb_print(const char* msg) {
+    #if prb_PLATFORM_WINDOWS
+
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    WriteFile(out, msg.ptr, msg.len, 0, 0);
+
+    #elif prb_PLATFORM_LINUX
+
+    int32_t msglen = prb_strlen(msg);
+    ssize_t writeResult = write(STDOUT_FILENO, msg, msglen);
+    prb_assert(writeResult == msglen);
+
+    #else
+        #error unimplemented
+    #endif
+}
+
+void
 prb_printColor(prb_ColorID color, const char* str) {
     prb_setPrintColor(color);
     prb_print(str);
@@ -912,6 +1309,57 @@ prb_resetPrintColor() {
     prb_print(prb_globalState.terminalColorCodes[prb_ColorID_Reset]);
 }
 
+//
+// SECTION Processes (implementation)
+//
+
+char**
+prb_getArgArrayFromString(prb_String string) {
+    int32_t stringlen = prb_strlen(string);
+    int32_t spacesCount = 0;
+    for (int32_t strIndex = 0; strIndex < stringlen; strIndex++) {
+        char ch = string[strIndex];
+        if (ch == ' ') {
+            spacesCount++;
+        }
+    }
+
+    int32_t* spacesIndices = prb_allocArray(int32_t, spacesCount);
+    {
+        int32_t index = 0;
+        for (int32_t strIndex = 0; strIndex < stringlen; strIndex++) {
+            char ch = string[strIndex];
+            if (ch == ' ') {
+                spacesIndices[index++] = strIndex;
+            }
+        }
+    }
+
+    int32_t argCount = 0;
+    // NOTE(khvorov) Arg array needs a null at the end
+    char** args = prb_allocArray(char*, spacesCount + 1 + 1);
+    for (int32_t spaceIndex = 0; spaceIndex <= spacesCount; spaceIndex++) {
+        int32_t spaceBefore = spaceIndex == 0 ? -1 : spacesIndices[spaceIndex - 1];
+        int32_t spaceAfter = spaceIndex == spacesCount ? stringlen : spacesIndices[spaceIndex];
+        char*   argStart = string + spaceBefore + 1;
+        int32_t argLen = spaceAfter - spaceBefore - 1;
+        if (argLen > 0) {
+            prb_String argString = prb_stringCopy(argStart, 0, argLen - 1);
+            args[argCount++] = argString;
+        }
+    }
+
+    return args;
+}
+
+//
+// SECTION Timing (implementation)
+//
+
+//
+// SECTION Binary to C array (implementation)
+//
+
 void
 prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) {
     prb_Bytes inContent = prb_readEntireFile(inPath);
@@ -938,17 +1386,6 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
 //
 
     #if prb_PLATFORM_WINDOWS
-        #define WIN32_LEAN_AND_MEAN
-        #include <windows.h>
-        #include <shellapi.h>
-
-        #pragma comment(lib, "Shell32.lib")
-
-void*
-prb_vmemAllocate(int32_t size) {
-    void* ptr = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    return ptr;
-}
 
 prb_CompletionStatus
 prb_execCmd(prb_String cmd) {
@@ -969,222 +1406,17 @@ prb_execCmd(prb_String cmd) {
     return cmdStatus;
 }
 
-void
-prb_print(prb_String msg) {
-    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
-    WriteFile(out, msg.ptr, msg.len, 0, 0);
-}
-
-bool
-prb_isDirectory(prb_String path) {
-    prb_assert(path.ptr && path.len > 0);
-    prb_String pathNoTrailingSlash = path;
-    char       lastChar = path.ptr[path.len - 1];
-    if (lastChar == '/' || lastChar == '\\') {
-        pathNoTrailingSlash = prb_stringCopy(path, 0, path.len - 2);
-    }
-    bool             result = false;
-    WIN32_FIND_DATAA findData;
-    HANDLE           findHandle = FindFirstFileA(pathNoTrailingSlash.ptr, &findData);
-    if (findHandle != INVALID_HANDLE_VALUE) {
-        result = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-    }
-    return result;
-}
-
-bool
-prb_directoryIsEmpty(prb_String path) {
-    prb_assert(prb_isDirectory(path));
-    prb_String       search = prb_pathJoin2(path, prb_STR("*"));
-    WIN32_FIND_DATAA findData;
-    HANDLE           firstHandle = FindFirstFileA(search.ptr, &findData);
-    bool             result = true;
-    if (findData.cFileName[0] == '.' && findData.cFileName[1] == '\0') {
-        while (FindNextFileA(firstHandle, &findData)) {
-            if (findData.cFileName[0] == '.' && findData.cFileName[1] == '.' && findData.cFileName[2] == '\0') {
-                continue;
-            }
-            result = false;
-            break;
-        }
-    }
-    return result;
-}
-
-void
-prb_createDirIfNotExists(prb_String path) {
-    CreateDirectory(path.ptr, 0);
-}
-
-void
-prb_removeFileIfExists(prb_String path) {
-    prb_assert(!"unimplemented");
-}
-
-void
-prb_removeFileOrDirectoryIfExists(prb_String path) {
-    prb_StringBuilder doubleNullBuilder = prb_createStringBuilder(path.len + 2);
-    prb_stringBuilderWrite(&doubleNullBuilder, path);
-    SHFileOperationA(&(SHFILEOPSTRUCTA) {
-        .wFunc = FO_DELETE,
-        .pFrom = doubleNullBuilder.string.ptr,
-        .fFlags = FOF_NO_UI,
-    });
-}
-
-prb_String
-prb_getCurrentWorkingDir(void) {
-    prb_StringBuilder builder = prb_createStringBuilder(MAX_PATH);
-    GetCurrentDirectoryA(builder.string.len, builder.string.ptr);
-    return builder.string;
-}
-
-uint64_t
-prb_getLatestLastModifiedFromPattern(prb_String pattern) {
-    uint64_t result = 0;
-
-    WIN32_FIND_DATAA findData;
-    HANDLE           firstHandle = FindFirstFileA(pattern, &findData);
-    if (firstHandle != INVALID_HANDLE_VALUE) {
-        uint64_t thisLastMod =
-            ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
-        result = prb_max(result, thisLastMod);
-        while (FindNextFileA(firstHandle, &findData)) {
-            thisLastMod =
-                ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
-            result = prb_max(result, thisLastMod);
-        }
-        FindClose(firstHandle);
-    }
-
-    return result;
-}
-
-uint64_t
-prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
-    uint64_t result = UINT64_MAX;
-
-    WIN32_FIND_DATAA findData;
-    HANDLE           firstHandle = FindFirstFileA(pattern, &findData);
-    if (firstHandle != INVALID_HANDLE_VALUE) {
-        uint64_t thisLastMod =
-            ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
-        result = prb_min(result, thisLastMod);
-        while (FindNextFileA(firstHandle, &findData)) {
-            thisLastMod =
-                ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
-            result = prb_min(result, thisLastMod);
-        }
-        FindClose(firstHandle);
-    } else {
-        result = 0;
-    }
-
-    return result;
-}
-
     #elif prb_PLATFORM_LINUX
-        #include <linux/limits.h>
-        #include <sys/mman.h>
-        #include <sys/stat.h>
-        #include <sys/wait.h>
-        #include <unistd.h>
-        #include <spawn.h>
-        #include <dirent.h>
-        #include <glob.h>
-        #include <time.h>
-        #include <fcntl.h>
-
-void
-prb_terminate(int32_t code) {
-    _exit(code);
-}
-
-void*
-prb_vmemAllocate(int32_t size) {
-    void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    prb_assert(ptr != MAP_FAILED);
-    return ptr;
-}
-
-bool
-prb_isDirectory(prb_String path) {
-    int32_t pathlen = prb_strlen(path);
-    prb_assert(path && pathlen > 0);
-    struct stat statBuf = {};
-    bool        result = false;
-    if (stat(path, &statBuf) == 0) {
-        result = S_ISDIR(statBuf.st_mode);
-    }
-    return result;
-}
-
-bool
-prb_isFile(prb_String path) {
-    int32_t pathlen = prb_strlen(path);
-    prb_assert(path && pathlen > 0);
-    struct stat statBuf = {};
-    bool        result = stat(path, &statBuf) == 0;
-    return result;
-}
-
-void
-prb_createDirIfNotExists(prb_String path) {
-    if (mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO) == -1) {
-        prb_assert(prb_isDirectory(path));
-    }
-}
-
-bool
-prb_directoryIsEmpty(prb_String path) {
-    bool result = true;
-    DIR* pathHandle = opendir(path);
-    prb_assert(pathHandle);
-    for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
-        bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
-        bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
-        if (!isDot && !isDoubleDot) {
-            result = false;
-            break;
-        }
-    }
-    closedir(pathHandle);
-    return result;
-}
-
-void
-prb_removeDirectoryIfExists(prb_String path) {
-    DIR* pathHandle = opendir(path);
-    if (pathHandle) {
-        for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
-            bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
-            bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
-            if (!isDot && !isDoubleDot) {
-                prb_String fullpath = prb_pathJoin(path, entry->d_name);
-                prb_removeFileOrDirectoryIfExists(fullpath);
-            }
-        }
-        prb_assert(prb_directoryIsEmpty(path));
-        int32_t rmdirResult = rmdir(path);
-        prb_assert(rmdirResult == 0);
-    }
-}
-
-void
-prb_removeFileIfExists(prb_String path) {
-    prb_assert(!prb_isDirectory(path));
-    unlink(path);
-}
 
 prb_CompletionStatus
 prb_execCmdAndWait(prb_String cmd) {
-    char**               args = prb_getArgArrayFromString(cmd);
+    char** args = prb_getArgArrayFromString(cmd);
     prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
-    pid_t                pid;
-    int32_t              spawnResult = posix_spawnp(&pid, args[0], 0, 0, args, __environ);
+    pid_t pid;
+    int32_t spawnResult = posix_spawnp(&pid, args[0], 0, 0, args, __environ);
     if (spawnResult == 0) {
         int32_t status;
-        pid_t   waitResult = waitpid(pid, &status, 0);
+        pid_t waitResult = waitpid(pid, &status, 0);
         if (waitResult == pid && status == 0) {
             cmdStatus = prb_CompletionStatus_Success;
         }
@@ -1194,8 +1426,8 @@ prb_execCmdAndWait(prb_String cmd) {
 
 prb_CompletionStatus
 prb_execCmdAndWaitRedirectStdout(prb_String cmd, prb_String stdoutPath) {
-    char**                     args = prb_getArgArrayFromString(cmd);
-    prb_CompletionStatus       cmdStatus = prb_CompletionStatus_Failure;
+    char** args = prb_getArgArrayFromString(cmd);
+    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
     posix_spawn_file_actions_t fileActions = {};
     if (posix_spawn_file_actions_init(&fileActions) == 0) {
         if (posix_spawn_file_actions_addopen(
@@ -1206,11 +1438,11 @@ prb_execCmdAndWaitRedirectStdout(prb_String cmd, prb_String stdoutPath) {
                 S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
             )
             == 0) {
-            pid_t   pid;
+            pid_t pid;
             int32_t spawnResult = posix_spawnp(&pid, args[0], &fileActions, 0, args, __environ);
             if (spawnResult == 0) {
                 int32_t status;
-                pid_t   waitResult = waitpid(pid, &status, 0);
+                pid_t waitResult = waitpid(pid, &status, 0);
                 if (waitResult == pid && status == 0) {
                     cmdStatus = prb_CompletionStatus_Success;
                 }
@@ -1222,8 +1454,8 @@ prb_execCmdAndWaitRedirectStdout(prb_String cmd, prb_String stdoutPath) {
 
 prb_CompletionStatus
 prb_execCmdAndWaitRedirectStderr(prb_String cmd, prb_String stderrPath) {
-    char**                     args = prb_getArgArrayFromString(cmd);
-    prb_CompletionStatus       cmdStatus = prb_CompletionStatus_Failure;
+    char** args = prb_getArgArrayFromString(cmd);
+    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
     posix_spawn_file_actions_t fileActions = {};
     if (posix_spawn_file_actions_init(&fileActions) == 0) {
         if (posix_spawn_file_actions_addopen(
@@ -1234,11 +1466,11 @@ prb_execCmdAndWaitRedirectStderr(prb_String cmd, prb_String stderrPath) {
                 S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
             )
             == 0) {
-            pid_t   pid;
+            pid_t pid;
             int32_t spawnResult = posix_spawnp(&pid, args[0], &fileActions, 0, args, __environ);
             if (spawnResult == 0) {
                 int32_t status;
-                pid_t   waitResult = waitpid(pid, &status, 0);
+                pid_t waitResult = waitpid(pid, &status, 0);
                 if (waitResult == pid && status == 0) {
                     cmdStatus = prb_CompletionStatus_Success;
                 }
@@ -1250,8 +1482,8 @@ prb_execCmdAndWaitRedirectStderr(prb_String cmd, prb_String stderrPath) {
 
 prb_CompletionStatus
 prb_execCmdAndWaitRedirectStdoutAndStderr(prb_String cmd, prb_String stdoutAndErrPath) {
-    char**                     args = prb_getArgArrayFromString(cmd);
-    prb_CompletionStatus       cmdStatus = prb_CompletionStatus_Failure;
+    char** args = prb_getArgArrayFromString(cmd);
+    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
     posix_spawn_file_actions_t fileActions = {};
     if (posix_spawn_file_actions_init(&fileActions) == 0) {
         if (posix_spawn_file_actions_addopen(
@@ -1263,11 +1495,11 @@ prb_execCmdAndWaitRedirectStdoutAndStderr(prb_String cmd, prb_String stdoutAndEr
             )
             == 0) {
             if (posix_spawn_file_actions_adddup2(&fileActions, STDOUT_FILENO, STDERR_FILENO) == 0) {
-                pid_t   pid;
+                pid_t pid;
                 int32_t spawnResult = posix_spawnp(&pid, args[0], &fileActions, 0, args, __environ);
                 if (spawnResult == 0) {
                     int32_t status;
-                    pid_t   waitResult = waitpid(pid, &status, 0);
+                    pid_t waitResult = waitpid(pid, &status, 0);
                     if (waitResult == pid && status == 0) {
                         cmdStatus = prb_CompletionStatus_Success;
                     }
@@ -1280,9 +1512,9 @@ prb_execCmdAndWaitRedirectStdoutAndStderr(prb_String cmd, prb_String stdoutAndEr
 
 prb_ProcessHandle
 prb_execCmdAndDontWait(prb_String cmd) {
-    char**            args = prb_getArgArrayFromString(cmd);
+    char** args = prb_getArgArrayFromString(cmd);
     prb_ProcessHandle result = {};
-    int32_t           spawnResult = posix_spawnp(&result.pid, args[0], 0, 0, args, __environ);
+    int32_t spawnResult = posix_spawnp(&result.pid, args[0], 0, 0, args, __environ);
     if (spawnResult == 0) {
         result.valid = true;
     }
@@ -1296,7 +1528,7 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
         prb_ProcessHandle handle = handles[handleIndex];
         if (handle.valid) {
             int32_t status;
-            pid_t   waitResult = waitpid(handle.pid, &status, 0);
+            pid_t waitResult = waitpid(handle.pid, &status, 0);
             if (waitResult != handle.pid || status != 0) {
                 result = prb_CompletionStatus_Failure;
                 break;
@@ -1310,86 +1542,13 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
 }
 
 void
-prb_print(const char* msg) {
-    int32_t msglen = prb_strlen(msg);
-    ssize_t writeResult = write(STDOUT_FILENO, msg, msglen);
-    prb_assert(writeResult == msglen);
-}
-
-void
 prb_sleepMs(int32_t ms) {
     usleep(ms * 1000);
 }
 
-prb_String
-prb_getCurrentWorkingDir(void) {
-    int32_t maxLen = PATH_MAX + 1;
-    char*   ptr = (char*)prb_allocAndZero(maxLen, 1);
-    prb_assert(getcwd(ptr, maxLen));
-    return ptr;
-}
-
-uint64_t
-prb_getLatestLastModifiedFromPattern(prb_String pattern) {
-    uint64_t result = 0;
-    glob_t   globResult = {};
-    if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
-        prb_assert(globResult.gl_pathc <= INT32_MAX);
-        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char*       path = globResult.gl_pathv[resultIndex];
-            struct stat statBuf = {};
-            if (stat(path, &statBuf) == 0) {
-                uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
-                result = prb_max(result, thisLastMod);
-            }
-        }
-    }
-    globfree(&globResult);
-    return result;
-}
-
-uint64_t
-prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
-    uint64_t result = UINT64_MAX;
-    glob_t   globResult = {};
-    if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
-        prb_assert(globResult.gl_pathc <= INT32_MAX);
-        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char*       path = globResult.gl_pathv[resultIndex];
-            struct stat statBuf = {};
-            if (stat(path, &statBuf) == 0) {
-                uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
-                result = prb_min(result, thisLastMod);
-            }
-        }
-    } else {
-        result = 0;
-    }
-    globfree(&globResult);
-    return result;
-}
-
-prb_StringArray
-prb_getAllMatches(prb_String pattern) {
-    prb_StringArray result = {};
-    glob_t          globResult = {};
-    if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
-        prb_assert(globResult.gl_pathc <= INT32_MAX && globResult.gl_pathc > 0);
-        result.len = (int32_t)globResult.gl_pathc;
-        result.ptr = prb_allocArray(prb_String, result.len);
-        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char*   path = globResult.gl_pathv[resultIndex];
-            int32_t pathlen = prb_strlen(path);
-            result.ptr[resultIndex] = prb_stringCopy(path, 0, pathlen - 1);
-        }
-    }
-    globfree(&globResult);
-    return result;
-}
-
 prb_TimeStart
 prb_timeStart(void) {
-    prb_TimeStart   result = {};
+    prb_TimeStart result = {};
     struct timespec tp;
     if (clock_gettime(CLOCK_MONOTONIC, &tp) == 0) {
         prb_assert(tp.tv_nsec >= 0 && tp.tv_sec >= 0);
@@ -1402,35 +1561,12 @@ prb_timeStart(void) {
 float
 prb_getMsFrom(prb_TimeStart timeStart) {
     prb_TimeStart now = prb_timeStart();
-    float         result = 0.0f;
+    float result = 0.0f;
     if (now.valid && timeStart.valid) {
         uint64_t nsec = now.time - timeStart.time;
         result = (float)nsec / 1000.0f / 1000.0f;
     }
     return result;
-}
-
-prb_Bytes
-prb_readEntireFile(prb_String path) {
-    int32_t handle = open(path, O_RDONLY, 0);
-    prb_assert(handle != -1);
-    struct stat statBuf = {};
-    prb_assert(fstat(handle, &statBuf) == 0);
-    uint8_t* buf = (uint8_t*)prb_allocAndZero(statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
-    int32_t  readResult = read(handle, buf, statBuf.st_size);
-    prb_assert(readResult == statBuf.st_size);
-    close(handle);
-    prb_Bytes result = {buf, readResult};
-    return result;
-}
-
-void
-prb_writeEntireFile(prb_String path, prb_Bytes content) {
-    int32_t handle = open(path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
-    prb_assert(handle != -1);
-    int32_t writeResult = write(handle, content.data, content.len);
-    prb_assert(writeResult == content.len);
-    close(handle);
 }
 
     #endif  // prb_PLATFORM
