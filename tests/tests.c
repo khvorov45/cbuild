@@ -17,7 +17,7 @@ test_printColor(void) {
 
 int
 main() {
-    prb_init();
+    prb_init(1 * prb_GIGABYTE);
     test_printColor();
     prb_printlnColor(prb_ColorID_Green, "all tests passed");
     return 0;

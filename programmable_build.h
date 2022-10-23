@@ -154,7 +154,7 @@ typedef struct prb_ProcessHandle {
 #endif  // prb_PLATFORM
 
 // SECTION Core
-void prb_init(void);
+void prb_init(int32_t virtualMemoryBytesToUse);
 void prb_terminate(int32_t code);
 
 // SECTION Memory
@@ -320,9 +320,8 @@ STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char peri
 
 // SECTION Global state
 struct {
-    prb_Arena     arena;
-    prb_TimeStart initTimeStart;
-    prb_String    terminalColorCodes[prb_ColorID_Count];
+    prb_Arena   arena;
+    const char* terminalColorCodes[prb_ColorID_Count];
 } prb_globalState;
 
 //
@@ -341,20 +340,22 @@ prb_memeq(void* ptr1, void* ptr2, int32_t bytes) {
 }
 
 void
-prb_init(void) {
-    prb_globalState.arena.size = 1 * prb_GIGABYTE;
-    prb_globalState.arena.base = prb_vmemAllocate(prb_globalState.arena.size);
-    prb_globalState.initTimeStart = prb_timeStart();
+prb_init(int32_t virtualMemoryBytesToUse) {
+    prb_globalState.arena = (prb_Arena) {
+        .base = prb_vmemAllocate(virtualMemoryBytesToUse),
+        .size = virtualMemoryBytesToUse,
+        .used = 0,
+    };
 
-    prb_globalState.terminalColorCodes[prb_ColorID_Reset] = (char*)"\x1b[0m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Black] = (char*)"\x1b[30m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Red] = (char*)"\x1b[31m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Green] = (char*)"\x1b[32m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Yellow] = (char*)"\x1b[33m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Blue] = (char*)"\x1b[34m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Magenta] = (char*)"\x1b[35m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Cyan] = (char*)"\x1b[36m";
-    prb_globalState.terminalColorCodes[prb_ColorID_White] = (char*)"\x1b[37m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Reset] = "\x1b[0m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Black] = "\x1b[30m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Red] = "\x1b[31m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Green] = "\x1b[32m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Yellow] = "\x1b[33m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Blue] = "\x1b[34m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Magenta] = "\x1b[35m";
+    prb_globalState.terminalColorCodes[prb_ColorID_Cyan] = "\x1b[36m";
+    prb_globalState.terminalColorCodes[prb_ColorID_White] = "\x1b[37m";
 }
 
 int32_t

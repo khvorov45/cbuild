@@ -201,7 +201,7 @@ main() {
     // TODO(khvorov) Argument parsing
     // TODO(khvorov) Release build
     // TODO(khvorov) Clone a specific commit probably
-    prb_init();
+    prb_init(1 * prb_GIGABYTE);
     prb_TimeStart scriptStartTime = prb_timeStart();
 
     prb_String rootDir = prb_getParentDir(__FILE__);
