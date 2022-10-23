@@ -4,7 +4,7 @@
 
 function void
 test_printColor(void) {
-    prb_println("== color printing ==");
+    prb_println("color printing:");
     prb_fmtAndPrintColor(prb_ColorID_Blue, "blue\n");
     prb_fmtAndPrintlnColor(prb_ColorID_Cyan, "cyan");
     prb_printColor(prb_ColorID_Magenta, "magenta\n");
@@ -13,13 +13,16 @@ test_printColor(void) {
     prb_printlnColor(prb_ColorID_Green, "green");
     prb_printlnColor(prb_ColorID_Black, "black");
     prb_printlnColor(prb_ColorID_White, "white");
-    prb_println("====");
 }
 
 int
 main() {
     prb_init();
-    prb_println("== tests ==");
+#if __cplusplus
+    prb_println("tests under c++");
+#else
+    prb_println("tests under c");
+#endif
     test_printColor();
     prb_printlnColor(prb_ColorID_Green, "all tests passed");
     return 0;
