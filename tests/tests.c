@@ -18,11 +18,6 @@ test_printColor(void) {
 int
 main() {
     prb_init();
-#if __cplusplus
-    prb_println("tests under c++");
-#else
-    prb_println("tests under c");
-#endif
     test_printColor();
     prb_printlnColor(prb_ColorID_Green, "all tests passed");
     return 0;
