@@ -112,7 +112,30 @@ are running off a linear allocator that is not thread-safe,
     #define prb_ATTRIBUTE_FORMAT(fmt, va)
 #endif
 
-#define prb_assert(condition) do { if (!(condition)) { prb_debugbreak(); } } while (0)
+// NOTE(khvorov) This will only work if we can actually allocate memory for the string.
+// Lacking memory is an extremely unlikely problem for this library, so this is probably fine.
+#define prb_printAndCrash() do {\
+    prb_fmtAndPrintlnColor(prb_ColorID_Red, "%s:%d assertion failure", __FILE__, __LINE__);\
+    prb_terminate(1);\
+} while (0);
+
+#ifdef prb_AssertAction_DebugBreak
+#if defined(prb_AssertAction_PrintAndCrash)
+#define prb_assertAction() prb_debugbreak(); prb_printAndCrash();
+#else
+#define prb_assertAction() prb_debugbreak()
+#endif
+#elif defined(prb_AssertAction_PrintAndCrash)
+#define prb_assertAction() prb_printAndCrash()
+#endif
+
+#ifndef prb_assertAction
+#define prb_assertAction() prb_debugbreak()
+#endif
+
+#ifndef prb_assert
+#define prb_assert(condition) do { if (!(condition)) { prb_assertAction(); } } while (0)
+#endif
 // clang-format on
 
 typedef struct prb_Arena {
@@ -122,7 +145,7 @@ typedef struct prb_Arena {
 } prb_Arena;
 
 // Assume: null-terminated, permanently allocated, immutable, utf8
-typedef char* prb_String;
+typedef const char* prb_String;
 
 typedef struct prb_StringArray {
     prb_String* ptr;
@@ -196,7 +219,7 @@ void prb_terminate(int32_t code);
 
 // SECTION Memory
 void*   prb_memcpy(void* dest, const void* src, size_t n);
-bool    prb_memeq(void* ptr1, void* ptr2, int32_t bytes);
+bool    prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
 void*   prb_vmemAllocate(int32_t size);
 void    prb_alignPtr(void** ptr, int32_t align, int32_t* size);
 void*   prb_allocAndZero(int32_t size, int32_t align);
@@ -230,17 +253,18 @@ void            prb_writeEntireFile(prb_String path, prb_Bytes content);
 void            prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION Strings
-int32_t                prb_strlen(const char* string);
+int32_t                prb_strlen(prb_String string);
 bool                   prb_streq(prb_String str1, prb_String str2);
 bool                   prb_strEndsWith(prb_String str1, prb_String str2);
 bool                   prb_strStartsWith(prb_String str1, prb_String str2);
 bool                   prb_charIsSep(char ch);
 int32_t                prb_strFindIndexFromLeft(prb_String str, char ch);
 int32_t                prb_strFindIndexFromRight(prb_String str, char ch);
+int32_t                prb_strFindIndexFromLeftAny(prb_String str, prb_String chars);
 int32_t                prb_strFindIndexFromLeftString(prb_String str, prb_String pattern);
 prb_String             prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
 prb_StringBuilder      prb_createStringBuilder(int32_t len);
-void                   prb_stringBuilderWrite(prb_StringBuilder* builder, const char* source, int32_t len);
+void                   prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source, int32_t len);
 prb_String             prb_stringBuilderGetString(prb_StringBuilder* builder);
 prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
 void                   prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
@@ -248,23 +272,20 @@ prb_StringArray        prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* bu
 prb_String             prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
 prb_String             prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
 prb_StringArray        prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2);
-prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
-prb_String             prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args);
-prb_String             prb_fmt(const char* fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-void                   prb_fmtNoNullTerminator(const char* fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_String             prb_vfmt(const char* fmt, va_list args);
-prb_String             prb_fmtAndPrint(const char* fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_String             prb_fmtAndPrintColor(prb_ColorID color, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_String             prb_vfmtAndPrint(const char* fmt, va_list args);
-prb_String             prb_vfmtAndPrintColor(prb_ColorID color, const char* fmt, va_list args);
-prb_String             prb_fmtAndPrintln(const char* fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_String             prb_fmtAndPrintlnColor(prb_ColorID color, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_String             prb_vfmtAndPrintln(const char* fmt, va_list args);
-prb_String             prb_vfmtAndPrintlnColor(prb_ColorID color, const char* fmt, va_list args);
-void                   prb_print(const char* str);
-void                   prb_printColor(prb_ColorID color, const char* str);
-void                   prb_println(const char* str);
-void                   prb_printlnColor(prb_ColorID color, const char* str);
+prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
+prb_String             prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args);
+prb_String             prb_fmt(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+void                   prb_fmtNoNullTerminator(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_String             prb_vfmt(prb_String fmt, va_list args);
+prb_String             prb_fmtAndPrint(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_String             prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_String             prb_vfmtAndPrint(prb_String fmt, va_list args);
+prb_String             prb_vfmtAndPrintColor(prb_ColorID color, prb_String fmt, va_list args);
+prb_String             prb_fmtAndPrintln(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_String             prb_fmtAndPrintlnColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_String             prb_vfmtAndPrintln(prb_String fmt, va_list args);
+prb_String             prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args);
+void                   prb_writeToStdout(prb_String str, int32_t len);
 void                   prb_setPrintColor(prb_ColorID color);
 void                   prb_resetPrintColor(void);
 
@@ -351,8 +372,8 @@ STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char peri
 
 // SECTION Global state
 struct {
-    prb_Arena   arena;
-    const char* terminalColorCodes[prb_ColorID_Count];
+    prb_Arena  arena;
+    prb_String terminalColorCodes[prb_ColorID_Count];
 } prb_globalState;
 
 //
@@ -408,7 +429,7 @@ prb_memcpy(void* dest, const void* src, size_t n) {
 }
 
 bool
-prb_memeq(void* ptr1, void* ptr2, int32_t bytes) {
+prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes) {
     prb_assert(bytes >= 0);
     uint8_t* l = (uint8_t*)ptr1;
     uint8_t* r = (uint8_t*)ptr2;
@@ -963,8 +984,8 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
 //
 
 int32_t
-prb_strlen(const char* string) {
-    const char* ptr = string;
+prb_strlen(prb_String string) {
+    prb_String ptr = string;
     for (; *ptr; ptr++) {}
     size_t len = ptr - string;
     prb_assert(len <= INT32_MAX);
@@ -1013,7 +1034,8 @@ prb_charIsSep(char ch) {
 int32_t
 prb_strFindIndexFromLeft(prb_String str, char ch) {
     int32_t result = -1;
-    for (int32_t strIndex = 0; strIndex < prb_strlen(str); strIndex++) {
+    int32_t strlength = prb_strlen(str);
+    for (int32_t strIndex = 0; strIndex < strlength; strIndex++) {
         char testCh = str[strIndex];
         if (testCh == ch) {
             result = strIndex;
@@ -1026,11 +1048,29 @@ prb_strFindIndexFromLeft(prb_String str, char ch) {
 int32_t
 prb_strFindIndexFromRight(prb_String str, char ch) {
     int32_t result = -1;
-    for (int32_t strIndex = prb_strlen(str) - 1; strIndex >= 0; strIndex--) {
+    int32_t strlength = prb_strlen(str);
+    for (int32_t strIndex = strlength - 1; strIndex >= 0; strIndex--) {
         char testCh = str[strIndex];
         if (testCh == ch) {
             result = strIndex;
             break;
+        }
+    }
+    return result;
+}
+
+int32_t
+prb_strFindIndexFromLeftAny(prb_String str, prb_String chars) {
+    int32_t result = -1;
+    int32_t strlength = prb_strlen(str);
+    int32_t charsLen = prb_strlen(chars);
+    for (int32_t strIndex = 0; strIndex < strlength && result == -1; strIndex++) {
+        char testCh = str[strIndex];
+        for (int32_t charsIndex = 0; charsIndex < charsLen && result == -1; charsIndex++) {
+            char ch = chars[charsIndex];
+            if (testCh == ch) {
+                result = strIndex;
+            }
         }
     }
     return result;
@@ -1104,7 +1144,7 @@ prb_createStringBuilder(int32_t len) {
 }
 
 void
-prb_stringBuilderWrite(prb_StringBuilder* builder, const char* source, int32_t len) {
+prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source, int32_t len) {
     prb_assert(len <= builder->capacity - builder->written);
     prb_memcpy(builder->ptr + builder->written, source, len);
     builder->written += len;
@@ -1187,7 +1227,7 @@ prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2) {
 }
 
 prb_String
-prb_fmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, ...) {
+prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
     prb_String result = prb_vfmtCustomBuffer(buf, bufSize, fmt, args);
@@ -1196,13 +1236,13 @@ prb_fmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, ...) {
 }
 
 prb_String
-prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args) {
+prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args) {
     stbsp_vsnprintf((char*)buf, bufSize, fmt, args);
     return (char*)buf;
 }
 
 prb_String
-prb_fmt(const char* fmt, ...) {
+prb_fmt(prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
     prb_String result = prb_vfmt(fmt, args);
@@ -1211,7 +1251,7 @@ prb_fmt(const char* fmt, ...) {
 }
 
 void
-prb_fmtNoNullTerminator(const char* fmt, ...) {
+prb_fmtNoNullTerminator(prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
     prb_vfmt(fmt, args);
@@ -1220,7 +1260,7 @@ prb_fmtNoNullTerminator(const char* fmt, ...) {
 }
 
 prb_String
-prb_vfmt(const char* fmt, va_list args) {
+prb_vfmt(prb_String fmt, va_list args) {
     prb_String result = prb_vfmtCustomBuffer(
         (uint8_t*)prb_globalState.arena.base + prb_globalState.arena.used,
         prb_globalState.arena.size - prb_globalState.arena.used,
@@ -1233,7 +1273,7 @@ prb_vfmt(const char* fmt, va_list args) {
 }
 
 prb_String
-prb_fmtAndPrint(const char* fmt, ...) {
+prb_fmtAndPrint(prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
     prb_String result = prb_vfmtAndPrint(fmt, args);
@@ -1242,7 +1282,7 @@ prb_fmtAndPrint(const char* fmt, ...) {
 }
 
 prb_String
-prb_fmtAndPrintColor(prb_ColorID color, const char* fmt, ...) {
+prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
     prb_String result = prb_vfmtAndPrintColor(color, fmt, args);
@@ -1251,14 +1291,14 @@ prb_fmtAndPrintColor(prb_ColorID color, const char* fmt, ...) {
 }
 
 prb_String
-prb_vfmtAndPrint(const char* fmt, va_list args) {
+prb_vfmtAndPrint(prb_String fmt, va_list args) {
     prb_String result = prb_vfmt(fmt, args);
-    prb_print(result);
+    prb_writeToStdout(result, prb_strlen(result));
     return result;
 }
 
 prb_String
-prb_vfmtAndPrintColor(prb_ColorID color, const char* fmt, va_list args) {
+prb_vfmtAndPrintColor(prb_ColorID color, prb_String fmt, va_list args) {
     prb_setPrintColor(color);
     prb_String result = prb_vfmtAndPrint(fmt, args);
     prb_resetPrintColor();
@@ -1266,7 +1306,7 @@ prb_vfmtAndPrintColor(prb_ColorID color, const char* fmt, va_list args) {
 }
 
 prb_String
-prb_fmtAndPrintln(const char* fmt, ...) {
+prb_fmtAndPrintln(prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
     prb_String result = prb_vfmtAndPrintln(fmt, args);
@@ -1275,7 +1315,7 @@ prb_fmtAndPrintln(const char* fmt, ...) {
 }
 
 prb_String
-prb_fmtAndPrintlnColor(prb_ColorID color, const char* fmt, ...) {
+prb_fmtAndPrintlnColor(prb_ColorID color, prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
     prb_String result = prb_vfmtAndPrintlnColor(color, fmt, args);
@@ -1284,14 +1324,14 @@ prb_fmtAndPrintlnColor(prb_ColorID color, const char* fmt, ...) {
 }
 
 prb_String
-prb_vfmtAndPrintln(const char* fmt, va_list args) {
+prb_vfmtAndPrintln(prb_String fmt, va_list args) {
     prb_String result = prb_vfmtAndPrint(fmt, args);
     prb_fmtAndPrint("\n");
     return result;
 }
 
 prb_String
-prb_vfmtAndPrintlnColor(prb_ColorID color, const char* fmt, va_list args) {
+prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args) {
     prb_setPrintColor(color);
     prb_String result = prb_vfmtAndPrintln(fmt, args);
     prb_resetPrintColor();
@@ -1299,7 +1339,7 @@ prb_vfmtAndPrintlnColor(prb_ColorID color, const char* fmt, va_list args) {
 }
 
 void
-prb_print(const char* msg) {
+prb_writeToStdout(prb_String msg, int32_t len) {
     #if prb_PLATFORM_WINDOWS
 
     HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -1307,9 +1347,8 @@ prb_print(const char* msg) {
 
     #elif prb_PLATFORM_LINUX
 
-    int32_t msglen = prb_strlen(msg);
-    ssize_t writeResult = write(STDOUT_FILENO, msg, msglen);
-    prb_assert(writeResult == msglen);
+    ssize_t writeResult = write(STDOUT_FILENO, msg, len);
+    prb_assert(writeResult == len);
 
     #else
         #error unimplemented
@@ -1317,40 +1356,22 @@ prb_print(const char* msg) {
 }
 
 void
-prb_printColor(prb_ColorID color, const char* str) {
-    prb_setPrintColor(color);
-    prb_print(str);
-    prb_resetPrintColor();
-}
-
-void
-prb_println(const char* msg) {
-    prb_print(msg);
-    prb_print("\n");
-}
-
-void
-prb_printlnColor(prb_ColorID color, const char* str) {
-    prb_setPrintColor(color);
-    prb_println(str);
-    prb_resetPrintColor();
-}
-
-void
 prb_setPrintColor(prb_ColorID color) {
-    prb_print(prb_globalState.terminalColorCodes[color]);
+    prb_String str = prb_globalState.terminalColorCodes[color];
+    prb_writeToStdout(str, prb_strlen(str));
 }
 
 void
 prb_resetPrintColor() {
-    prb_print(prb_globalState.terminalColorCodes[prb_ColorID_Reset]);
+    prb_String str = prb_globalState.terminalColorCodes[prb_ColorID_Reset];
+    prb_writeToStdout(str, prb_strlen(str));
 }
 
 //
 // SECTION Processes (implementation)
 //
 
-char**
+prb_String*
 prb_getArgArrayFromString(prb_String string) {
     int32_t stringlen = prb_strlen(string);
     int32_t spacesCount = 0;
@@ -1374,12 +1395,12 @@ prb_getArgArrayFromString(prb_String string) {
 
     int32_t argCount = 0;
     // NOTE(khvorov) Arg array needs a null at the end
-    char** args = prb_allocArray(char*, spacesCount + 1 + 1);
+    prb_String* args = prb_allocArray(prb_String, spacesCount + 1 + 1);
     for (int32_t spaceIndex = 0; spaceIndex <= spacesCount; spaceIndex++) {
-        int32_t spaceBefore = spaceIndex == 0 ? -1 : spacesIndices[spaceIndex - 1];
-        int32_t spaceAfter = spaceIndex == spacesCount ? stringlen : spacesIndices[spaceIndex];
-        char*   argStart = string + spaceBefore + 1;
-        int32_t argLen = spaceAfter - spaceBefore - 1;
+        int32_t    spaceBefore = spaceIndex == 0 ? -1 : spacesIndices[spaceIndex - 1];
+        int32_t    spaceAfter = spaceIndex == spacesCount ? stringlen : spacesIndices[spaceIndex];
+        prb_String argStart = string + spaceBefore + 1;
+        int32_t    argLen = spaceAfter - spaceBefore - 1;
         if (argLen > 0) {
             prb_String argString = prb_stringCopy(argStart, 0, argLen - 1);
             args[argCount++] = argString;
@@ -1452,8 +1473,8 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
     }
 
     if (fileActionsSucceeded) {
-        char** args = prb_getArgArrayFromString(cmd);
-        int    spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, args, __environ);
+        prb_String* args = prb_getArgArrayFromString(cmd);
+        int         spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
         if (spawnResult == 0) {
             result.valid = true;
             if (!(flags & prb_ProcessFlag_DontWait)) {

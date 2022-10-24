@@ -1,3 +1,5 @@
+set -e # stop on error
+
 echo Main tests
 rm -f tests/*gcno
 rm -f tests/*gcda
@@ -14,3 +16,6 @@ echo
 echo Two translation units
 gcc -g -Wall -Wextra -O0 -c tests/precompile-2tu.c -o tests/precompile-2tu.obj
 gcc -g -Wall -Wextra -O0 tests/tests.c tests/precompile-2tu.obj -o tests/tests-2tu.bin && tests/tests-2tu.bin 
+
+echo
+echo All tests passed

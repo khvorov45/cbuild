@@ -51,7 +51,7 @@ compileStaticLib(
     prb_String     compileOutDir,
     prb_String     compileCmdStart,
     DownloadResult download,
-    char**         compileSourcesRelToDownload,
+    prb_String*    compileSourcesRelToDownload,
     int32_t        compileSourcesRelToDownloadCount,
     prb_String*    extraCompileFlags,
     int32_t        extraCompileFlagsCount
@@ -124,9 +124,8 @@ compileStaticLib(
 #if prb_PLATFORM_WINDOWS
                 prb_fmt("/Fo%s/", objDir);
 #elif prb_PLATFORM_LINUX
-                prb_String cmd = prb_fmt("%s -c -o %s %s", cmdStart, outputFilepath, inputFilepath);
+                prb_String cmd = prb_fmtAndPrint("%s -c -o %s %s", cmdStart, outputFilepath, inputFilepath);
 #endif
-                prb_println(cmd);
                 processes[processCount++] = prb_execCmd(cmd, prb_ProcessFlag_DontWait, 0);
             }
         }
@@ -147,17 +146,16 @@ compileStaticLib(
             prb_String libFile = prb_pathJoin(compileOutDir, prb_fmt("%s.%s", name, staticLibFileExt));
 
             prb_String objsPathsString = prb_stringsJoin(allOutputFilepaths, allOutputFilepathsCount, " ");
-#if prb_PLATFORM_WINDOWS
-            prb_String libCmd = prb_fmt("lib /nologo -out:%s %s", libFile, objsPattern);
-#elif prb_PLATFORM_LINUX
-        prb_String libCmd = prb_fmt("ar rcs %s %s", libFile, objsPathsString);
-#endif
 
             uint64_t sourceLastMod = prb_getLatestLastModifiedFromPatterns(allOutputFilepaths, allOutputFilepathsCount);
             uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(libFile);
             prb_CompletionStatus libStatus = prb_CompletionStatus_Success;
             if (sourceLastMod > outputLastMod) {
-                prb_println(libCmd);
+#if prb_PLATFORM_WINDOWS
+                prb_String libCmd = prb_fmtAndPrint("lib /nologo -out:%s %s", libFile, objsPattern);
+#elif prb_PLATFORM_LINUX
+            prb_String libCmd = prb_fmtAndPrint("ar rcs %s %s", libFile, objsPathsString);
+#endif
                 prb_removeFileIfExists(libFile);
                 prb_ProcessHandle libHandle = prb_execCmd(libCmd, 0, 0);
                 prb_assert(libHandle.completed);
@@ -291,9 +289,9 @@ main() {
         );
     }
 
-    char* fribidiCompileSources[] = {"lib/*.c"};
+    prb_String fribidiCompileSources[] = {"lib/*.c"};
 
-    char* fribidiCompileFlags[] = {
+    prb_String fribidiCompileFlags[] = {
         fribidiNoConfigFlag,
         // TODO(khvorov) Custom allocators for fribidi
         "-DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1",
@@ -329,7 +327,7 @@ main() {
         return 1;
     }
 
-    char* icuCompileSources[] = {
+    prb_String icuCompileSources[] = {
         "icu4c/source/common/uchar.cpp",
         "icu4c/source/common/utrie.cpp",
         "icu4c/source/common/utrie2.cpp",
@@ -387,7 +385,7 @@ main() {
         "icu4c/source/stubdata/stubdata.cpp",  // NOTE(khvorov) We won't need to access data here
     };
 
-    char* icuFlags[] = {
+    prb_String icuFlags[] = {
         "-DU_COMMON_IMPLEMENTATION=1",
         "-DU_COMBINED_IMPLEMENTATION=1",
         "-DU_STATIC_IMPLEMENTATION=1",
@@ -414,7 +412,7 @@ main() {
     // SECTION Freetype and harfbuzz (they depend on each other)
     //
 
-    char*          freetypeName = "freetype";
+    prb_String     freetypeName = "freetype";
     DownloadResult freetypeDownload =
         downloadRepo(rootDir, freetypeName, "https://github.com/freetype/freetype", "include");
     if (freetypeDownload.status == DownloadStatus_Failed) {
@@ -428,7 +426,7 @@ main() {
         return 1;
     }
 
-    char* freetypeCompileSources[] = {
+    prb_String freetypeCompileSources[] = {
         // Required
         //"src/base/ftsystem.c", // NOTE(khvorov) Memory routines for freetype are in the main program
         "src/base/ftinit.c",
@@ -486,7 +484,7 @@ main() {
         "src/psnames/psnames.c",
     };
 
-    char* freetypeCompileFlags[] = {
+    prb_String freetypeCompileFlags[] = {
         harfbuzzDownload.includeFlag,
         "-DFT2_BUILD_LIBRARY",
         "-DFT_CONFIG_OPTION_DISABLE_STREAM_SUPPORT",
@@ -510,12 +508,12 @@ main() {
         return 1;
     };
 
-    char* harfbuzzCompileSources[] = {
+    prb_String harfbuzzCompileSources[] = {
         "src/harfbuzz.cc",
         "src/hb-icu.cc",
     };
 
-    char* harfbuzzCompileFlags[] = {
+    prb_String harfbuzzCompileFlags[] = {
         icuDownload.includeFlag,
         freetypeDownload.includeFlag,
         "-DHAVE_ICU=1",
@@ -544,7 +542,7 @@ main() {
     // SECTION SDL
     //
 
-    char* sdlCompileSources[] = {
+    prb_String sdlCompileSources[] = {
         "src/atomic/*.c",
         "src/thread/*.c",
         "src/thread/generic/*.c",
@@ -578,7 +576,7 @@ main() {
 #endif
     };
 
-    char* sdlCompileFlags[] = {
+    prb_String sdlCompileFlags[] = {
         "-DSDL_AUDIO_DISABLED=1",
         "-DSDL_HAPTIC_DISABLED=1",
         "-DSDL_HIDAPI_DISABLED=1",
@@ -607,7 +605,7 @@ main() {
 #endif
     };
 
-    char*          sdlName = "sdl";
+    prb_String     sdlName = "sdl";
     DownloadResult sdlDownload = downloadRepo(rootDir, sdlName, "https://github.com/libsdl-org/SDL", "include");
     if (sdlDownload.status == DownloadStatus_Failed) {
         return 1;
