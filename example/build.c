@@ -24,9 +24,10 @@ downloadRepo(prb_String rootDir, prb_String name, prb_String downloadUrl, prb_St
     prb_String     downloadDir = prb_pathJoin(rootDir, name);
     DownloadStatus downloadStatus = DownloadStatus_Failed;
     if (!prb_isDirectory(downloadDir) || prb_directoryIsEmpty(downloadDir)) {
-        prb_String           cmd = prb_fmtAndPrintln("git clone --depth 1 %s %s", downloadUrl, downloadDir);
-        prb_CompletionStatus status = prb_execCmdAndWait(cmd);
-        if (status == prb_CompletionStatus_Success) {
+        prb_String        cmd = prb_fmtAndPrintln("git clone --depth 1 %s %s", downloadUrl, downloadDir);
+        prb_ProcessHandle handle = prb_execCmd(cmd, 0, 0);
+        prb_assert(handle.completed);
+        if (handle.completionStatus == prb_CompletionStatus_Success) {
             downloadStatus = DownloadStatus_Downloaded;
         }
     } else {
@@ -126,7 +127,7 @@ compileStaticLib(
                 prb_String cmd = prb_fmt("%s -c -o %s %s", cmdStart, outputFilepath, inputFilepath);
 #endif
                 prb_println(cmd);
-                processes[processCount++] = prb_execCmdAndDontWait(cmd);
+                processes[processCount++] = prb_execCmd(cmd, prb_ProcessFlag_DontWait, 0);
             }
         }
     }
@@ -158,7 +159,9 @@ compileStaticLib(
             if (sourceLastMod > outputLastMod) {
                 prb_println(libCmd);
                 prb_removeFileIfExists(libFile);
-                libStatus = prb_execCmdAndWait(libCmd);
+                prb_ProcessHandle libHandle = prb_execCmd(libCmd, 0, 0);
+                prb_assert(libHandle.completed);
+                libStatus = libHandle.completionStatus;
             } else {
                 prb_fmtAndPrintln("skip lib %s", name);
             }
@@ -182,15 +185,17 @@ compileAndRunBidiGenTab(prb_String src, prb_String compileCmdStart, prb_String r
         prb_String compileCommandEnd = prb_fmt("-o %s", exeFilename);
 #endif
 
-        prb_String           cmd = prb_fmtAndPrintln("%s %s %s", compileCmdStart, compileCommandEnd, src);
-        prb_CompletionStatus status = prb_execCmdAndWait(cmd);
-        if (status != prb_CompletionStatus_Success) {
+        prb_String        cmd = prb_fmtAndPrintln("%s %s %s", compileCmdStart, compileCommandEnd, src);
+        prb_ProcessHandle handle = prb_execCmd(cmd, 0, 0);
+        prb_assert(handle.completed);
+        if (handle.completionStatus != prb_CompletionStatus_Success) {
             prb_terminate(1);
         }
 
-        prb_String           cmdRun = prb_fmtAndPrintln("%s %s", exeFilename, runArgs);
-        prb_CompletionStatus statusRun = prb_execCmdAndWaitRedirectStdout(cmdRun, outpath);
-        if (statusRun != prb_CompletionStatus_Success) {
+        prb_String        cmdRun = prb_fmtAndPrintln("%s %s", exeFilename, runArgs);
+        prb_ProcessHandle handleRun = prb_execCmd(cmdRun, prb_ProcessFlag_RedirectStdout, outpath);
+        prb_assert(handleRun.completed);
+        if (handleRun.completionStatus != prb_CompletionStatus_Success) {
             prb_terminate(1);
         }
     }
@@ -704,9 +709,10 @@ main() {
         mainLinkFlags
     );
 
-    prb_CompletionStatus mainStatus = prb_execCmdAndWait(mainCmd);
+    prb_ProcessHandle mainHandle = prb_execCmd(mainCmd, 0, 0);
+    prb_assert(mainHandle.completed);
 
-    if (mainStatus == prb_CompletionStatus_Success) {
+    if (mainHandle.completionStatus == prb_CompletionStatus_Success) {
         prb_fmtAndPrintln("total: %.2fms", prb_getMsFrom(scriptStartTime));
     } else {
         return 1;

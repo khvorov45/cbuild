@@ -130,13 +130,13 @@ typedef struct prb_StringArrayBuilder {
 } prb_StringArrayBuilder;
 
 typedef enum prb_CompletionStatus {
-    prb_CompletionStatus_Success,
     prb_CompletionStatus_Failure,
+    prb_CompletionStatus_Success,
 } prb_CompletionStatus;
 
 typedef struct prb_TimeStart {
     bool     valid;
-    uint64_t time;
+    uint64_t nsec;
 } prb_TimeStart;
 
 typedef enum prb_ColorID {
@@ -158,15 +158,25 @@ typedef struct prb_Bytes {
 } prb_Bytes;
 
 typedef struct prb_ProcessHandle {
+    bool                 valid;
+    bool                 completed;
+    prb_CompletionStatus completionStatus;
+
 #if prb_PLATFORM_WINDOWS
     #error unimplemented
 #elif prb_PLATFORM_LINUX
-    bool  valid;
     pid_t pid;
 #else
     #error unimplemented
 #endif
 } prb_ProcessHandle;
+
+typedef enum prb_ProcessFlag {
+    prb_ProcessFlag_DontWait = 1 << 0,
+    prb_ProcessFlag_RedirectStdout = 1 << 1,
+    prb_ProcessFlag_RedirectStderr = 1 << 2,
+} prb_ProcessFlag;
+typedef uint32_t prb_ProcessFlags;
 
 // SECTION Core
 void prb_init(int32_t virtualMemoryBytesToUse);
@@ -246,11 +256,7 @@ void                   prb_setPrintColor(prb_ColorID color);
 void                   prb_resetPrintColor(void);
 
 // SECTION Processes
-prb_CompletionStatus prb_execCmdAndWait(prb_String cmd);
-prb_CompletionStatus prb_execCmdAndWaitRedirectStdout(prb_String cmd, prb_String stdoutPath);
-prb_CompletionStatus prb_execCmdAndWaitRedirectStderr(prb_String cmd, prb_String stderrPath);
-prb_CompletionStatus prb_execCmdAndWaitRedirectStdoutAndStderr(prb_String cmd, prb_String stdoutAndErrPath);
-prb_ProcessHandle    prb_execCmdAndDontWait(prb_String cmd);
+prb_ProcessHandle    prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath);
 prb_CompletionStatus prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
 
 // SECTION Timing
@@ -1352,9 +1358,165 @@ prb_getArgArrayFromString(prb_String string) {
     return args;
 }
 
+prb_ProcessHandle
+prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath) {
+    prb_ProcessHandle result = {};
+
+    if ((flags & prb_ProcessFlag_RedirectStdout) || (flags & prb_ProcessFlag_RedirectStderr)) {
+        prb_assert(redirectFilepath);
+    } else {
+        prb_assert(redirectFilepath == 0);
+    }
+
+    #if prb_PLATFORM_WINDOWS
+
+    STARTUPINFOA        startupInfo = {.cb = sizeof(STARTUPINFOA)};
+    PROCESS_INFORMATION processInfo;
+    if (CreateProcessA(0, cmd.ptr, 0, 0, 0, 0, 0, 0, &startupInfo, &processInfo)) {
+        WaitForSingleObject(processInfo.hProcess, INFINITE);
+        DWORD exitCode;
+        if (GetExitCodeProcess(processInfo.hProcess, &exitCode)) {
+            if (exitCode == 0) {
+                cmdStatus = prb_CompletionStatus_Success;
+            }
+        }
+    }
+
+        #error unimplemented
+
+    #elif prb_PLATFORM_LINUX
+
+    bool                        fileActionsSucceeded = true;
+    posix_spawn_file_actions_t* fileActionsPtr = 0;
+    posix_spawn_file_actions_t  fileActions = {};
+    if ((flags & prb_ProcessFlag_RedirectStdout) || (flags & prb_ProcessFlag_RedirectStderr)) {
+        fileActionsPtr = &fileActions;
+        int initResult = posix_spawn_file_actions_init(&fileActions);
+        fileActionsSucceeded = initResult == 0;
+        if (fileActionsSucceeded) {
+            if (flags & prb_ProcessFlag_RedirectStdout) {
+                int stdoutRedirectResult = posix_spawn_file_actions_addopen(
+                    &fileActions,
+                    STDOUT_FILENO,
+                    redirectFilepath,
+                    O_WRONLY | O_CREAT | O_TRUNC,
+                    S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
+                );
+                fileActionsSucceeded = stdoutRedirectResult == 0;
+                if (fileActionsSucceeded && (flags & prb_ProcessFlag_RedirectStderr)) {
+                    int dupResult = posix_spawn_file_actions_adddup2(&fileActions, STDOUT_FILENO, STDERR_FILENO);
+                    fileActionsSucceeded = dupResult == 0;
+                }
+            } else if (flags & prb_ProcessFlag_RedirectStderr) {
+                int stderrRedirectResult = posix_spawn_file_actions_addopen(
+                    &fileActions,
+                    STDERR_FILENO,
+                    redirectFilepath,
+                    O_WRONLY | O_CREAT | O_TRUNC,
+                    S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
+                );
+                fileActionsSucceeded = stderrRedirectResult == 0;
+            }
+        }
+    }
+
+    if (fileActionsSucceeded) {
+        char** args = prb_getArgArrayFromString(cmd);
+        int    spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, args, __environ);
+        if (spawnResult == 0) {
+            result.valid = true;
+            if (!(flags & prb_ProcessFlag_DontWait)) {
+                int   status = 0;
+                pid_t waitResult = waitpid(result.pid, &status, 0);
+                if (waitResult == result.pid && status == 0) {
+                    result.completed = true;
+                    result.completionStatus = prb_CompletionStatus_Success;
+                }
+            }
+        }
+    }
+
+    #else
+        #error unimplemented
+    #endif
+
+    return result;
+}
+
+prb_CompletionStatus
+prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
+    prb_CompletionStatus result = prb_CompletionStatus_Success;
+
+    #if prb_PLATFORM_WINDOWS
+
+        #error unimplemented
+
+    #elif prb_PLATFORM_LINUX
+
+    for (int32_t handleIndex = 0; handleIndex < handleCount; handleIndex++) {
+        prb_ProcessHandle* handle = handles + handleIndex;
+        if (handle->valid) {
+            if (!handle->completed) {
+                int32_t status = 0;
+                pid_t   waitResult = waitpid(handle->pid, &status, 0);
+                handle->completed = true;
+                if (waitResult == handle->pid && status == 0) {
+                    handle->completionStatus = prb_CompletionStatus_Success;
+                } else {
+                    handle->completionStatus = prb_CompletionStatus_Failure;
+                    result = prb_CompletionStatus_Failure;
+                }
+            }
+        } else {
+            result = prb_CompletionStatus_Failure;
+        }
+    }
+
+    #else
+        #error unimplemented
+    #endif
+
+    return result;
+}
+
 //
 // SECTION Timing (implementation)
 //
+
+prb_TimeStart
+prb_timeStart(void) {
+    prb_TimeStart result = {};
+
+    #if prb_PLATFORM_WINDOWS
+
+        #error unimplemented
+
+    #elif prb_PLATFORM_LINUX
+
+    struct timespec tp = {};
+    if (clock_gettime(CLOCK_MONOTONIC, &tp) == 0) {
+        prb_assert(tp.tv_nsec >= 0 && tp.tv_sec >= 0);
+        result.nsec = (uint64_t)tp.tv_nsec + (uint64_t)tp.tv_sec * 1000 * 1000 * 1000;
+        result.valid = true;
+    }
+
+    #else
+        #error unimplemented
+    #endif
+
+    return result;
+}
+
+float
+prb_getMsFrom(prb_TimeStart timeStart) {
+    prb_TimeStart now = prb_timeStart();
+    float         result = 0.0f;
+    if (now.valid && timeStart.valid) {
+        uint64_t nsec = now.nsec - timeStart.nsec;
+        result = (float)nsec / 1000.0f / 1000.0f;
+    }
+    return result;
+}
 
 //
 // SECTION Binary to C array (implementation)
@@ -1382,197 +1544,7 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
 }
 
 //
-// SECTION Implementation (platform-specific)
-//
-
-    #if prb_PLATFORM_WINDOWS
-
-prb_CompletionStatus
-prb_execCmd(prb_String cmd) {
-    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
-
-    STARTUPINFOA        startupInfo = {.cb = sizeof(STARTUPINFOA)};
-    PROCESS_INFORMATION processInfo;
-    if (CreateProcessA(0, cmd.ptr, 0, 0, 0, 0, 0, 0, &startupInfo, &processInfo)) {
-        WaitForSingleObject(processInfo.hProcess, INFINITE);
-        DWORD exitCode;
-        if (GetExitCodeProcess(processInfo.hProcess, &exitCode)) {
-            if (exitCode == 0) {
-                cmdStatus = prb_CompletionStatus_Success;
-            }
-        }
-    }
-
-    return cmdStatus;
-}
-
-    #elif prb_PLATFORM_LINUX
-
-prb_CompletionStatus
-prb_execCmdAndWait(prb_String cmd) {
-    char** args = prb_getArgArrayFromString(cmd);
-    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
-    pid_t pid;
-    int32_t spawnResult = posix_spawnp(&pid, args[0], 0, 0, args, __environ);
-    if (spawnResult == 0) {
-        int32_t status;
-        pid_t waitResult = waitpid(pid, &status, 0);
-        if (waitResult == pid && status == 0) {
-            cmdStatus = prb_CompletionStatus_Success;
-        }
-    }
-    return cmdStatus;
-}
-
-prb_CompletionStatus
-prb_execCmdAndWaitRedirectStdout(prb_String cmd, prb_String stdoutPath) {
-    char** args = prb_getArgArrayFromString(cmd);
-    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
-    posix_spawn_file_actions_t fileActions = {};
-    if (posix_spawn_file_actions_init(&fileActions) == 0) {
-        if (posix_spawn_file_actions_addopen(
-                &fileActions,
-                STDOUT_FILENO,
-                stdoutPath,
-                O_WRONLY | O_CREAT | O_TRUNC,
-                S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
-            )
-            == 0) {
-            pid_t pid;
-            int32_t spawnResult = posix_spawnp(&pid, args[0], &fileActions, 0, args, __environ);
-            if (spawnResult == 0) {
-                int32_t status;
-                pid_t waitResult = waitpid(pid, &status, 0);
-                if (waitResult == pid && status == 0) {
-                    cmdStatus = prb_CompletionStatus_Success;
-                }
-            }
-        }
-    }
-    return cmdStatus;
-}
-
-prb_CompletionStatus
-prb_execCmdAndWaitRedirectStderr(prb_String cmd, prb_String stderrPath) {
-    char** args = prb_getArgArrayFromString(cmd);
-    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
-    posix_spawn_file_actions_t fileActions = {};
-    if (posix_spawn_file_actions_init(&fileActions) == 0) {
-        if (posix_spawn_file_actions_addopen(
-                &fileActions,
-                STDERR_FILENO,
-                stderrPath,
-                O_WRONLY | O_CREAT | O_TRUNC,
-                S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
-            )
-            == 0) {
-            pid_t pid;
-            int32_t spawnResult = posix_spawnp(&pid, args[0], &fileActions, 0, args, __environ);
-            if (spawnResult == 0) {
-                int32_t status;
-                pid_t waitResult = waitpid(pid, &status, 0);
-                if (waitResult == pid && status == 0) {
-                    cmdStatus = prb_CompletionStatus_Success;
-                }
-            }
-        }
-    }
-    return cmdStatus;
-}
-
-prb_CompletionStatus
-prb_execCmdAndWaitRedirectStdoutAndStderr(prb_String cmd, prb_String stdoutAndErrPath) {
-    char** args = prb_getArgArrayFromString(cmd);
-    prb_CompletionStatus cmdStatus = prb_CompletionStatus_Failure;
-    posix_spawn_file_actions_t fileActions = {};
-    if (posix_spawn_file_actions_init(&fileActions) == 0) {
-        if (posix_spawn_file_actions_addopen(
-                &fileActions,
-                STDOUT_FILENO,
-                stdoutAndErrPath,
-                O_WRONLY | O_CREAT | O_TRUNC,
-                S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
-            )
-            == 0) {
-            if (posix_spawn_file_actions_adddup2(&fileActions, STDOUT_FILENO, STDERR_FILENO) == 0) {
-                pid_t pid;
-                int32_t spawnResult = posix_spawnp(&pid, args[0], &fileActions, 0, args, __environ);
-                if (spawnResult == 0) {
-                    int32_t status;
-                    pid_t waitResult = waitpid(pid, &status, 0);
-                    if (waitResult == pid && status == 0) {
-                        cmdStatus = prb_CompletionStatus_Success;
-                    }
-                }
-            }
-        }
-    }
-    return cmdStatus;
-}
-
-prb_ProcessHandle
-prb_execCmdAndDontWait(prb_String cmd) {
-    char** args = prb_getArgArrayFromString(cmd);
-    prb_ProcessHandle result = {};
-    int32_t spawnResult = posix_spawnp(&result.pid, args[0], 0, 0, args, __environ);
-    if (spawnResult == 0) {
-        result.valid = true;
-    }
-    return result;
-}
-
-prb_CompletionStatus
-prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
-    prb_CompletionStatus result = prb_CompletionStatus_Success;
-    for (int32_t handleIndex = 0; handleIndex < handleCount; handleIndex++) {
-        prb_ProcessHandle handle = handles[handleIndex];
-        if (handle.valid) {
-            int32_t status;
-            pid_t waitResult = waitpid(handle.pid, &status, 0);
-            if (waitResult != handle.pid || status != 0) {
-                result = prb_CompletionStatus_Failure;
-                break;
-            }
-        } else {
-            result = prb_CompletionStatus_Failure;
-            break;
-        }
-    }
-    return result;
-}
-
-void
-prb_sleepMs(int32_t ms) {
-    usleep(ms * 1000);
-}
-
-prb_TimeStart
-prb_timeStart(void) {
-    prb_TimeStart result = {};
-    struct timespec tp;
-    if (clock_gettime(CLOCK_MONOTONIC, &tp) == 0) {
-        prb_assert(tp.tv_nsec >= 0 && tp.tv_sec >= 0);
-        result.time = (uint64_t)tp.tv_nsec + (uint64_t)tp.tv_sec * 1000 * 1000 * 1000;
-        result.valid = true;
-    }
-    return result;
-}
-
-float
-prb_getMsFrom(prb_TimeStart timeStart) {
-    prb_TimeStart now = prb_timeStart();
-    float result = 0.0f;
-    if (now.valid && timeStart.valid) {
-        uint64_t nsec = now.time - timeStart.time;
-        result = (float)nsec / 1000.0f / 1000.0f;
-    }
-    return result;
-}
-
-    #endif  // prb_PLATFORM
-
-//
-// SECTION Implementation (stb snprintf)
+// SECTION stb snprintf (implementation)
 //
 
     #define stbsp__uint32 unsigned int
