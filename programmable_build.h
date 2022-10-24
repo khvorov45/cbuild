@@ -227,6 +227,7 @@ uint64_t        prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, in
 void            prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement);
 prb_Bytes       prb_readEntireFile(prb_String path);
 void            prb_writeEntireFile(prb_String path, prb_Bytes content);
+void            prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION Strings
 int32_t                prb_strlen(const char* string);
@@ -274,9 +275,6 @@ prb_CompletionStatus prb_waitForProcesses(prb_ProcessHandle* handles, int32_t ha
 // SECTION Timing
 prb_TimeStart prb_timeStart(void);
 float         prb_getMsFrom(prb_TimeStart timeStart);
-
-// SECTION Binary to C array
-void prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION stb snprintf
 #if defined(__clang__)
@@ -939,6 +937,27 @@ prb_writeEntireFile(prb_String path, prb_Bytes content) {
     #endif
 }
 
+void
+prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) {
+    prb_Bytes inContent = prb_readEntireFile(inPath);
+    prb_assert(inContent.len > 0);
+
+    char* resultPtr = (char*)prb_globalArenaCurrentFreePtr();
+    prb_fmtNoNullTerminator("unsigned char %s[] = {", arrayName);
+
+    for (int32_t byteIndex = 0; byteIndex < inContent.len; byteIndex++) {
+        uint8_t byte = inContent.data[byteIndex];
+        prb_fmtNoNullTerminator("0x%x", byte);
+        if (byteIndex != inContent.len - 1) {
+            prb_fmtNoNullTerminator(", ");
+        }
+    }
+    prb_fmtNoNullTerminator("};");
+
+    int32_t resultSize = (uint8_t*)prb_globalArenaCurrentFreePtr() - (uint8_t*)resultPtr;
+    prb_writeEntireFile(outPath, (prb_Bytes) {(uint8_t*)resultPtr, resultSize});
+}
+
 //
 // SECTION Strings (implementation)
 //
@@ -1528,31 +1547,6 @@ prb_getMsFrom(prb_TimeStart timeStart) {
         result = (float)nsec / 1000.0f / 1000.0f;
     }
     return result;
-}
-
-//
-// SECTION Binary to C array (implementation)
-//
-
-void
-prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) {
-    prb_Bytes inContent = prb_readEntireFile(inPath);
-    prb_assert(inContent.len > 0);
-
-    char* resultPtr = (char*)prb_globalArenaCurrentFreePtr();
-    prb_fmtNoNullTerminator("unsigned char %s[] = {", arrayName);
-
-    for (int32_t byteIndex = 0; byteIndex < inContent.len; byteIndex++) {
-        uint8_t byte = inContent.data[byteIndex];
-        prb_fmtNoNullTerminator("0x%x", byte);
-        if (byteIndex != inContent.len - 1) {
-            prb_fmtNoNullTerminator(", ");
-        }
-    }
-    prb_fmtNoNullTerminator("};");
-
-    int32_t resultSize = (uint8_t*)prb_globalArenaCurrentFreePtr() - (uint8_t*)resultPtr;
-    prb_writeEntireFile(outPath, (prb_Bytes) {(uint8_t*)resultPtr, resultSize});
 }
 
 //
