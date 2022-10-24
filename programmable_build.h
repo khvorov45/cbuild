@@ -100,6 +100,18 @@ are running off a linear allocator that is not thread-safe,
     #define prb_debugbreak()
 #endif
 
+// Taken from stb snprintf
+// https://github.com/nothings/stb/blob/master/stb_sprintf.h
+#if defined(__has_attribute)
+    #if __has_attribute(format)
+        #define prb_ATTRIBUTE_FORMAT(fmt, va) __attribute__((format(printf, fmt, va)))
+    #endif
+#endif
+
+#ifndef prb_ATTRIBUTE_FORMAT
+    #define prb_ATTRIBUTE_FORMAT(fmt, va)
+#endif
+
 #define prb_assert(condition) do { if (!(condition)) { prb_debugbreak(); } } while (0)
 // clang-format on
 
@@ -235,17 +247,17 @@ prb_StringArray        prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* bu
 prb_String             prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
 prb_String             prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
 prb_StringArray        prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2);
-prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, ...);
+prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
 prb_String             prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args);
-prb_String             prb_fmt(const char* fmt, ...);
-void                   prb_fmtNoNullTerminator(const char* fmt, ...);
+prb_String             prb_fmt(const char* fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+void                   prb_fmtNoNullTerminator(const char* fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
 prb_String             prb_vfmt(const char* fmt, va_list args);
-prb_String             prb_fmtAndPrint(const char* fmt, ...);
-prb_String             prb_fmtAndPrintColor(prb_ColorID color, const char* fmt, ...);
+prb_String             prb_fmtAndPrint(const char* fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_String             prb_fmtAndPrintColor(prb_ColorID color, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
 prb_String             prb_vfmtAndPrint(const char* fmt, va_list args);
 prb_String             prb_vfmtAndPrintColor(prb_ColorID color, const char* fmt, va_list args);
-prb_String             prb_fmtAndPrintln(const char* fmt, ...);
-prb_String             prb_fmtAndPrintlnColor(prb_ColorID color, const char* fmt, ...);
+prb_String             prb_fmtAndPrintln(const char* fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_String             prb_fmtAndPrintlnColor(prb_ColorID color, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
 prb_String             prb_vfmtAndPrintln(const char* fmt, va_list args);
 prb_String             prb_vfmtAndPrintlnColor(prb_ColorID color, const char* fmt, va_list args);
 void                   prb_print(const char* str);
