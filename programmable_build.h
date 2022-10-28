@@ -255,7 +255,6 @@ void            prb_removeDirectoryIfExists(prb_String path);
 void            prb_clearDirectory(prb_String path);
 prb_String      prb_getCurrentWorkingDir(void);
 prb_String      prb_pathJoin(prb_String path1, prb_String path2);
-int32_t         prb_getLastPathSepIndex(prb_String path);
 prb_String      prb_getParentDir(prb_String path);
 prb_String      prb_getLastEntryInPath(prb_String path);
 prb_String      prb_replaceExt(prb_String path, prb_String newExt);
@@ -742,32 +741,26 @@ prb_pathJoin(prb_String path1, prb_String path2) {
 }
 
 int32_t
-prb_getLastPathSepIndex(prb_String path) {
+prb_getSepIndexBeforeLastEntry(prb_String path) {
     int32_t pathlen = prb_strlen(path);
-    prb_assert(path && pathlen > 0);
-    int32_t lastPathSepIndex = -1;
-    for (int32_t index = pathlen - 1; index >= 0; index--) {
-        char ch = path[index];
-        if (ch == '/' || ch == '\\') {
-            lastPathSepIndex = index;
-            break;
-        }
+    int32_t result = prb_strFindIndex(path, pathlen - 1, "/\\", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
+    if (result == pathlen - 1 && pathlen > 1) {
+        result = prb_strFindIndex(path, pathlen - 2, "/\\", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
     }
-    return lastPathSepIndex;
+    return result;
 }
 
 prb_String
 prb_getParentDir(prb_String path) {
-    int32_t    lastPathSepIndex = prb_getLastPathSepIndex(path);
-    prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, 0, lastPathSepIndex) : prb_getCurrentWorkingDir();
+    int32_t    sepIndex = prb_getSepIndexBeforeLastEntry(path);
+    prb_String result = sepIndex >= 0 ? prb_stringCopy(path, 0, sepIndex) : prb_getCurrentWorkingDir();
     return result;
 }
 
 prb_String
 prb_getLastEntryInPath(prb_String path) {
-    int32_t    pathlen = prb_strlen(path);
-    int32_t    lastPathSepIndex = prb_getLastPathSepIndex(path);
-    prb_String result = lastPathSepIndex >= 0 ? prb_stringCopy(path, lastPathSepIndex + 1, pathlen - 1) : path;
+    int32_t    sepIndex = prb_getSepIndexBeforeLastEntry(path);
+    prb_String result = sepIndex >= 0 ? prb_stringCopy(path, sepIndex + 1, -1) : path;
     return result;
 }
 
@@ -1200,16 +1193,22 @@ prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder) {
 
 prb_String
 prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
-    int32_t sourcelen = prb_strlen(source);
-    prb_assert(
-        toInclusive >= fromInclusive && toInclusive >= 0 && fromInclusive >= 0 && toInclusive < sourcelen
-        && fromInclusive < sourcelen
-    );
-    int32_t           len = toInclusive - fromInclusive + 1;
-    prb_StringBuilder builder = prb_createStringBuilder(len);
-    prb_stringBuilderWrite(&builder, source + fromInclusive, len);
-    prb_String result = prb_stringBuilderGetString(&builder);
-    return result;
+    if (toInclusive < 0) {
+        toInclusive = INT32_MAX;
+    }
+    prb_assert(toInclusive >= fromInclusive && toInclusive >= 0 && fromInclusive >= 0);
+    char*   dest = (char*)prb_globalArenaCurrentFreePtr();
+    int32_t copied = 0;
+    for (int32_t strIndex = fromInclusive; strIndex <= toInclusive; strIndex++, copied++) {
+        char sourceCh = source[strIndex];
+        if (sourceCh == '\0') {
+            break;
+        }
+        dest[copied] = sourceCh;
+    }
+    dest[copied++] = '\0';
+    prb_globalState.arena.used += copied;
+    return (prb_String)dest;
 }
 
 prb_String
