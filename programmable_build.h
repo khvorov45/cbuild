@@ -175,7 +175,6 @@ typedef struct prb_TimeStart {
 } prb_TimeStart;
 
 typedef enum prb_ColorID {
-    prb_ColorID_Reset,
     prb_ColorID_Black,
     prb_ColorID_Red,
     prb_ColorID_Green,
@@ -184,7 +183,6 @@ typedef enum prb_ColorID {
     prb_ColorID_Magenta,
     prb_ColorID_Cyan,
     prb_ColorID_White,
-    prb_ColorID_Count,
 } prb_ColorID;
 
 typedef struct prb_Bytes {
@@ -212,6 +210,25 @@ typedef enum prb_ProcessFlag {
     prb_ProcessFlag_RedirectStderr = 1 << 2,
 } prb_ProcessFlag;
 typedef uint32_t prb_ProcessFlags;
+
+typedef enum prb_StringFindMode {
+    prb_StringFindMode_Exact,
+    prb_StringFindMode_AnyChar,
+} prb_StringFindMode;
+
+typedef enum prb_StringFindDir {
+    prb_StringFindDir_FromStart,
+    prb_StringFindDir_FromEnd,
+} prb_StringFindDir;
+
+typedef struct prb_LineIterator {
+    uint8_t* ptr;
+    int32_t  len;
+    int32_t  offset;
+    // Segment of the original data, not necessarily null-terminated
+    char*   line;
+    int32_t lineLen;
+} prb_LineIterator;
 
 // SECTION Core
 void prb_init(int32_t virtualMemoryBytesToUse);
@@ -253,15 +270,17 @@ void            prb_writeEntireFile(prb_String path, prb_Bytes content);
 void            prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION Strings
-int32_t                prb_strlen(prb_String string);
-bool                   prb_streq(prb_String str1, prb_String str2);
-bool                   prb_strEndsWith(prb_String str1, prb_String str2);
-bool                   prb_strStartsWith(prb_String str1, prb_String str2);
-bool                   prb_charIsSep(char ch);
-int32_t                prb_strFindIndexFromLeft(prb_String str, char ch);
-int32_t                prb_strFindIndexFromRight(prb_String str, char ch);
-int32_t                prb_strFindIndexFromLeftAny(prb_String str, prb_String chars);
-int32_t                prb_strFindIndexFromLeftString(prb_String str, prb_String pattern);
+int32_t prb_strlen(prb_String string);
+bool    prb_streq(prb_String str1, prb_String str2);
+bool    prb_strStartsWith(prb_String str1, prb_String str2);
+bool    prb_strEndsWith(prb_String str1, prb_String str2);
+int32_t prb_strFindIndex(
+    prb_String         str,
+    int32_t            strEndIndex,
+    prb_String         pattern,
+    prb_StringFindMode mode,
+    prb_StringFindDir  dir
+);
 prb_String             prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
 prb_StringBuilder      prb_createStringBuilder(int32_t len);
 void                   prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source, int32_t len);
@@ -288,6 +307,8 @@ prb_String             prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt
 void                   prb_writeToStdout(prb_String str, int32_t len);
 void                   prb_setPrintColor(prb_ColorID color);
 void                   prb_resetPrintColor(void);
+prb_LineIterator       prb_createLineIter(void* ptr, int32_t len);
+prb_CompletionStatus   prb_lineIterNext(prb_LineIterator* iter);
 
 // SECTION Processes
 prb_ProcessHandle    prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath);
@@ -370,15 +391,13 @@ STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char peri
 
 #ifdef PRB_IMPLEMENTATION
 
-// SECTION Global state
-struct {
-    prb_Arena  arena;
-    prb_String terminalColorCodes[prb_ColorID_Count];
-} prb_globalState;
-
 //
 // SECTION Core (implementation)
 //
+
+struct {
+    prb_Arena arena;
+} prb_globalState;
 
 void
 prb_init(int32_t virtualMemoryBytesToUse) {
@@ -387,16 +406,6 @@ prb_init(int32_t virtualMemoryBytesToUse) {
         .size = virtualMemoryBytesToUse,
         .used = 0,
     };
-
-    prb_globalState.terminalColorCodes[prb_ColorID_Reset] = "\x1b[0m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Black] = "\x1b[30m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Red] = "\x1b[31m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Green] = "\x1b[32m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Yellow] = "\x1b[33m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Blue] = "\x1b[34m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Magenta] = "\x1b[35m";
-    prb_globalState.terminalColorCodes[prb_ColorID_Cyan] = "\x1b[36m";
-    prb_globalState.terminalColorCodes[prb_ColorID_White] = "\x1b[37m";
 }
 
 void
@@ -719,7 +728,7 @@ prb_pathJoin(prb_String path1, prb_String path2) {
     int32_t path2len = prb_strlen(path2);
     prb_assert(path1 && path1len > 0 && path2 && path2len > 0);
     char              path1LastChar = path1[path1len - 1];
-    bool              path1EndsOnSep = prb_charIsSep(path1LastChar);
+    bool              path1EndsOnSep = path1LastChar == '/' || path1LastChar == '\\';
     int32_t           totalLen = path1EndsOnSep ? path1len + path2len : path1len + 1 + path2len;
     prb_StringBuilder builder = prb_createStringBuilder(totalLen);
     prb_stringBuilderWrite(&builder, path1, path1len);
@@ -764,7 +773,7 @@ prb_getLastEntryInPath(prb_String path) {
 
 prb_String
 prb_replaceExt(prb_String path, prb_String newExt) {
-    int32_t    dotIndex = prb_strFindIndexFromRight(path, '.');
+    int32_t    dotIndex = prb_strFindIndex(path, -1, ".", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
     prb_String result = prb_fmt("%.*s.%s", dotIndex, path, newExt);
     return result;
 }
@@ -1004,6 +1013,23 @@ prb_streq(prb_String str1, prb_String str2) {
 }
 
 bool
+prb_strStartsWith(prb_String str1, prb_String str2) {
+    bool    result = false;
+    int32_t str2len = prb_strlen(str2);
+    bool    str1IsLongEnough = true;
+    for (int32_t strIndex = 0; strIndex < str2len; strIndex++) {
+        char str1Ch = str1[strIndex];
+        if (str1Ch == '\0') {
+            str1IsLongEnough = false;
+        }
+    }
+    if (str1IsLongEnough) {
+        result = prb_memeq(str1, str2, str2len);
+    }
+    return result;
+}
+
+bool
 prb_strEndsWith(prb_String str1, prb_String str2) {
     bool    result = false;
     int32_t str1len = prb_strlen(str1);
@@ -1014,113 +1040,108 @@ prb_strEndsWith(prb_String str1, prb_String str2) {
     return result;
 }
 
-bool
-prb_strStartsWith(prb_String str1, prb_String str2) {
-    bool    result = false;
-    int32_t str1len = prb_strlen(str1);
-    int32_t str2len = prb_strlen(str2);
-    if (str2len <= str1len) {
-        result = prb_memeq(str1, str2, str2len);
-    }
-    return result;
-}
-
-bool
-prb_charIsSep(char ch) {
-    bool result = ch == '/' || ch == '\\';
-    return result;
-}
-
 int32_t
-prb_strFindIndexFromLeft(prb_String str, char ch) {
-    int32_t result = -1;
-    int32_t strlength = prb_strlen(str);
-    for (int32_t strIndex = 0; strIndex < strlength; strIndex++) {
-        char testCh = str[strIndex];
-        if (testCh == ch) {
-            result = strIndex;
-            break;
-        }
-    }
-    return result;
-}
-
-int32_t
-prb_strFindIndexFromRight(prb_String str, char ch) {
-    int32_t result = -1;
-    int32_t strlength = prb_strlen(str);
-    for (int32_t strIndex = strlength - 1; strIndex >= 0; strIndex--) {
-        char testCh = str[strIndex];
-        if (testCh == ch) {
-            result = strIndex;
-            break;
-        }
-    }
-    return result;
-}
-
-int32_t
-prb_strFindIndexFromLeftAny(prb_String str, prb_String chars) {
-    int32_t result = -1;
-    int32_t strlength = prb_strlen(str);
-    int32_t charsLen = prb_strlen(chars);
-    for (int32_t strIndex = 0; strIndex < strlength && result == -1; strIndex++) {
-        char testCh = str[strIndex];
-        for (int32_t charsIndex = 0; charsIndex < charsLen && result == -1; charsIndex++) {
-            char ch = chars[charsIndex];
-            if (testCh == ch) {
-                result = strIndex;
-            }
-        }
-    }
-    return result;
-}
-
-int32_t
-prb_strFindIndexFromLeftString(prb_String str, prb_String pattern) {
+prb_strFindIndex(
+    prb_String         str,
+    int32_t            strEndIndex,
+    prb_String         pattern,
+    prb_StringFindMode mode,
+    prb_StringFindDir  dir
+) {
     int32_t result = -1;
     int32_t patlen = prb_strlen(pattern);
-    int32_t stringlen = prb_strlen(str);
-    if (patlen <= stringlen) {
-        if (patlen == 0) {
-            result = 0;
-        } else if (patlen == 1) {
-            result = prb_strFindIndexFromLeft(str, pattern[0]);
-        } else {
-            // Raita string matching algorithm
-            // https://en.wikipedia.org/wiki/Raita_algorithm
-            ptrdiff_t bmBc[256];
 
-            for (int32_t i = 0; i < 256; ++i) {
-                bmBc[i] = patlen;
-            }
-            for (int32_t i = 0; i < patlen - 1; ++i) {
-                char patternChar = pattern[i];
-                bmBc[(int32_t)patternChar] = patlen - i - 1;
-            }
+    if (patlen > 0) {
+        if (patlen == 1 && mode == prb_StringFindMode_Exact) {
+            mode = prb_StringFindMode_AnyChar;
+        }
 
-            char patFirstCh = pattern[0];
-            char patMiddleCh = pattern[patlen / 2];
-            char patLastCh = pattern[patlen - 1];
+        switch (mode) {
+            case prb_StringFindMode_Exact: {
+                // TODO(khvorov) Implement from end
+                prb_assert(dir == prb_StringFindDir_FromStart);
 
-            int32_t j = 0;
-            while (j <= stringlen - patlen) {
-                char strLastCh = str[j + patlen - 1];
-                if (patLastCh == strLastCh && patMiddleCh == str[j + patlen / 2] && patFirstCh == str[j]
-                    && prb_memeq(pattern + 1, str + j + 1, patlen - 2)) {
-                    result = j;
-                    break;
+                // Raita string matching algorithm
+                // https://en.wikipedia.org/wiki/Raita_algorithm
+                ptrdiff_t bmBc[256];
+
+                for (int32_t i = 0; i < 256; ++i) {
+                    bmBc[i] = patlen;
                 }
-                j += bmBc[(int32_t)strLastCh];
+                for (int32_t i = 0; i < patlen - 1; ++i) {
+                    char patternChar = pattern[i];
+                    bmBc[(int32_t)patternChar] = patlen - i - 1;
+                }
+
+                char patFirstCh = pattern[0];
+                char patMiddleCh = pattern[patlen / 2];
+                char patLastCh = pattern[patlen - 1];
+
+                for (int32_t j = 0;;) {
+                    bool notEnoughStrLeft = false;
+                    for (int32_t strIndex = 0; strIndex < patlen; strIndex++) {
+                        char testCh = str[strIndex];
+                        if (testCh == '\0' || strIndex == strEndIndex) {
+                            notEnoughStrLeft = true;
+                            break;
+                        }
+                    }
+                    if (notEnoughStrLeft) {
+                        break;
+                    }
+
+                    char strLastCh = str[j + patlen - 1];
+                    if (patLastCh == strLastCh && patMiddleCh == str[j + patlen / 2] && patFirstCh == str[j]
+                        && prb_memeq(pattern + 1, str + j + 1, patlen - 2)) {
+                        result = j;
+                        break;
+                    }
+                    j += bmBc[(int32_t)strLastCh];
+                }
+
+            } break;
+
+            case prb_StringFindMode_AnyChar: {
+                int32_t searchStartIndex = 0;
+                int32_t onePastSearchEndIndex = INT32_MAX;
+                if (strEndIndex >= 0 && strEndIndex < INT32_MAX) {
+                    onePastSearchEndIndex = strEndIndex + 1;
+                }
+                int32_t searchIndexDelta = 1;
+                if (dir == prb_StringFindDir_FromEnd) {
+                    searchStartIndex = strEndIndex;
+                    if (strEndIndex < 0 || strEndIndex == INT32_MAX) {
+                        searchStartIndex = prb_strlen(str) - 1;
+                    }
+                    onePastSearchEndIndex = -1;
+                    searchIndexDelta = -1;
+                }
+
+                for (int32_t searchIndex = searchStartIndex; searchIndex != onePastSearchEndIndex && result == -1;
+                     searchIndex += searchIndexDelta) {
+                    char testCh = str[searchIndex];
+                    if (dir == prb_StringFindDir_FromStart && testCh == '\0') {
+                        break;
+                    }
+
+                    for (int32_t patIndex = 0; patIndex < patlen && result == -1; patIndex++) {
+                        char patCh = pattern[patIndex];
+                        if (testCh == patCh) {
+                            result = searchIndex;
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
+
     return result;
 }
 
 prb_String
 prb_strReplace(prb_String str, prb_String pattern, prb_String replacement) {
-    int32_t    patternIndex = prb_strFindIndexFromLeftString(str, pattern);
+    int32_t    patternIndex = prb_strFindIndex(str, -1, pattern, prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
     prb_String result = str;
     int32_t    stringlen = prb_strlen(str);
     int32_t    patlen = prb_strlen(pattern);
@@ -1357,14 +1378,63 @@ prb_writeToStdout(prb_String msg, int32_t len) {
 
 void
 prb_setPrintColor(prb_ColorID color) {
-    prb_String str = prb_globalState.terminalColorCodes[color];
+    prb_String str = "BAD COLOR";
+    switch (color) {
+        case prb_ColorID_Black: str = "\x1b[30m"; break;
+        case prb_ColorID_Red: str = "\x1b[31m"; break;
+        case prb_ColorID_Green: str = "\x1b[32m"; break;
+        case prb_ColorID_Yellow: str = "\x1b[33m"; break;
+        case prb_ColorID_Blue: str = "\x1b[34m"; break;
+        case prb_ColorID_Magenta: str = "\x1b[35m"; break;
+        case prb_ColorID_Cyan: str = "\x1b[36m"; break;
+        case prb_ColorID_White: str = "\x1b[37m"; break;
+    }
     prb_writeToStdout(str, prb_strlen(str));
 }
 
 void
 prb_resetPrintColor() {
-    prb_String str = prb_globalState.terminalColorCodes[prb_ColorID_Reset];
+    prb_String str = "\x1b[0m";
     prb_writeToStdout(str, prb_strlen(str));
+}
+
+prb_LineIterator
+prb_createLineIter(void* ptr, int32_t len) {
+    prb_LineIterator iter = {.ptr = (uint8_t*)ptr, .len = len, .offset = 0, .line = 0, .lineLen = 0};
+    return iter;
+}
+
+prb_CompletionStatus
+prb_lineIterNext(prb_LineIterator* iter) {
+    prb_CompletionStatus result = prb_CompletionStatus_Failure;
+
+    // NOTE(khvorov) Skip newlines if we are on one
+    if (iter->offset < iter->len) {
+        for (;;) {
+            char ch = iter->ptr[iter->offset];
+            if (ch == '\n' || ch == '\r') {
+                iter->offset += 1;
+            } else {
+                break;
+            }
+            if (iter->offset == iter->len) {
+                break;
+            }
+        }
+    }
+
+    if (iter->offset < iter->len) {
+        iter->line = (char*)(iter->ptr + iter->offset);
+        iter->lineLen =
+            prb_strFindIndex(iter->line, -1, "\r\n", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
+        if (iter->lineLen == -1) {
+            iter->lineLen = iter->len - iter->offset;
+        }
+        iter->offset += iter->lineLen;
+        result = prb_CompletionStatus_Success;
+    }
+
+    return result;
 }
 
 //
@@ -1414,6 +1484,7 @@ prb_ProcessHandle
 prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath) {
     prb_ProcessHandle result = {};
 
+    // TODO(khvorov) Can we do this at compile time?
     if ((flags & prb_ProcessFlag_RedirectStdout) || (flags & prb_ProcessFlag_RedirectStderr)) {
         prb_assert(redirectFilepath);
     } else {

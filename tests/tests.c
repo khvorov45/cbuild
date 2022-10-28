@@ -21,9 +21,14 @@ test_printColor(void) {
 function void
 test_fileformat(void) {
     // TODO(khvorov) Make sure we can easily get to absolute path from getParentDir and such
-    // prb_Bytes fileContents = prb_readEntireFile("programmable_build.h");
-    // char*     fileContentsString = (char*)fileContents.data;
-    // TODO(khvorov) Implement
+    prb_Bytes        fileContents = prb_readEntireFile("programmable_build.h");
+    prb_LineIterator lineIter = prb_createLineIter(fileContents.data, fileContents.len);
+    while (prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success) {
+        if (prb_strStartsWith(lineIter.line, "// SECTION")) {
+            prb_writeToStdout(lineIter.line, lineIter.lineLen);
+            prb_writeToStdout("\n", 1);
+        }
+    }
 }
 
 int
