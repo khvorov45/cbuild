@@ -1484,7 +1484,6 @@ prb_ProcessHandle
 prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath) {
     prb_ProcessHandle result = {};
 
-    // TODO(khvorov) Can we do this at compile time?
     if ((flags & prb_ProcessFlag_RedirectStdout) || (flags & prb_ProcessFlag_RedirectStderr)) {
         prb_assert(redirectFilepath);
     } else {
