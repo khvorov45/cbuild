@@ -24,6 +24,9 @@ test_fileformat(void) {
     prb_Bytes        fileContents = prb_readEntireFile("programmable_build.h");
     prb_LineIterator lineIter = prb_createLineIter(fileContents.data, fileContents.len);
     while (prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success) {
+        // TODO(khvorov) Make sure every section has an implementation pair
+        // TODO(khvorov) Make sure the sections in the header go in the same order as in the implementation
+        // TODO(khvorov) Make sure the functions in the header go in the same order as in the implementation
         if (prb_strStartsWith(lineIter.line, "// SECTION")) {
             prb_writeToStdout(lineIter.line, lineIter.lineLen);
             prb_writeToStdout("\n", 1);
