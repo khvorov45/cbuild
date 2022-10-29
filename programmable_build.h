@@ -9,6 +9,15 @@ Don't forget to call prb_init() before doing anything.
 Note that all memory operations (such as string formatting) 
 are running off a linear allocator that is not thread-safe,
 (so don't call prb_fmt* from multiple threads, for example).
+
+Includes all of stb sprintf
+https://github.com/nothings/stb/blob/master/stb_sprintf.h
+
+and all of stb ds
+https://github.com/nothings/stb/blob/master/stb_ds.h
+
+Some libc replacement functions are simplified versions of their implementations in musl
+https://musl.libc.org/
 */
 
 // TODO(khvorov) Make sure utf8 paths work on windows
@@ -16,6 +25,9 @@ are running off a linear allocator that is not thread-safe,
 // TODO(khvorov) File search by regex + recursive
 // TODO(khvorov) Reorganise platform-specific stuff to be per-function probably
 // TODO(khvorov) Check declarations/implementation placement in tests probably
+
+#ifndef PROGRAMMABLE_BUILD_H
+#define PROGRAMMABLE_BUILD_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -112,23 +124,6 @@ are running off a linear allocator that is not thread-safe,
     #define prb_ATTRIBUTE_FORMAT(fmt, va)
 #endif
 
-// NOTE(khvorov) This will only work if we can actually allocate memory for the string.
-// Lacking memory is an extremely unlikely problem for this library, so this is probably fine.
-#define prb_printAndCrash() do {\
-    prb_fmtAndPrintlnColor(prb_ColorID_Red, "%s:%d assertion failure", __FILE__, __LINE__);\
-    prb_terminate(1);\
-} while (0);
-
-#ifdef prb_AssertAction_DebugBreak
-#if defined(prb_AssertAction_PrintAndCrash)
-#define prb_assertAction() prb_debugbreak(); prb_printAndCrash();
-#else
-#define prb_assertAction() prb_debugbreak()
-#endif
-#elif defined(prb_AssertAction_PrintAndCrash)
-#define prb_assertAction() prb_printAndCrash()
-#endif
-
 #ifndef prb_assertAction
 #define prb_assertAction() prb_debugbreak()
 #endif
@@ -222,8 +217,8 @@ typedef enum prb_StringFindDir {
 } prb_StringFindDir;
 
 typedef struct prb_LineIterator {
-    uint8_t* ptr;
-    int32_t  len;
+    uint8_t* dataPtr;
+    int32_t  dataLen;
     int32_t  offset;
     // Segment of the original data, not necessarily null-terminated
     char*   line;
@@ -236,10 +231,13 @@ void prb_terminate(int32_t code);
 
 // SECTION Memory
 void*   prb_memcpy(void* dest, const void* src, size_t n);
+void*   prb_memmove(void* dest, const void* src, size_t n);
+void*   prb_memset(void* dest, int32_t val, size_t n);
 bool    prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
 void*   prb_vmemAllocate(int32_t size);
 void    prb_alignPtr(void** ptr, int32_t align, int32_t* size);
 void*   prb_allocAndZero(int32_t size, int32_t align);
+void*   prb_realloc(void* ptr, int32_t size);
 void*   prb_globalArenaCurrentFreePtr(void);
 int32_t prb_globalArenaCurrentFreeSize(void);
 void*   prb_globalArenaAlignTo_(int32_t align);
@@ -275,7 +273,7 @@ bool    prb_strStartsWith(prb_String str1, prb_String str2);
 bool    prb_strEndsWith(prb_String str1, prb_String str2);
 int32_t prb_strFindIndex(
     prb_String         str,
-    int32_t            strEndIndex,
+    int32_t            onePastStrEndIndex,
     prb_String         pattern,
     prb_StringFindMode mode,
     prb_StringFindDir  dir
@@ -388,6 +386,282 @@ STBSP__PUBLICDEC int  STB_SPRINTF_DECORATE(vsprintfcb
 )(STBSP_SPRINTFCB* callback, void* user, char* buf, char const* fmt, va_list va);
 STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char period);
 
+//
+// SECTION stb ds
+//
+
+#if !defined(STBDS_REALLOC) && !defined(STBDS_FREE)
+    #define STBDS_REALLOC(c, p, s) prb_realloc(p, s)
+    #define STBDS_FREE(c, p)
+#endif
+
+#ifdef _MSC_VER
+    #define STBDS_NOTUSED(v) (void)(v)
+#else
+    #define STBDS_NOTUSED(v) (void)sizeof(v)
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// for security against attackers, seed the library with a random number, at least time() but stronger is better
+extern void stbds_rand_seed(size_t seed);
+
+// these are the hash functions used internally if you want to test them or use them for other purposes
+extern size_t stbds_hash_bytes(void* p, size_t len, size_t seed);
+extern size_t stbds_hash_string(char* str, size_t seed);
+
+// this is a simple string arena allocator, initialize with e.g. 'stbds_string_arena my_arena={0}'.
+typedef struct stbds_string_arena stbds_string_arena;
+extern char*                      stbds_stralloc(stbds_string_arena* a, char* str);
+extern void                       stbds_strreset(stbds_string_arena* a);
+
+///////////////
+//
+// Everything below here is implementation details
+//
+
+extern void* stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap);
+extern void  stbds_arrfreef(void* a);
+extern void  stbds_hmfree_func(void* p, size_t elemsize);
+extern void* stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
+extern void* stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode);
+extern void* stbds_hmput_default(void* a, size_t elemsize);
+extern void* stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
+extern void* stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode);
+extern void* stbds_shmode_func(size_t elemsize, int mode);
+
+#ifdef __cplusplus
+}
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+    #define STBDS_HAS_TYPEOF
+    #ifdef __cplusplus
+    //#define STBDS_HAS_LITERAL_ARRAY  // this is currently broken for clang
+    #endif
+#endif
+
+#if !defined(__cplusplus)
+    #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+        #define STBDS_HAS_LITERAL_ARRAY
+    #endif
+#endif
+
+// clang-format off
+// this macro takes the address of the argument, but on gcc/clang can accept rvalues
+#if defined(STBDS_HAS_LITERAL_ARRAY) && defined(STBDS_HAS_TYPEOF)
+  #if __clang__
+  #define STBDS_ADDRESSOF(typevar, value)     ((__typeof__(typevar)[1]){value}) // literal array decays to pointer to value
+  #else
+  #define STBDS_ADDRESSOF(typevar, value)     ((typeof(typevar)[1]){value}) // literal array decays to pointer to value
+  #endif
+#else
+#define STBDS_ADDRESSOF(typevar, value)     &(value)
+#endif
+
+#define STBDS_OFFSETOF(var,field)           ((char *) &(var)->field - (char *) (var))
+
+#define stbds_header(t)  ((stbds_array_header *) (t) - 1)
+#define stbds_temp(t)    stbds_header(t)->temp
+#define stbds_temp_key(t) (*(char **) stbds_header(t)->hash_table)
+
+#define stbds_arrsetcap(a,n)   (stbds_arrgrow(a,0,n))
+#define stbds_arrsetlen(a,n)   ((stbds_arrcap(a) < (size_t) (n) ? stbds_arrsetcap((a),(size_t)(n)),0 : 0), (a) ? stbds_header(a)->length = (size_t) (n) : 0)
+#define stbds_arrcap(a)        ((a) ? stbds_header(a)->capacity : 0)
+#define stbds_arrlen(a)        ((a) ? (ptrdiff_t) stbds_header(a)->length : 0)
+#define stbds_arrlenu(a)       ((a) ?             stbds_header(a)->length : 0)
+#define stbds_arrput(a,v)      (stbds_arrmaybegrow(a,1), (a)[stbds_header(a)->length++] = (v))
+#define stbds_arrpush          stbds_arrput  // synonym
+#define stbds_arrpop(a)        (stbds_header(a)->length--, (a)[stbds_header(a)->length])
+#define stbds_arraddn(a,n)     ((void)(stbds_arraddnindex(a, n)))    // deprecated, use one of the following instead:
+#define stbds_arraddnptr(a,n)  (stbds_arrmaybegrow(a,n), (n) ? (stbds_header(a)->length += (n), &(a)[stbds_header(a)->length-(n)]) : (a))
+#define stbds_arraddnindex(a,n)(stbds_arrmaybegrow(a,n), (n) ? (stbds_header(a)->length += (n), stbds_header(a)->length-(n)) : stbds_arrlen(a))
+#define stbds_arraddnoff       stbds_arraddnindex
+#define stbds_arrlast(a)       ((a)[stbds_header(a)->length-1])
+#define stbds_arrfree(a)       ((void) ((a) ? STBDS_FREE(NULL,stbds_header(a)) : (void)0), (a)=NULL)
+#define stbds_arrdel(a,i)      stbds_arrdeln(a,i,1)
+#define stbds_arrdeln(a,i,n)   (memmove(&(a)[i], &(a)[(i)+(n)], sizeof *(a) * (stbds_header(a)->length-(n)-(i))), stbds_header(a)->length -= (n))
+#define stbds_arrdelswap(a,i)  ((a)[i] = stbds_arrlast(a), stbds_header(a)->length -= 1)
+#define stbds_arrinsn(a,i,n)   (stbds_arraddn((a),(n)), memmove(&(a)[(i)+(n)], &(a)[i], sizeof *(a) * (stbds_header(a)->length-(n)-(i))))
+#define stbds_arrins(a,i,v)    (stbds_arrinsn((a),(i),1), (a)[i]=(v))
+
+#define stbds_arrmaybegrow(a,n)  ((!(a) || stbds_header(a)->length + (n) > stbds_header(a)->capacity) \
+                                  ? (stbds_arrgrow(a,n,0),0) : 0)
+
+#define stbds_arrgrow(a,b,c)   ((a) = stbds_arrgrowf_wrapper((a), sizeof *(a), (b), (c)))
+
+#define stbds_hmput(t, k, v) \
+    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), (void*) STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, 0),   \
+     (t)[stbds_temp((t)-1)].key = (k),    \
+     (t)[stbds_temp((t)-1)].value = (v))
+
+#define stbds_hmputs(t, s) \
+    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), &(s).key, sizeof (s).key, STBDS_HM_BINARY), \
+     (t)[stbds_temp((t)-1)] = (s))
+
+#define stbds_hmgeti(t,k) \
+    ((t) = stbds_hmget_key_wrapper((t), sizeof *(t), (void*) STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, STBDS_HM_BINARY), \
+      stbds_temp((t)-1))
+
+#define stbds_hmgeti_ts(t,k,temp) \
+    ((t) = stbds_hmget_key_ts_wrapper((t), sizeof *(t), (void*) STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, &(temp), STBDS_HM_BINARY), \
+      (temp))
+
+#define stbds_hmgetp(t, k) \
+    ((void) stbds_hmgeti(t,k), &(t)[stbds_temp((t)-1)])
+
+#define stbds_hmgetp_ts(t, k, temp) \
+    ((void) stbds_hmgeti_ts(t,k,temp), &(t)[temp])
+
+#define stbds_hmdel(t,k) \
+    (((t) = stbds_hmdel_key_wrapper((t),sizeof *(t), (void*) STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, STBDS_OFFSETOF((t),key), STBDS_HM_BINARY)),(t)?stbds_temp((t)-1):0)
+
+#define stbds_hmdefault(t, v) \
+    ((t) = stbds_hmput_default_wrapper((t), sizeof *(t)), (t)[-1].value = (v))
+
+#define stbds_hmdefaults(t, s) \
+    ((t) = stbds_hmput_default_wrapper((t), sizeof *(t)), (t)[-1] = (s))
+
+#define stbds_hmfree(p)        \
+    ((void) ((p) != NULL ? stbds_hmfree_func((p)-1,sizeof*(p)),0 : 0),(p)=NULL)
+
+#define stbds_hmgets(t, k)    (*stbds_hmgetp(t,k))
+#define stbds_hmget(t, k)     (stbds_hmgetp(t,k)->value)
+#define stbds_hmget_ts(t, k, temp)  (stbds_hmgetp_ts(t,k,temp)->value)
+#define stbds_hmlen(t)        ((t) ? (ptrdiff_t) stbds_header((t)-1)->length-1 : 0)
+#define stbds_hmlenu(t)       ((t) ?             stbds_header((t)-1)->length-1 : 0)
+#define stbds_hmgetp_null(t,k)  (stbds_hmgeti(t,k) == -1 ? NULL : &(t)[stbds_temp((t)-1)])
+
+#define stbds_shput(t, k, v) \
+    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (t)->key, STBDS_HM_STRING),   \
+     (t)[stbds_temp((t)-1)].value = (v))
+
+#define stbds_shputi(t, k, v) \
+    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (t)->key, STBDS_HM_STRING),   \
+     (t)[stbds_temp((t)-1)].value = (v), stbds_temp((t)-1))
+
+#define stbds_shputs(t, s) \
+    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (s).key, sizeof (s).key, STBDS_HM_STRING), \
+     (t)[stbds_temp((t)-1)] = (s), \
+     (t)[stbds_temp((t)-1)].key = stbds_temp_key((t)-1)) // above line overwrites whole structure, so must rewrite key here if it was allocated internally
+
+#define stbds_pshput(t, p) \
+    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (p)->key, sizeof (p)->key, STBDS_HM_PTR_TO_STRING), \
+     (t)[stbds_temp((t)-1)] = (p))
+
+#define stbds_shgeti(t,k) \
+     ((t) = stbds_hmget_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (t)->key, STBDS_HM_STRING), \
+      stbds_temp((t)-1))
+
+#define stbds_pshgeti(t,k) \
+     ((t) = stbds_hmget_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (*(t))->key, STBDS_HM_PTR_TO_STRING), \
+      stbds_temp((t)-1))
+
+#define stbds_shgetp(t, k) \
+    ((void) stbds_shgeti(t,k), &(t)[stbds_temp((t)-1)])
+
+#define stbds_pshget(t, k) \
+    ((void) stbds_pshgeti(t,k), (t)[stbds_temp((t)-1)])
+
+#define stbds_shdel(t,k) \
+    (((t) = stbds_hmdel_key_wrapper((t),sizeof *(t), (void*) (k), sizeof (t)->key, STBDS_OFFSETOF((t),key), STBDS_HM_STRING)),(t)?stbds_temp((t)-1):0)
+#define stbds_pshdel(t,k) \
+    (((t) = stbds_hmdel_key_wrapper((t),sizeof *(t), (void*) (k), sizeof (*(t))->key, STBDS_OFFSETOF(*(t),key), STBDS_HM_PTR_TO_STRING)),(t)?stbds_temp((t)-1):0)
+
+#define stbds_sh_new_arena(t)  \
+    ((t) = stbds_shmode_func_wrapper(t, sizeof *(t), STBDS_SH_ARENA))
+#define stbds_sh_new_strdup(t) \
+    ((t) = stbds_shmode_func_wrapper(t, sizeof *(t), STBDS_SH_STRDUP))
+
+#define stbds_shdefault(t, v)  stbds_hmdefault(t,v)
+#define stbds_shdefaults(t, s) stbds_hmdefaults(t,s)
+
+#define stbds_shfree       stbds_hmfree
+#define stbds_shlenu       stbds_hmlenu
+
+#define stbds_shgets(t, k) (*stbds_shgetp(t,k))
+#define stbds_shget(t, k)  (stbds_shgetp(t,k)->value)
+#define stbds_shgetp_null(t,k)  (stbds_shgeti(t,k) == -1 ? NULL : &(t)[stbds_temp((t)-1)])
+#define stbds_shlen        stbds_hmlen
+
+// clang-format on
+
+typedef struct {
+    size_t    length;
+    size_t    capacity;
+    void*     hash_table;
+    ptrdiff_t temp;
+} stbds_array_header;
+
+typedef struct stbds_string_block {
+    struct stbds_string_block* next;
+    char                       storage[8];
+} stbds_string_block;
+
+struct stbds_string_arena {
+    stbds_string_block* storage;
+    size_t              remaining;
+    unsigned char       block;
+    unsigned char       mode;  // this isn't used by the string arena itself
+};
+
+#define STBDS_HM_BINARY 0
+#define STBDS_HM_STRING 1
+
+enum { STBDS_SH_NONE, STBDS_SH_DEFAULT, STBDS_SH_STRDUP, STBDS_SH_ARENA };
+
+#ifdef __cplusplus
+// in C we use implicit assignment from these void*-returning functions to T*.
+// in C++ these templates make the same code work
+template<class T>
+static T*
+stbds_arrgrowf_wrapper(T* a, size_t elemsize, size_t addlen, size_t min_cap) {
+    return (T*)stbds_arrgrowf((void*)a, elemsize, addlen, min_cap);
+}
+template<class T>
+static T*
+stbds_hmget_key_wrapper(T* a, size_t elemsize, void* key, size_t keysize, int mode) {
+    return (T*)stbds_hmget_key((void*)a, elemsize, key, keysize, mode);
+}
+template<class T>
+static T*
+stbds_hmget_key_ts_wrapper(T* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode) {
+    return (T*)stbds_hmget_key_ts((void*)a, elemsize, key, keysize, temp, mode);
+}
+template<class T>
+static T*
+stbds_hmput_default_wrapper(T* a, size_t elemsize) {
+    return (T*)stbds_hmput_default((void*)a, elemsize);
+}
+template<class T>
+static T*
+stbds_hmput_key_wrapper(T* a, size_t elemsize, void* key, size_t keysize, int mode) {
+    return (T*)stbds_hmput_key((void*)a, elemsize, key, keysize, mode);
+}
+template<class T>
+static T*
+stbds_hmdel_key_wrapper(T* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode) {
+    return (T*)stbds_hmdel_key((void*)a, elemsize, key, keysize, keyoffset, mode);
+}
+template<class T>
+static T*
+stbds_shmode_func_wrapper(T*, size_t elemsize, int mode) {
+    return (T*)stbds_shmode_func(elemsize, mode);
+}
+#else
+    #define stbds_arrgrowf_wrapper stbds_arrgrowf
+    #define stbds_hmget_key_wrapper stbds_hmget_key
+    #define stbds_hmget_key_ts_wrapper stbds_hmget_key_ts
+    #define stbds_hmput_default_wrapper stbds_hmput_default
+    #define stbds_hmput_key_wrapper stbds_hmput_key
+    #define stbds_hmdel_key_wrapper stbds_hmdel_key
+    #define stbds_shmode_func_wrapper(t, e, m) stbds_shmode_func(e, m)
+#endif
+
+#endif  // PROGRAMMABLE_BUILD_H
+
 #ifdef PRB_IMPLEMENTATION
 
 //
@@ -409,17 +683,17 @@ prb_init(int32_t virtualMemoryBytesToUse) {
 
 void
 prb_terminate(int32_t code) {
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
-        #error unimplemented
+    #error unimplemented
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     _exit(code);
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 }
 
 //
@@ -432,6 +706,37 @@ prb_memcpy(void* dest, const void* src, size_t n) {
     uint8_t* s = (uint8_t*)src;
     for (; n; n--) {
         *d++ = *s++;
+    }
+    return dest;
+}
+
+void*
+prb_memmove(void* dest, const void* src, size_t n) {
+    char*       d = (char*)dest;
+    const char* s = (const char*)src;
+
+    if (d != s) {
+        if ((uintptr_t)s - (uintptr_t)d - n <= -2 * n) {
+            d = (char*)prb_memcpy(d, s, n);
+        } else {
+            if (d < s) {
+                for (; n; n--)
+                    *d++ = *s++;
+            } else {
+                while (n)
+                    n--, d[n] = s[n];
+            }
+        }
+    }
+
+    return d;
+}
+
+void*
+prb_memset(void* dest, int32_t val, size_t n) {
+    uint8_t* d = (uint8_t*)dest;
+    for (size_t index = 0; index < n; index++) {
+        d[index] = val;
     }
     return dest;
 }
@@ -449,21 +754,21 @@ prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes) {
 
 void*
 prb_vmemAllocate(int32_t size) {
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
     void* ptr = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     prb_assert(ptr);
     return ptr;
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     prb_assert(ptr != MAP_FAILED);
     return ptr;
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 }
 
 void
@@ -485,6 +790,15 @@ prb_allocAndZero(int32_t size, int32_t align) {
     void* result = prb_globalArenaAlignTo_(align);
     prb_assert(prb_globalArenaCurrentFreeSize() >= size);
     prb_globalState.arena.used += size;
+    return result;
+}
+
+void*
+prb_realloc(void* ptr, int32_t size) {
+    void* result = prb_allocAndZero(size, prb_alignof(void*));
+    if (ptr) {
+        prb_memcpy(result, ptr, size);
+    }
     return result;
 }
 
@@ -518,7 +832,7 @@ prb_isDirectory(prb_String path) {
     prb_assert(path && pathlen > 0);
     bool result = false;
 
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
     prb_String pathNoTrailingSlash = path;
     char       lastChar = path.ptr[path.len - 1];
@@ -532,7 +846,7 @@ prb_isDirectory(prb_String path) {
         result = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
     }
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     // TODO(khvorov) Test trailing slash
     struct stat statBuf = {};
@@ -540,9 +854,9 @@ prb_isDirectory(prb_String path) {
         result = S_ISDIR(statBuf.st_mode);
     }
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 
     return result;
 }
@@ -553,11 +867,11 @@ prb_isFile(prb_String path) {
     prb_assert(path && pathlen > 0);
     bool result = false;
 
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
-        #error unimplemented
+    #error unimplemented
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     struct stat statBuf = {};
     if (stat(path, &statBuf) == 0) {
@@ -565,9 +879,9 @@ prb_isFile(prb_String path) {
         result = true;
     }
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 
     return result;
 }
@@ -577,7 +891,7 @@ prb_directoryIsEmpty(prb_String path) {
     prb_assert(prb_isDirectory(path));
     bool result = true;
 
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
     prb_String       search = prb_pathJoin2(path, prb_STR("*"));
     WIN32_FIND_DATAA findData;
@@ -593,7 +907,7 @@ prb_directoryIsEmpty(prb_String path) {
         }
     }
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     DIR* pathHandle = opendir(path);
     prb_assert(pathHandle);
@@ -607,29 +921,29 @@ prb_directoryIsEmpty(prb_String path) {
     }
     closedir(pathHandle);
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 
     return result;
 }
 
 void
 prb_createDirIfNotExists(prb_String path) {
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
     // TODO(khvorov) Check error
     CreateDirectory(path.ptr, 0);
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     if (mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO) == -1) {
         prb_assert(prb_isDirectory(path));
     }
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 }
 
 void
@@ -645,22 +959,22 @@ void
 prb_removeFileIfExists(prb_String path) {
     prb_assert(!prb_isDirectory(path));
 
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
-        #error unimplemented
+    #error unimplemented
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     unlink(path);
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 }
 
 void
 prb_removeDirectoryIfExists(prb_String path) {
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
     prb_StringBuilder doubleNullBuilder = prb_createStringBuilder(path.len + 2);
     prb_stringBuilderWrite(&doubleNullBuilder, path);
@@ -670,7 +984,7 @@ prb_removeDirectoryIfExists(prb_String path) {
         .fFlags = FOF_NO_UI,
     });
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     DIR* pathHandle = opendir(path);
     if (pathHandle) {
@@ -687,9 +1001,9 @@ prb_removeDirectoryIfExists(prb_String path) {
         prb_assert(rmdirResult == 0);
     }
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 }
 
 void
@@ -700,7 +1014,7 @@ prb_clearDirectory(prb_String path) {
 
 prb_String
 prb_getCurrentWorkingDir(void) {
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
     // TODO(khvorov) Make sure long paths work
     // TODO(khvorov) Check error
@@ -709,16 +1023,16 @@ prb_getCurrentWorkingDir(void) {
     GetCurrentDirectoryA(maxLen, ptr);
     return ptr;
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     int32_t maxLen = PATH_MAX + 1;
     char*   ptr = (char*)prb_allocAndZero(maxLen, 1);
     prb_assert(getcwd(ptr, maxLen));
     return ptr;
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 }
 
 prb_String
@@ -775,11 +1089,11 @@ prb_StringArray
 prb_getAllMatches(prb_String pattern) {
     prb_StringArray result = {};
 
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
-        #error unimplemented
+    #error unimplemented
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     glob_t globResult = {};
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
@@ -794,9 +1108,9 @@ prb_getAllMatches(prb_String pattern) {
     }
     globfree(&globResult);
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 
     return result;
 }
@@ -805,7 +1119,7 @@ uint64_t
 prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     uint64_t result = 0;
 
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
     WIN32_FIND_DATAA findData = {};
     HANDLE           firstHandle = FindFirstFileA(pattern, &findData);
@@ -821,7 +1135,7 @@ prb_getLatestLastModifiedFromPattern(prb_String pattern) {
         FindClose(firstHandle);
     }
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     glob_t globResult = {};
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
@@ -837,9 +1151,9 @@ prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     }
     globfree(&globResult);
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 
     return result;
 }
@@ -848,7 +1162,7 @@ uint64_t
 prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     uint64_t result = UINT64_MAX;
 
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
     WIN32_FIND_DATAA findData;
     HANDLE           firstHandle = FindFirstFileA(pattern, &findData);
@@ -866,7 +1180,7 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
         result = 0;
     }
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     glob_t globResult = {};
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
@@ -884,9 +1198,9 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     }
     globfree(&globResult);
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 
     return result;
 }
@@ -919,11 +1233,11 @@ prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement)
 
 prb_Bytes
 prb_readEntireFile(prb_String path) {
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
-        #error unimplemented
+    #error unimplemented
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     int32_t handle = open(path, O_RDONLY, 0);
     prb_assert(handle != -1);
@@ -936,18 +1250,18 @@ prb_readEntireFile(prb_String path) {
     prb_Bytes result = {buf, readResult};
     return result;
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 }
 
 void
 prb_writeEntireFile(prb_String path, prb_Bytes content) {
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
-        #error unimplemented
+    #error unimplemented
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     int32_t handle = open(path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
     prb_assert(handle != -1);
@@ -955,9 +1269,9 @@ prb_writeEntireFile(prb_String path, prb_Bytes content) {
     prb_assert(writeResult == content.len);
     close(handle);
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 }
 
 void
@@ -1036,7 +1350,7 @@ prb_strEndsWith(prb_String str1, prb_String str2) {
 int32_t
 prb_strFindIndex(
     prb_String         str,
-    int32_t            strEndIndex,
+    int32_t            onePastStrEndIndex,
     prb_String         pattern,
     prb_StringFindMode mode,
     prb_StringFindDir  dir
@@ -1072,9 +1386,9 @@ prb_strFindIndex(
 
                 for (int32_t j = 0;;) {
                     bool notEnoughStrLeft = false;
-                    for (int32_t strIndex = 0; strIndex < patlen; strIndex++) {
+                    for (int32_t strIndex = j; strIndex < j + patlen; strIndex++) {
                         char testCh = str[strIndex];
-                        if (testCh == '\0' || strIndex == strEndIndex) {
+                        if (testCh == '\0' || strIndex == onePastStrEndIndex) {
                             notEnoughStrLeft = true;
                             break;
                         }
@@ -1097,13 +1411,13 @@ prb_strFindIndex(
             case prb_StringFindMode_AnyChar: {
                 int32_t searchStartIndex = 0;
                 int32_t onePastSearchEndIndex = INT32_MAX;
-                if (strEndIndex >= 0 && strEndIndex < INT32_MAX) {
-                    onePastSearchEndIndex = strEndIndex + 1;
+                if (onePastStrEndIndex >= 0 && onePastStrEndIndex < INT32_MAX) {
+                    onePastSearchEndIndex = onePastStrEndIndex;
                 }
                 int32_t searchIndexDelta = 1;
                 if (dir == prb_StringFindDir_FromEnd) {
-                    searchStartIndex = strEndIndex;
-                    if (strEndIndex < 0 || strEndIndex == INT32_MAX) {
+                    searchStartIndex = onePastStrEndIndex - 1;
+                    if (onePastStrEndIndex < 0 || onePastStrEndIndex == INT32_MAX) {
                         searchStartIndex = prb_strlen(str) - 1;
                     }
                     onePastSearchEndIndex = -1;
@@ -1360,19 +1674,19 @@ prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args) {
 
 void
 prb_writeToStdout(prb_String msg, int32_t len) {
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
     HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
     WriteFile(out, msg.ptr, msg.len, 0, 0);
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     ssize_t writeResult = write(STDOUT_FILENO, msg, len);
     prb_assert(writeResult == len);
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 }
 
 void
@@ -1399,7 +1713,7 @@ prb_resetPrintColor() {
 
 prb_LineIterator
 prb_createLineIter(void* ptr, int32_t len) {
-    prb_LineIterator iter = {.ptr = (uint8_t*)ptr, .len = len, .offset = 0, .line = 0, .lineLen = 0};
+    prb_LineIterator iter = {.dataPtr = (uint8_t*)ptr, .dataLen = len, .offset = 0, .line = 0, .lineLen = 0};
     return iter;
 }
 
@@ -1408,26 +1722,26 @@ prb_lineIterNext(prb_LineIterator* iter) {
     prb_CompletionStatus result = prb_CompletionStatus_Failure;
 
     // NOTE(khvorov) Skip newlines if we are on one
-    if (iter->offset < iter->len) {
+    if (iter->offset < iter->dataLen) {
         for (;;) {
-            char ch = iter->ptr[iter->offset];
+            char ch = iter->dataPtr[iter->offset];
             if (ch == '\n' || ch == '\r') {
                 iter->offset += 1;
             } else {
                 break;
             }
-            if (iter->offset == iter->len) {
+            if (iter->offset == iter->dataLen) {
                 break;
             }
         }
     }
 
-    if (iter->offset < iter->len) {
-        iter->line = (char*)(iter->ptr + iter->offset);
+    if (iter->offset < iter->dataLen) {
+        iter->line = (char*)(iter->dataPtr + iter->offset);
         iter->lineLen =
             prb_strFindIndex(iter->line, -1, "\r\n", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
         if (iter->lineLen == -1) {
-            iter->lineLen = iter->len - iter->offset;
+            iter->lineLen = iter->dataLen - iter->offset;
         }
         iter->offset += iter->lineLen;
         result = prb_CompletionStatus_Success;
@@ -1489,7 +1803,7 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
         prb_assert(redirectFilepath == 0);
     }
 
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
     STARTUPINFOA        startupInfo = {.cb = sizeof(STARTUPINFOA)};
     PROCESS_INFORMATION processInfo;
@@ -1503,9 +1817,9 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
         }
     }
 
-        #error unimplemented
+    #error unimplemented
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     bool                        fileActionsSucceeded = true;
     posix_spawn_file_actions_t* fileActionsPtr = 0;
@@ -1557,9 +1871,9 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
         }
     }
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 
     return result;
 }
@@ -1568,11 +1882,11 @@ prb_CompletionStatus
 prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
     prb_CompletionStatus result = prb_CompletionStatus_Success;
 
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
-        #error unimplemented
+    #error unimplemented
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     for (int32_t handleIndex = 0; handleIndex < handleCount; handleIndex++) {
         prb_ProcessHandle* handle = handles + handleIndex;
@@ -1593,9 +1907,9 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
         }
     }
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 
     return result;
 }
@@ -1608,11 +1922,11 @@ prb_TimeStart
 prb_timeStart(void) {
     prb_TimeStart result = {};
 
-    #if prb_PLATFORM_WINDOWS
+#if prb_PLATFORM_WINDOWS
 
-        #error unimplemented
+    #error unimplemented
 
-    #elif prb_PLATFORM_LINUX
+#elif prb_PLATFORM_LINUX
 
     struct timespec tp = {};
     if (clock_gettime(CLOCK_MONOTONIC, &tp) == 0) {
@@ -1621,9 +1935,9 @@ prb_timeStart(void) {
         result.valid = true;
     }
 
-    #else
-        #error unimplemented
-    #endif
+#else
+    #error unimplemented
+#endif
 
     return result;
 }
@@ -1643,40 +1957,40 @@ prb_getMsFrom(prb_TimeStart timeStart) {
 // SECTION stb snprintf (implementation)
 //
 
-    #define stbsp__uint32 unsigned int
-    #define stbsp__int32 signed int
+#define stbsp__uint32 unsigned int
+#define stbsp__int32 signed int
 
-    #ifdef _MSC_VER
-        #define stbsp__uint64 unsigned __int64
-        #define stbsp__int64 signed __int64
+#ifdef _MSC_VER
+    #define stbsp__uint64 unsigned __int64
+    #define stbsp__int64 signed __int64
+#else
+    #define stbsp__uint64 unsigned long long
+    #define stbsp__int64 signed long long
+#endif
+#define stbsp__uint16 unsigned short
+
+#ifndef stbsp__uintptr
+    #if defined(__ppc64__) || defined(__powerpc64__) || defined(__aarch64__) || defined(_M_X64) || defined(__x86_64__) \
+        || defined(__x86_64) || defined(__s390x__)
+        #define stbsp__uintptr stbsp__uint64
     #else
-        #define stbsp__uint64 unsigned long long
-        #define stbsp__int64 signed long long
+        #define stbsp__uintptr stbsp__uint32
     #endif
-    #define stbsp__uint16 unsigned short
+#endif
 
-    #ifndef stbsp__uintptr
-        #if defined(__ppc64__) || defined(__powerpc64__) || defined(__aarch64__) || defined(_M_X64) \
-            || defined(__x86_64__) || defined(__x86_64) || defined(__s390x__)
-            #define stbsp__uintptr stbsp__uint64
-        #else
-            #define stbsp__uintptr stbsp__uint32
-        #endif
+#ifndef STB_SPRINTF_MSVC_MODE  // used for MSVC2013 and earlier (MSVC2015 matches GCC)
+    #if defined(_MSC_VER) && (_MSC_VER < 1900)
+        #define STB_SPRINTF_MSVC_MODE
     #endif
+#endif
 
-    #ifndef STB_SPRINTF_MSVC_MODE  // used for MSVC2013 and earlier (MSVC2015 matches GCC)
-        #if defined(_MSC_VER) && (_MSC_VER < 1900)
-            #define STB_SPRINTF_MSVC_MODE
-        #endif
-    #endif
+#ifdef STB_SPRINTF_NOUNALIGNED  // define this before inclusion to force stbsp_sprintf to always use aligned accesses
+    #define STBSP__UNALIGNED(code)
+#else
+    #define STBSP__UNALIGNED(code) code
+#endif
 
-    #ifdef STB_SPRINTF_NOUNALIGNED  // define this before inclusion to force stbsp_sprintf to always use aligned accesses
-        #define STBSP__UNALIGNED(code)
-    #else
-        #define STBSP__UNALIGNED(code) code
-    #endif
-
-    #ifndef STB_SPRINTF_NOFLOAT
+#ifndef STB_SPRINTF_NOFLOAT
 // internal float utility functions
 static stbsp__int32 stbsp__real_to_str(
     char const**   start,
@@ -1687,8 +2001,8 @@ static stbsp__int32 stbsp__real_to_str(
     stbsp__uint32  frac_digits
 );
 static stbsp__int32 stbsp__real_to_parts(stbsp__int64* bits, stbsp__int32* expo, double value);
-        #define STBSP__SPECIAL 0x7000
-    #endif
+    #define STBSP__SPECIAL 0x7000
+#endif
 
 static char stbsp__period = '.';
 static char stbsp__comma = ',';
@@ -1708,19 +2022,19 @@ STB_SPRINTF_DECORATE(set_separators)(char pcomma, char pperiod) {
     stbsp__comma = pcomma;
 }
 
-    #define STBSP__LEFTJUST 1
-    #define STBSP__LEADINGPLUS 2
-    #define STBSP__LEADINGSPACE 4
-    #define STBSP__LEADING_0X 8
-    #define STBSP__LEADINGZERO 16
-    #define STBSP__INTMAX 32
-    #define STBSP__TRIPLET_COMMA 64
-    #define STBSP__NEGATIVE 128
-    #define STBSP__METRIC_SUFFIX 256
-    #define STBSP__HALFWIDTH 512
-    #define STBSP__METRIC_NOSPACE 1024
-    #define STBSP__METRIC_1024 2048
-    #define STBSP__METRIC_JEDEC 4096
+#define STBSP__LEFTJUST 1
+#define STBSP__LEADINGPLUS 2
+#define STBSP__LEADINGSPACE 4
+#define STBSP__LEADING_0X 8
+#define STBSP__LEADINGZERO 16
+#define STBSP__INTMAX 32
+#define STBSP__TRIPLET_COMMA 64
+#define STBSP__NEGATIVE 128
+#define STBSP__METRIC_SUFFIX 256
+#define STBSP__HALFWIDTH 512
+#define STBSP__METRIC_NOSPACE 1024
+#define STBSP__METRIC_1024 2048
+#define STBSP__METRIC_JEDEC 4096
 
 static void
 stbsp__lead_sign(stbsp__uint32 fl, char* sign) {
@@ -1791,31 +2105,31 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
         stbsp__int32  fw, pr, tz;
         stbsp__uint32 fl;
 
-    // macros for the callback buffer stuff
-    #define stbsp__chk_cb_bufL(bytes) \
-        { \
-            int len = (int)(bf - buf); \
-            if ((len + (bytes)) >= STB_SPRINTF_MIN) { \
-                tlen += len; \
-                if (0 == (bf = buf = callback(buf, user, len))) \
-                    goto done; \
-            } \
-        }
-    #define stbsp__chk_cb_buf(bytes) \
-        { \
-            if (callback) { \
-                stbsp__chk_cb_bufL(bytes); \
-            } \
-        }
-    #define stbsp__flush_cb() \
-        { stbsp__chk_cb_bufL(STB_SPRINTF_MIN - 1); }  // flush if there is even one byte in the buffer
-    #define stbsp__cb_buf_clamp(cl, v) \
-        cl = v; \
+// macros for the callback buffer stuff
+#define stbsp__chk_cb_bufL(bytes) \
+    { \
+        int len = (int)(bf - buf); \
+        if ((len + (bytes)) >= STB_SPRINTF_MIN) { \
+            tlen += len; \
+            if (0 == (bf = buf = callback(buf, user, len))) \
+                goto done; \
+        } \
+    }
+#define stbsp__chk_cb_buf(bytes) \
+    { \
         if (callback) { \
-            int lg = STB_SPRINTF_MIN - (int)(bf - buf); \
-            if (cl > lg) \
-                cl = lg; \
-        }
+            stbsp__chk_cb_bufL(bytes); \
+        } \
+    }
+#define stbsp__flush_cb() \
+    { stbsp__chk_cb_bufL(STB_SPRINTF_MIN - 1); }  // flush if there is even one byte in the buffer
+#define stbsp__cb_buf_clamp(cl, v) \
+    cl = v; \
+    if (callback) { \
+        int lg = STB_SPRINTF_MIN - (int)(bf - buf); \
+        if (cl > lg) \
+            cl = lg; \
+    }
 
         // fast copy everything up to the next % (or end of string)
         for (;;) {
@@ -1844,14 +2158,14 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 if (callback)
                     if ((STB_SPRINTF_MIN - (int)(bf - buf)) < 4)
                         goto schk1;
-    #ifdef STB_SPRINTF_NOUNALIGNED
+#ifdef STB_SPRINTF_NOUNALIGNED
                 if (((stbsp__uintptr)bf) & 3) {
                     bf[0] = f[0];
                     bf[1] = f[1];
                     bf[2] = f[2];
                     bf[3] = f[3];
                 } else
-    #endif
+#endif
                 {
                     *(stbsp__uint32*)bf = v;
                 }
@@ -1999,7 +2313,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
 
         // handle each replacement
         switch (f[0]) {
-    #define STBSP__NUMSZ 512  // big enough for e308 (with commas) or e-307
+#define STBSP__NUMSZ 512  // big enough for e308 (with commas) or e-307
             char          num[STBSP__NUMSZ];
             char          lead[8];
             char          tail[8];
@@ -2007,9 +2321,9 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
             char const*   h;
             stbsp__uint32 l, n, cs;
             stbsp__uint64 n64;
-    #ifndef STB_SPRINTF_NOFLOAT
+#ifndef STB_SPRINTF_NOFLOAT
             double fv;
-    #endif
+#endif
             stbsp__int32 dp;
             char const*  sn;
 
@@ -2047,7 +2361,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 *d = tlen + (int)(bf - buf);
             } break;
 
-    #ifdef STB_SPRINTF_NOFLOAT
+#ifdef STB_SPRINTF_NOFLOAT
             case 'A':  // float
             case 'a':  // hex float
             case 'G':  // float
@@ -2064,7 +2378,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 cs = 0;
                 STBSP__NOTUSED(dp);
                 goto scopy;
-    #else
+#else
             case 'A':  // hex float
             case 'a':  // hex float
                 h = (f[0] == 'A') ? hexu : hex;
@@ -2088,14 +2402,14 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                     n64 += ((((stbsp__uint64)8) << 56) >> (pr * 4));
                         // add leading chars
 
-        #ifdef STB_SPRINTF_MSVC_MODE
+    #ifdef STB_SPRINTF_MSVC_MODE
                 *s++ = '0';
                 *s++ = 'x';
-        #else
+    #else
                 lead[1 + lead[0]] = '0';
                 lead[2 + lead[0]] = 'x';
                 lead[0] += 2;
-        #endif
+    #endif
                 *s++ = h[(n64 >> 60) & 15];
                 n64 <<= 4;
                 if (pr)
@@ -2215,11 +2529,11 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                     dp = -dp;
                 } else
                     tail[2] = '+';
-        #ifdef STB_SPRINTF_MSVC_MODE
+    #ifdef STB_SPRINTF_MSVC_MODE
                 n = 5;
-        #else
+    #else
                 n = (dp >= 100) ? 5 : 4;
-        #endif
+    #endif
                 tail[0] = (char)n;
                 for (;;) {
                     tail[n] = '0' + dp % 10;
@@ -2402,7 +2716,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 l = (stbsp__uint32)(s - (num + 64));
                 s = num + 64;
                 goto scopy;
-    #endif
+#endif
 
             case 'B':  // upper binary
             case 'b':  // lower binary
@@ -2502,7 +2816,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                     }
                 }
 
-    #ifndef STB_SPRINTF_NOFLOAT
+#ifndef STB_SPRINTF_NOFLOAT
                 if (fl & STBSP__METRIC_SUFFIX) {
                     if (n64 < 1024)
                         pr = 0;
@@ -2511,7 +2825,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                     fv = (double)(stbsp__int64)n64;
                     goto doafloat;
                 }
-    #endif
+#endif
 
                 // convert to string
                 s = num + STBSP__NUMSZ;
@@ -2783,21 +3097,21 @@ done:
     return tlen + (int)(bf - buf);
 }
 
-    // cleanup
-    #undef STBSP__LEFTJUST
-    #undef STBSP__LEADINGPLUS
-    #undef STBSP__LEADINGSPACE
-    #undef STBSP__LEADING_0X
-    #undef STBSP__LEADINGZERO
-    #undef STBSP__INTMAX
-    #undef STBSP__TRIPLET_COMMA
-    #undef STBSP__NEGATIVE
-    #undef STBSP__METRIC_SUFFIX
-    #undef STBSP__NUMSZ
-    #undef stbsp__chk_cb_bufL
-    #undef stbsp__chk_cb_buf
-    #undef stbsp__flush_cb
-    #undef stbsp__cb_buf_clamp
+// cleanup
+#undef STBSP__LEFTJUST
+#undef STBSP__LEADINGPLUS
+#undef STBSP__LEADINGSPACE
+#undef STBSP__LEADING_0X
+#undef STBSP__LEADINGZERO
+#undef STBSP__INTMAX
+#undef STBSP__TRIPLET_COMMA
+#undef STBSP__NEGATIVE
+#undef STBSP__METRIC_SUFFIX
+#undef STBSP__NUMSZ
+#undef stbsp__chk_cb_bufL
+#undef stbsp__chk_cb_buf
+#undef stbsp__flush_cb
+#undef stbsp__cb_buf_clamp
 
 // ============================================================================
 //   wrapper functions
@@ -2903,15 +3217,15 @@ STB_SPRINTF_DECORATE(vsprintf)(char* buf, char const* fmt, va_list va) {
 // =======================================================================
 //   low level float utility functions
 
-    #ifndef STB_SPRINTF_NOFLOAT
+#ifndef STB_SPRINTF_NOFLOAT
 
-        // copies d to bits w/ strict aliasing (this compiles to nothing on /Ox)
-        #define STBSP__COPYFP(dest, src) \
-            { \
-                int cn; \
-                for (cn = 0; cn < 8; cn++) \
-                    ((char*)&dest)[cn] = ((char*)&src)[cn]; \
-            }
+    // copies d to bits w/ strict aliasing (this compiles to nothing on /Ox)
+    #define STBSP__COPYFP(dest, src) \
+        { \
+            int cn; \
+            for (cn = 0; cn < 8; cn++) \
+                ((char*)&dest)[cn] = ((char*)&src)[cn]; \
+        }
 
 // get float info
 static stbsp__int32
@@ -2976,7 +3290,7 @@ static double const stbsp__negtoperr[13] = {
     -9.436808465446358e-293,
     8.0970921678014997e-317};
 
-        #if defined(_MSC_VER) && (_MSC_VER <= 1200)
+    #if defined(_MSC_VER) && (_MSC_VER <= 1200)
 static stbsp__uint64 const stbsp__powten[20] = {
     1,
     10,
@@ -2998,8 +3312,8 @@ static stbsp__uint64 const stbsp__powten[20] = {
     100000000000000000,
     1000000000000000000,
     10000000000000000000U};
-            #define stbsp__tento19th ((stbsp__uint64)1000000000000000000)
-        #else
+        #define stbsp__tento19th ((stbsp__uint64)1000000000000000000)
+    #else
 static stbsp__uint64 const stbsp__powten[20] = {
     1,
     10,
@@ -3021,47 +3335,47 @@ static stbsp__uint64 const stbsp__powten[20] = {
     100000000000000000ULL,
     1000000000000000000ULL,
     10000000000000000000ULL};
-            #define stbsp__tento19th (1000000000000000000ULL)
-        #endif
+        #define stbsp__tento19th (1000000000000000000ULL)
+    #endif
 
-        #define stbsp__ddmulthi(oh, ol, xh, yh) \
-            { \
-                double       ahi = 0, alo, bhi = 0, blo; \
-                stbsp__int64 bt; \
-                oh = xh * yh; \
-                STBSP__COPYFP(bt, xh); \
-                bt &= ((~(stbsp__uint64)0) << 27); \
-                STBSP__COPYFP(ahi, bt); \
-                alo = xh - ahi; \
-                STBSP__COPYFP(bt, yh); \
-                bt &= ((~(stbsp__uint64)0) << 27); \
-                STBSP__COPYFP(bhi, bt); \
-                blo = yh - bhi; \
-                ol = ((ahi * bhi - oh) + ahi * blo + alo * bhi) + alo * blo; \
-            }
+    #define stbsp__ddmulthi(oh, ol, xh, yh) \
+        { \
+            double       ahi = 0, alo, bhi = 0, blo; \
+            stbsp__int64 bt; \
+            oh = xh * yh; \
+            STBSP__COPYFP(bt, xh); \
+            bt &= ((~(stbsp__uint64)0) << 27); \
+            STBSP__COPYFP(ahi, bt); \
+            alo = xh - ahi; \
+            STBSP__COPYFP(bt, yh); \
+            bt &= ((~(stbsp__uint64)0) << 27); \
+            STBSP__COPYFP(bhi, bt); \
+            blo = yh - bhi; \
+            ol = ((ahi * bhi - oh) + ahi * blo + alo * bhi) + alo * blo; \
+        }
 
-        #define stbsp__ddtoS64(ob, xh, xl) \
-            { \
-                double ahi = 0, alo, vh, t; \
-                ob = (stbsp__int64)xh; \
-                vh = (double)ob; \
-                ahi = (xh - vh); \
-                t = (ahi - xh); \
-                alo = (xh - (ahi - t)) - (vh + t); \
-                ob += (stbsp__int64)(ahi + alo + xl); \
-            }
+    #define stbsp__ddtoS64(ob, xh, xl) \
+        { \
+            double ahi = 0, alo, vh, t; \
+            ob = (stbsp__int64)xh; \
+            vh = (double)ob; \
+            ahi = (xh - vh); \
+            t = (ahi - xh); \
+            alo = (xh - (ahi - t)) - (vh + t); \
+            ob += (stbsp__int64)(ahi + alo + xl); \
+        }
 
-        #define stbsp__ddrenorm(oh, ol) \
-            { \
-                double s; \
-                s = oh + ol; \
-                ol = ol - (s - oh); \
-                oh = s; \
-            }
+    #define stbsp__ddrenorm(oh, ol) \
+        { \
+            double s; \
+            s = oh + ol; \
+            ol = ol - (s - oh); \
+            oh = s; \
+        }
 
-        #define stbsp__ddmultlo(oh, ol, xh, xl, yh, yl) ol = ol + (xh * yl + xl * yh);
+    #define stbsp__ddmultlo(oh, ol, xh, xl, yh, yl) ol = ol + (xh * yl + xl * yh);
 
-        #define stbsp__ddmultlos(oh, ol, xh, yl) ol = ol + (xh * yl);
+    #define stbsp__ddmultlos(oh, ol, xh, yl) ol = ol + (xh * yl);
 
 static void
 stbsp__raise_to_power10(double* ohi, double* olo, double d, stbsp__int32 power)  // power can be -323 to +350
@@ -3280,21 +3594,942 @@ stbsp__real_to_str(
     return ng;
 }
 
-        #undef stbsp__ddmulthi
-        #undef stbsp__ddrenorm
-        #undef stbsp__ddmultlo
-        #undef stbsp__ddmultlos
-        #undef STBSP__SPECIAL
-        #undef STBSP__COPYFP
+    #undef stbsp__ddmulthi
+    #undef stbsp__ddrenorm
+    #undef stbsp__ddmultlo
+    #undef stbsp__ddmultlos
+    #undef STBSP__SPECIAL
+    #undef STBSP__COPYFP
 
-    #endif  // STB_SPRINTF_NOFLOAT
+#endif  // STB_SPRINTF_NOFLOAT
 
-    // clean up
-    #undef stbsp__uint16
-    #undef stbsp__uint32
-    #undef stbsp__int32
-    #undef stbsp__uint64
-    #undef stbsp__int64
-    #undef STBSP__UNALIGNED
+// clean up
+#undef stbsp__uint16
+#undef stbsp__uint32
+#undef stbsp__int32
+#undef stbsp__uint64
+#undef stbsp__int64
+#undef STBSP__UNALIGNED
+
+//
+// SECTION stb ds (implementation)
+//
+
+#define STBDS_ASSERT(x) prb_assert(x)
+
+#ifdef STBDS_STATISTICS
+    #define STBDS_STATS(x) x
+size_t stbds_array_grow;
+size_t stbds_hash_grow;
+size_t stbds_hash_shrink;
+size_t stbds_hash_rebuild;
+size_t stbds_hash_probes;
+size_t stbds_hash_alloc;
+size_t stbds_rehash_probes;
+size_t stbds_rehash_items;
+#else
+    #define STBDS_STATS(x)
+#endif
+
+//
+// stbds_arr implementation
+//
+
+//int *prev_allocs[65536];
+//int num_prev;
+
+void*
+stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap) {
+    stbds_array_header temp = {};  // force debugging
+    void*              b;
+    size_t             min_len = stbds_arrlen(a) + addlen;
+    (void)sizeof(temp);
+
+    // compute the minimum capacity needed
+    if (min_len > min_cap)
+        min_cap = min_len;
+
+    if (min_cap <= stbds_arrcap(a))
+        return a;
+
+    // increase needed capacity to guarantee O(1) amortized
+    if (min_cap < 2 * stbds_arrcap(a))
+        min_cap = 2 * stbds_arrcap(a);
+    else if (min_cap < 4)
+        min_cap = 4;
+
+    //if (num_prev < 65536) if (a) prev_allocs[num_prev++] = (int *) ((char *) a+1);
+    //if (num_prev == 2201)
+    //  num_prev = num_prev;
+    b = STBDS_REALLOC(NULL, (a) ? stbds_header(a) : 0, elemsize * min_cap + sizeof(stbds_array_header));
+    //if (num_prev < 65536) prev_allocs[num_prev++] = (int *) (char *) b;
+    b = (char*)b + sizeof(stbds_array_header);
+    if (a == NULL) {
+        stbds_header(b)->length = 0;
+        stbds_header(b)->hash_table = 0;
+        stbds_header(b)->temp = 0;
+    } else {
+        STBDS_STATS(++stbds_array_grow);
+    }
+    stbds_header(b)->capacity = min_cap;
+
+    return b;
+}
+
+void
+stbds_arrfreef(void* a) {
+    STBDS_NOTUSED(a);
+    STBDS_FREE(NULL, stbds_header(a));
+}
+
+//
+// stbds_hm hash table implementation
+//
+
+#ifdef STBDS_INTERNAL_SMALL_BUCKET
+    #define STBDS_BUCKET_LENGTH 4
+#else
+    #define STBDS_BUCKET_LENGTH 8
+#endif
+
+#define STBDS_BUCKET_SHIFT (STBDS_BUCKET_LENGTH == 8 ? 3 : 2)
+#define STBDS_BUCKET_MASK (STBDS_BUCKET_LENGTH - 1)
+#define STBDS_CACHE_LINE_SIZE 64
+
+#define STBDS_ALIGN_FWD(n, a) (((n) + (a)-1) & ~((a)-1))
+
+typedef struct {
+    size_t    hash[STBDS_BUCKET_LENGTH];
+    ptrdiff_t index[STBDS_BUCKET_LENGTH];
+} stbds_hash_bucket;  // in 32-bit, this is one 64-byte cache line; in 64-bit, each array is one 64-byte cache line
+
+typedef struct {
+    char*              temp_key;  // this MUST be the first field of the hash table
+    size_t             slot_count;
+    size_t             used_count;
+    size_t             used_count_threshold;
+    size_t             used_count_shrink_threshold;
+    size_t             tombstone_count;
+    size_t             tombstone_count_threshold;
+    size_t             seed;
+    size_t             slot_count_log2;
+    stbds_string_arena string;
+    stbds_hash_bucket* storage;  // not a separate allocation, just 64-byte aligned storage after this struct
+} stbds_hash_index;
+
+#define STBDS_INDEX_EMPTY -1
+#define STBDS_INDEX_DELETED -2
+#define STBDS_INDEX_IN_USE(x) ((x) >= 0)
+
+#define STBDS_HASH_EMPTY 0
+#define STBDS_HASH_DELETED 1
+
+static size_t stbds_hash_seed = 0x31415926;
+
+void
+stbds_rand_seed(size_t seed) {
+    stbds_hash_seed = seed;
+}
+
+#define stbds_load_32_or_64(var, temp, v32, v64_hi, v64_lo) \
+    temp = v64_lo ^ v32, temp <<= 16, temp <<= 16, temp >>= 16, temp >>= 16, /* discard if 32-bit */ \
+        var = v64_hi, var <<= 16, var <<= 16, /* discard if 32-bit */ \
+        var ^= temp ^ v32
+
+#define STBDS_SIZE_T_BITS ((sizeof(size_t)) * 8)
+
+static size_t
+stbds_probe_position(size_t hash, size_t slot_count, size_t slot_log2) {
+    size_t pos;
+    STBDS_NOTUSED(slot_log2);
+    pos = hash & (slot_count - 1);
+#ifdef STBDS_INTERNAL_BUCKET_START
+    pos &= ~STBDS_BUCKET_MASK;
+#endif
+    return pos;
+}
+
+static size_t
+stbds_log2(size_t slot_count) {
+    size_t n = 0;
+    while (slot_count > 1) {
+        slot_count >>= 1;
+        ++n;
+    }
+    return n;
+}
+
+static stbds_hash_index*
+stbds_make_hash_index(size_t slot_count, stbds_hash_index* ot) {
+    stbds_hash_index* t;
+    t = (stbds_hash_index*)STBDS_REALLOC(
+        NULL,
+        0,
+        (slot_count >> STBDS_BUCKET_SHIFT) * sizeof(stbds_hash_bucket) + sizeof(stbds_hash_index)
+            + STBDS_CACHE_LINE_SIZE - 1
+    );
+    t->storage = (stbds_hash_bucket*)STBDS_ALIGN_FWD((size_t)(t + 1), STBDS_CACHE_LINE_SIZE);
+    t->slot_count = slot_count;
+    t->slot_count_log2 = stbds_log2(slot_count);
+    t->tombstone_count = 0;
+    t->used_count = 0;
+
+#if 0  // A1
+  t->used_count_threshold        = slot_count*12/16; // if 12/16th of table is occupied, grow
+  t->tombstone_count_threshold   = slot_count* 2/16; // if tombstones are 2/16th of table, rebuild
+  t->used_count_shrink_threshold = slot_count* 4/16; // if table is only 4/16th full, shrink
+#elif 1  // A2
+    //t->used_count_threshold        = slot_count*12/16; // if 12/16th of table is occupied, grow
+    //t->tombstone_count_threshold   = slot_count* 3/16; // if tombstones are 3/16th of table, rebuild
+    //t->used_count_shrink_threshold = slot_count* 4/16; // if table is only 4/16th full, shrink
+
+    // compute without overflowing
+    t->used_count_threshold = slot_count - (slot_count >> 2);
+    t->tombstone_count_threshold = (slot_count >> 3) + (slot_count >> 4);
+    t->used_count_shrink_threshold = slot_count >> 2;
+
+#elif 0  // B1
+    t->used_count_threshold = slot_count * 13 / 16;  // if 13/16th of table is occupied, grow
+    t->tombstone_count_threshold = slot_count * 2 / 16;  // if tombstones are 2/16th of table, rebuild
+    t->used_count_shrink_threshold = slot_count * 5 / 16;  // if table is only 5/16th full, shrink
+#else  // C1
+    t->used_count_threshold = slot_count * 14 / 16;  // if 14/16th of table is occupied, grow
+    t->tombstone_count_threshold = slot_count * 2 / 16;  // if tombstones are 2/16th of table, rebuild
+    t->used_count_shrink_threshold = slot_count * 6 / 16;  // if table is only 6/16th full, shrink
+#endif
+    // Following statistics were measured on a Core i7-6700 @ 4.00Ghz, compiled with clang 7.0.1 -O2
+    // Note that the larger tables have high variance as they were run fewer times
+    //     A1            A2          B1           C1
+    //    0.10ms :     0.10ms :     0.10ms :     0.11ms :      2,000 inserts creating 2K table
+    //    0.96ms :     0.95ms :     0.97ms :     1.04ms :     20,000 inserts creating 20K table
+    //   14.48ms :    14.46ms :    10.63ms :    11.00ms :    200,000 inserts creating 200K table
+    //  195.74ms :   196.35ms :   203.69ms :   214.92ms :  2,000,000 inserts creating 2M table
+    // 2193.88ms :  2209.22ms :  2285.54ms :  2437.17ms : 20,000,000 inserts creating 20M table
+    //   65.27ms :    53.77ms :    65.33ms :    65.47ms : 500,000 inserts & deletes in 2K table
+    //   72.78ms :    62.45ms :    71.95ms :    72.85ms : 500,000 inserts & deletes in 20K table
+    //   89.47ms :    77.72ms :    96.49ms :    96.75ms : 500,000 inserts & deletes in 200K table
+    //   97.58ms :    98.14ms :    97.18ms :    97.53ms : 500,000 inserts & deletes in 2M table
+    //  118.61ms :   119.62ms :   120.16ms :   118.86ms : 500,000 inserts & deletes in 20M table
+    //  192.11ms :   194.39ms :   196.38ms :   195.73ms : 500,000 inserts & deletes in 200M table
+
+    if (slot_count <= STBDS_BUCKET_LENGTH)
+        t->used_count_shrink_threshold = 0;
+    // to avoid infinite loop, we need to guarantee that at least one slot is empty and will terminate probes
+    STBDS_ASSERT(t->used_count_threshold + t->tombstone_count_threshold < t->slot_count);
+    STBDS_STATS(++stbds_hash_alloc);
+    if (ot) {
+        t->string = ot->string;
+        // reuse old seed so we can reuse old hashes so below "copy out old data" doesn't do any hashing
+        t->seed = ot->seed;
+    } else {
+        size_t a, b, temp;
+        prb_memset(&t->string, 0, sizeof(t->string));
+        t->seed = stbds_hash_seed;
+        // LCG
+        // in 32-bit, a =          2147001325   b =  715136305
+        // in 64-bit, a = 2862933555777941757   b = 3037000493
+        stbds_load_32_or_64(a, temp, 2147001325, 0x27bb2ee6, 0x87b0b0fd);
+        stbds_load_32_or_64(b, temp, 715136305, 0, 0xb504f32d);
+        stbds_hash_seed = stbds_hash_seed * a + b;
+    }
+
+    {
+        size_t i, j;
+        for (i = 0; i < slot_count >> STBDS_BUCKET_SHIFT; ++i) {
+            stbds_hash_bucket* b = &t->storage[i];
+            for (j = 0; j < STBDS_BUCKET_LENGTH; ++j)
+                b->hash[j] = STBDS_HASH_EMPTY;
+            for (j = 0; j < STBDS_BUCKET_LENGTH; ++j)
+                b->index[j] = STBDS_INDEX_EMPTY;
+        }
+    }
+
+    // copy out the old data, if any
+    if (ot) {
+        size_t i, j;
+        t->used_count = ot->used_count;
+        for (i = 0; i < ot->slot_count >> STBDS_BUCKET_SHIFT; ++i) {
+            stbds_hash_bucket* ob = &ot->storage[i];
+            for (j = 0; j < STBDS_BUCKET_LENGTH; ++j) {
+                if (STBDS_INDEX_IN_USE(ob->index[j])) {
+                    size_t hash = ob->hash[j];
+                    size_t pos = stbds_probe_position(hash, t->slot_count, t->slot_count_log2);
+                    size_t step = STBDS_BUCKET_LENGTH;
+                    STBDS_STATS(++stbds_rehash_items);
+                    for (;;) {
+                        size_t             limit, z;
+                        stbds_hash_bucket* bucket;
+                        bucket = &t->storage[pos >> STBDS_BUCKET_SHIFT];
+                        STBDS_STATS(++stbds_rehash_probes);
+
+                        for (z = pos & STBDS_BUCKET_MASK; z < STBDS_BUCKET_LENGTH; ++z) {
+                            if (bucket->hash[z] == 0) {
+                                bucket->hash[z] = hash;
+                                bucket->index[z] = ob->index[j];
+                                goto done;
+                            }
+                        }
+
+                        limit = pos & STBDS_BUCKET_MASK;
+                        for (z = 0; z < limit; ++z) {
+                            if (bucket->hash[z] == 0) {
+                                bucket->hash[z] = hash;
+                                bucket->index[z] = ob->index[j];
+                                goto done;
+                            }
+                        }
+
+                        pos += step;  // quadratic probing
+                        step += STBDS_BUCKET_LENGTH;
+                        pos &= (t->slot_count - 1);
+                    }
+                }
+            done:;
+            }
+        }
+    }
+
+    return t;
+}
+
+#define STBDS_ROTATE_LEFT(val, n) (((val) << (n)) | ((val) >> (STBDS_SIZE_T_BITS - (n))))
+#define STBDS_ROTATE_RIGHT(val, n) (((val) >> (n)) | ((val) << (STBDS_SIZE_T_BITS - (n))))
+
+size_t
+stbds_hash_string(char* str, size_t seed) {
+    size_t hash = seed;
+    while (*str)
+        hash = STBDS_ROTATE_LEFT(hash, 9) + (unsigned char)*str++;
+
+    // Thomas Wang 64-to-32 bit mix function, hopefully also works in 32 bits
+    hash ^= seed;
+    hash = (~hash) + (hash << 18);
+    hash ^= hash ^ STBDS_ROTATE_RIGHT(hash, 31);
+    hash = hash * 21;
+    hash ^= hash ^ STBDS_ROTATE_RIGHT(hash, 11);
+    hash += (hash << 6);
+    hash ^= STBDS_ROTATE_RIGHT(hash, 22);
+    return hash + seed;
+}
+
+#ifdef STBDS_SIPHASH_2_4
+    #define STBDS_SIPHASH_C_ROUNDS 2
+    #define STBDS_SIPHASH_D_ROUNDS 4
+typedef int STBDS_SIPHASH_2_4_can_only_be_used_in_64_bit_builds[sizeof(size_t) == 8 ? 1 : -1];
+#endif
+
+#ifndef STBDS_SIPHASH_C_ROUNDS
+    #define STBDS_SIPHASH_C_ROUNDS 1
+#endif
+#ifndef STBDS_SIPHASH_D_ROUNDS
+    #define STBDS_SIPHASH_D_ROUNDS 1
+#endif
+
+#ifdef _MSC_VER
+    #pragma warning(push)
+    #pragma warning(disable : 4127)  // conditional expression is constant, for do..while(0) and sizeof()==
+#endif
+
+static size_t
+stbds_siphash_bytes(void* p, size_t len, size_t seed) {
+    unsigned char* d = (unsigned char*)p;
+    size_t         i, j;
+    size_t         v0, v1, v2, v3, data;
+
+    // hash that works on 32- or 64-bit registers without knowing which we have
+    // (computes different results on 32-bit and 64-bit platform)
+    // derived from siphash, but on 32-bit platforms very different as it uses 4 32-bit state not 4 64-bit
+    v0 = ((((size_t)0x736f6d65 << 16) << 16) + 0x70736575) ^ seed;
+    v1 = ((((size_t)0x646f7261 << 16) << 16) + 0x6e646f6d) ^ ~seed;
+    v2 = ((((size_t)0x6c796765 << 16) << 16) + 0x6e657261) ^ seed;
+    v3 = ((((size_t)0x74656462 << 16) << 16) + 0x79746573) ^ ~seed;
+
+#ifdef STBDS_TEST_SIPHASH_2_4
+    // hardcoded with key material in the siphash test vectors
+    v0 ^= 0x0706050403020100ull ^ seed;
+    v1 ^= 0x0f0e0d0c0b0a0908ull ^ ~seed;
+    v2 ^= 0x0706050403020100ull ^ seed;
+    v3 ^= 0x0f0e0d0c0b0a0908ull ^ ~seed;
+#endif
+
+#define STBDS_SIPROUND() \
+    do { \
+        v0 += v1; \
+        v1 = STBDS_ROTATE_LEFT(v1, 13); \
+        v1 ^= v0; \
+        v0 = STBDS_ROTATE_LEFT(v0, STBDS_SIZE_T_BITS / 2); \
+        v2 += v3; \
+        v3 = STBDS_ROTATE_LEFT(v3, 16); \
+        v3 ^= v2; \
+        v2 += v1; \
+        v1 = STBDS_ROTATE_LEFT(v1, 17); \
+        v1 ^= v2; \
+        v2 = STBDS_ROTATE_LEFT(v2, STBDS_SIZE_T_BITS / 2); \
+        v0 += v3; \
+        v3 = STBDS_ROTATE_LEFT(v3, 21); \
+        v3 ^= v0; \
+    } while (0)
+
+    for (i = 0; i + sizeof(size_t) <= len; i += sizeof(size_t), d += sizeof(size_t)) {
+        data = d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24);
+        data |= (size_t)(d[4] | (d[5] << 8) | (d[6] << 16) | (d[7] << 24)) << 16 << 16;  // discarded if size_t == 4
+
+        v3 ^= data;
+        for (j = 0; j < STBDS_SIPHASH_C_ROUNDS; ++j)
+            STBDS_SIPROUND();
+        v0 ^= data;
+    }
+    data = len << (STBDS_SIZE_T_BITS - 8);
+    switch (len - i) {
+        case 7: data |= ((size_t)d[6] << 24) << 24;  // fall through
+        case 6: data |= ((size_t)d[5] << 20) << 20;  // fall through
+        case 5: data |= ((size_t)d[4] << 16) << 16;  // fall through
+        case 4: data |= (d[3] << 24);  // fall through
+        case 3: data |= (d[2] << 16);  // fall through
+        case 2: data |= (d[1] << 8);  // fall through
+        case 1: data |= d[0];  // fall through
+        case 0: break;
+    }
+    v3 ^= data;
+    for (j = 0; j < STBDS_SIPHASH_C_ROUNDS; ++j)
+        STBDS_SIPROUND();
+    v0 ^= data;
+    v2 ^= 0xff;
+    for (j = 0; j < STBDS_SIPHASH_D_ROUNDS; ++j)
+        STBDS_SIPROUND();
+
+#ifdef STBDS_SIPHASH_2_4
+    return v0 ^ v1 ^ v2 ^ v3;
+#else
+    return v1 ^ v2
+        ^ v3;  // slightly stronger since v0^v3 in above cancels out final round operation? I tweeted at the authors of SipHash about this but they didn't reply
+#endif
+}
+
+size_t
+stbds_hash_bytes(void* p, size_t len, size_t seed) {
+#ifdef STBDS_SIPHASH_2_4
+    return stbds_siphash_bytes(p, len, seed);
+#else
+    unsigned char* d = (unsigned char*)p;
+
+    if (len == 4) {
+        unsigned int hash = d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24);
+    #if 0
+    // HASH32-A  Bob Jenkin's hash function w/o large constants
+    hash ^= seed;
+    hash -= (hash<<6);
+    hash ^= (hash>>17);
+    hash -= (hash<<9);
+    hash ^= seed;
+    hash ^= (hash<<4);
+    hash -= (hash<<3);
+    hash ^= (hash<<10);
+    hash ^= (hash>>15);
+    #elif 1
+        // HASH32-BB  Bob Jenkin's presumably-accidental version of Thomas Wang hash with rotates turned into shifts.
+        // Note that converting these back to rotates makes it run a lot slower, presumably due to collisions, so I'm
+        // not really sure what's going on.
+        hash ^= seed;
+        hash = (hash ^ 61) ^ (hash >> 16);
+        hash = hash + (hash << 3);
+        hash = hash ^ (hash >> 4);
+        hash = hash * 0x27d4eb2d;
+        hash ^= seed;
+        hash = hash ^ (hash >> 15);
+    #else  // HASH32-C   -  Murmur3
+        hash ^= seed;
+        hash *= 0xcc9e2d51;
+        hash = (hash << 17) | (hash >> 15);
+        hash *= 0x1b873593;
+        hash ^= seed;
+        hash = (hash << 19) | (hash >> 13);
+        hash = hash * 5 + 0xe6546b64;
+        hash ^= hash >> 16;
+        hash *= 0x85ebca6b;
+        hash ^= seed;
+        hash ^= hash >> 13;
+        hash *= 0xc2b2ae35;
+        hash ^= hash >> 16;
+    #endif
+        // Following statistics were measured on a Core i7-6700 @ 4.00Ghz, compiled with clang 7.0.1 -O2
+        // Note that the larger tables have high variance as they were run fewer times
+        //  HASH32-A   //  HASH32-BB  //  HASH32-C
+        //    0.10ms   //    0.10ms   //    0.10ms :      2,000 inserts creating 2K table
+        //    0.96ms   //    0.95ms   //    0.99ms :     20,000 inserts creating 20K table
+        //   14.69ms   //   14.43ms   //   14.97ms :    200,000 inserts creating 200K table
+        //  199.99ms   //  195.36ms   //  202.05ms :  2,000,000 inserts creating 2M table
+        // 2234.84ms   // 2187.74ms   // 2240.38ms : 20,000,000 inserts creating 20M table
+        //   55.68ms   //   53.72ms   //   57.31ms : 500,000 inserts & deletes in 2K table
+        //   63.43ms   //   61.99ms   //   65.73ms : 500,000 inserts & deletes in 20K table
+        //   80.04ms   //   77.96ms   //   81.83ms : 500,000 inserts & deletes in 200K table
+        //  100.42ms   //   97.40ms   //  102.39ms : 500,000 inserts & deletes in 2M table
+        //  119.71ms   //  120.59ms   //  121.63ms : 500,000 inserts & deletes in 20M table
+        //  185.28ms   //  195.15ms   //  187.74ms : 500,000 inserts & deletes in 200M table
+        //   15.58ms   //   14.79ms   //   15.52ms : 200,000 inserts creating 200K table with varying key spacing
+
+        return (((size_t)hash << 16 << 16) | hash) ^ seed;
+    } else if (len == 8 && sizeof(size_t) == 8) {
+        size_t hash = d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24);
+        hash |= (size_t)(d[4] | (d[5] << 8) | (d[6] << 16) | (d[7] << 24)) << 16 << 16;  // avoid warning if size_t == 4
+        hash ^= seed;
+        hash = (~hash) + (hash << 21);
+        hash ^= STBDS_ROTATE_RIGHT(hash, 24);
+        hash *= 265;
+        hash ^= STBDS_ROTATE_RIGHT(hash, 14);
+        hash ^= seed;
+        hash *= 21;
+        hash ^= STBDS_ROTATE_RIGHT(hash, 28);
+        hash += (hash << 31);
+        hash = (~hash) + (hash << 18);
+        return hash;
+    } else {
+        return stbds_siphash_bytes(p, len, seed);
+    }
+#endif
+}
+#ifdef _MSC_VER
+    #pragma warning(pop)
+#endif
+
+static int
+stbds_is_key_equal(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode, size_t i) {
+    if (mode >= STBDS_HM_STRING)
+        return prb_streq((char*)key, *(char**)((char*)a + elemsize * i + keyoffset));
+    else
+        return prb_memeq(key, (char*)a + elemsize * i + keyoffset, keysize);
+}
+
+#define STBDS_HASH_TO_ARR(x, elemsize) ((char*)(x) - (elemsize))
+#define STBDS_ARR_TO_HASH(x, elemsize) ((char*)(x) + (elemsize))
+
+#define stbds_hash_table(a) ((stbds_hash_index*)stbds_header(a)->hash_table)
+
+void
+stbds_hmfree_func(void* a, size_t elemsize) {
+    STBDS_NOTUSED(elemsize);
+    if (a == NULL)
+        return;
+    if (stbds_hash_table(a) != NULL) {
+        if (stbds_hash_table(a)->string.mode == STBDS_SH_STRDUP) {
+            size_t i;
+            // skip 0th element, which is default
+            for (i = 1; i < stbds_header(a)->length; ++i)
+                STBDS_FREE(NULL, *(char**)((char*)a + elemsize * i));
+        }
+        stbds_strreset(&stbds_hash_table(a)->string);
+    }
+    STBDS_FREE(NULL, stbds_header(a)->hash_table);
+    STBDS_FREE(NULL, stbds_header(a));
+}
+
+static ptrdiff_t
+stbds_hm_find_slot(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode) {
+    void*              raw_a = STBDS_HASH_TO_ARR(a, elemsize);
+    stbds_hash_index*  table = stbds_hash_table(raw_a);
+    size_t             hash = mode >= STBDS_HM_STRING ? stbds_hash_string((char*)key, table->seed)
+                                                      : stbds_hash_bytes(key, keysize, table->seed);
+    size_t             step = STBDS_BUCKET_LENGTH;
+    size_t             limit, i;
+    size_t             pos;
+    stbds_hash_bucket* bucket;
+
+    if (hash < 2)
+        hash += 2;  // stored hash values are forbidden from being 0, so we can detect empty slots
+
+    pos = stbds_probe_position(hash, table->slot_count, table->slot_count_log2);
+
+    for (;;) {
+        STBDS_STATS(++stbds_hash_probes);
+        bucket = &table->storage[pos >> STBDS_BUCKET_SHIFT];
+
+        // start searching from pos to end of bucket, this should help performance on small hash tables that fit in cache
+        for (i = pos & STBDS_BUCKET_MASK; i < STBDS_BUCKET_LENGTH; ++i) {
+            if (bucket->hash[i] == hash) {
+                if (stbds_is_key_equal(a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+                    return (pos & ~STBDS_BUCKET_MASK) + i;
+                }
+            } else if (bucket->hash[i] == STBDS_HASH_EMPTY) {
+                return -1;
+            }
+        }
+
+        // search from beginning of bucket to pos
+        limit = pos & STBDS_BUCKET_MASK;
+        for (i = 0; i < limit; ++i) {
+            if (bucket->hash[i] == hash) {
+                if (stbds_is_key_equal(a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+                    return (pos & ~STBDS_BUCKET_MASK) + i;
+                }
+            } else if (bucket->hash[i] == STBDS_HASH_EMPTY) {
+                return -1;
+            }
+        }
+
+        // quadratic probing
+        pos += step;
+        step += STBDS_BUCKET_LENGTH;
+        pos &= (table->slot_count - 1);
+    }
+    /* NOTREACHED */
+}
+
+void*
+stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode) {
+    size_t keyoffset = 0;
+    if (a == NULL) {
+        // make it non-empty so we can return a temp
+        a = stbds_arrgrowf(0, elemsize, 0, 1);
+        stbds_header(a)->length += 1;
+        prb_memset(a, 0, elemsize);
+        *temp = STBDS_INDEX_EMPTY;
+        // adjust a to point after the default element
+        return STBDS_ARR_TO_HASH(a, elemsize);
+    } else {
+        stbds_hash_index* table;
+        void*             raw_a = STBDS_HASH_TO_ARR(a, elemsize);
+        // adjust a to point to the default element
+        table = (stbds_hash_index*)stbds_header(raw_a)->hash_table;
+        if (table == 0) {
+            *temp = -1;
+        } else {
+            ptrdiff_t slot = stbds_hm_find_slot(a, elemsize, key, keysize, keyoffset, mode);
+            if (slot < 0) {
+                *temp = STBDS_INDEX_EMPTY;
+            } else {
+                stbds_hash_bucket* b = &table->storage[slot >> STBDS_BUCKET_SHIFT];
+                *temp = b->index[slot & STBDS_BUCKET_MASK];
+            }
+        }
+        return a;
+    }
+}
+
+void*
+stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
+    ptrdiff_t temp;
+    void*     p = stbds_hmget_key_ts(a, elemsize, key, keysize, &temp, mode);
+    stbds_temp(STBDS_HASH_TO_ARR(p, elemsize)) = temp;
+    return p;
+}
+
+void*
+stbds_hmput_default(void* a, size_t elemsize) {
+    // three cases:
+    //   a is NULL <- allocate
+    //   a has a hash table but no entries, because of shmode <- grow
+    //   a has entries <- do nothing
+    if (a == NULL || stbds_header(STBDS_HASH_TO_ARR(a, elemsize))->length == 0) {
+        a = stbds_arrgrowf(a ? STBDS_HASH_TO_ARR(a, elemsize) : NULL, elemsize, 0, 1);
+        stbds_header(a)->length += 1;
+        prb_memset(a, 0, elemsize);
+        a = STBDS_ARR_TO_HASH(a, elemsize);
+    }
+    return a;
+}
+
+static char* stbds_strdup(char* str);
+
+void*
+stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
+    size_t            keyoffset = 0;
+    void*             raw_a;
+    stbds_hash_index* table;
+
+    if (a == NULL) {
+        a = stbds_arrgrowf(0, elemsize, 0, 1);
+        prb_memset(a, 0, elemsize);
+        stbds_header(a)->length += 1;
+        // adjust a to point AFTER the default element
+        a = STBDS_ARR_TO_HASH(a, elemsize);
+    }
+
+    // adjust a to point to the default element
+    raw_a = a;
+    a = STBDS_HASH_TO_ARR(a, elemsize);
+
+    table = (stbds_hash_index*)stbds_header(a)->hash_table;
+
+    if (table == NULL || table->used_count >= table->used_count_threshold) {
+        stbds_hash_index* nt;
+        size_t            slot_count;
+
+        slot_count = (table == NULL) ? STBDS_BUCKET_LENGTH : table->slot_count * 2;
+        nt = stbds_make_hash_index(slot_count, table);
+        if (table)
+            STBDS_FREE(NULL, table);
+        else
+            nt->string.mode = mode >= STBDS_HM_STRING ? STBDS_SH_DEFAULT : 0;
+        stbds_header(a)->hash_table = table = nt;
+        STBDS_STATS(++stbds_hash_grow);
+    }
+
+    // we iterate hash table explicitly because we want to track if we saw a tombstone
+    {
+        size_t             hash = mode >= STBDS_HM_STRING ? stbds_hash_string((char*)key, table->seed)
+                                                          : stbds_hash_bytes(key, keysize, table->seed);
+        size_t             step = STBDS_BUCKET_LENGTH;
+        size_t             pos;
+        ptrdiff_t          tombstone = -1;
+        stbds_hash_bucket* bucket;
+
+        // stored hash values are forbidden from being 0, so we can detect empty slots to early out quickly
+        if (hash < 2)
+            hash += 2;
+
+        pos = stbds_probe_position(hash, table->slot_count, table->slot_count_log2);
+
+        for (;;) {
+            size_t limit, i;
+            STBDS_STATS(++stbds_hash_probes);
+            bucket = &table->storage[pos >> STBDS_BUCKET_SHIFT];
+
+            // start searching from pos to end of bucket
+            for (i = pos & STBDS_BUCKET_MASK; i < STBDS_BUCKET_LENGTH; ++i) {
+                if (bucket->hash[i] == hash) {
+                    if (stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+                        stbds_temp(a) = bucket->index[i];
+                        if (mode >= STBDS_HM_STRING)
+                            stbds_temp_key(a) = *(char**)((char*)raw_a + elemsize * bucket->index[i] + keyoffset);
+                        return STBDS_ARR_TO_HASH(a, elemsize);
+                    }
+                } else if (bucket->hash[i] == 0) {
+                    pos = (pos & ~STBDS_BUCKET_MASK) + i;
+                    goto found_empty_slot;
+                } else if (tombstone < 0) {
+                    if (bucket->index[i] == STBDS_INDEX_DELETED)
+                        tombstone = (ptrdiff_t)((pos & ~STBDS_BUCKET_MASK) + i);
+                }
+            }
+
+            // search from beginning of bucket to pos
+            limit = pos & STBDS_BUCKET_MASK;
+            for (i = 0; i < limit; ++i) {
+                if (bucket->hash[i] == hash) {
+                    if (stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+                        stbds_temp(a) = bucket->index[i];
+                        return STBDS_ARR_TO_HASH(a, elemsize);
+                    }
+                } else if (bucket->hash[i] == 0) {
+                    pos = (pos & ~STBDS_BUCKET_MASK) + i;
+                    goto found_empty_slot;
+                } else if (tombstone < 0) {
+                    if (bucket->index[i] == STBDS_INDEX_DELETED)
+                        tombstone = (ptrdiff_t)((pos & ~STBDS_BUCKET_MASK) + i);
+                }
+            }
+
+            // quadratic probing
+            pos += step;
+            step += STBDS_BUCKET_LENGTH;
+            pos &= (table->slot_count - 1);
+        }
+    found_empty_slot:
+        if (tombstone >= 0) {
+            pos = tombstone;
+            --table->tombstone_count;
+        }
+        ++table->used_count;
+
+        {
+            ptrdiff_t i = (ptrdiff_t)stbds_arrlen(a);
+            // we want to do stbds_arraddn(1), but we can't use the macros since we don't have something of the right type
+            if ((size_t)i + 1 > stbds_arrcap(a))
+                *(void**)&a = stbds_arrgrowf(a, elemsize, 1, 0);
+            raw_a = STBDS_ARR_TO_HASH(a, elemsize);
+
+            STBDS_ASSERT((size_t)i + 1 <= stbds_arrcap(a));
+            stbds_header(a)->length = i + 1;
+            bucket = &table->storage[pos >> STBDS_BUCKET_SHIFT];
+            bucket->hash[pos & STBDS_BUCKET_MASK] = hash;
+            bucket->index[pos & STBDS_BUCKET_MASK] = i - 1;
+            stbds_temp(a) = i - 1;
+
+            switch (table->string.mode) {
+                case STBDS_SH_STRDUP:
+                    stbds_temp_key(a) = *(char**)((char*)a + elemsize * i) = stbds_strdup((char*)key);
+                    break;
+                case STBDS_SH_ARENA:
+                    stbds_temp_key(a) = *(char**)((char*)a + elemsize * i) = stbds_stralloc(&table->string, (char*)key);
+                    break;
+                case STBDS_SH_DEFAULT: stbds_temp_key(a) = *(char**)((char*)a + elemsize * i) = (char*)key; break;
+                default: prb_memcpy((char*)a + elemsize * i, key, keysize); break;
+            }
+        }
+        return STBDS_ARR_TO_HASH(a, elemsize);
+    }
+}
+
+void*
+stbds_shmode_func(size_t elemsize, int mode) {
+    void*             a = stbds_arrgrowf(0, elemsize, 0, 1);
+    stbds_hash_index* h;
+    prb_memset(a, 0, elemsize);
+    stbds_header(a)->length = 1;
+    stbds_header(a)->hash_table = h = (stbds_hash_index*)stbds_make_hash_index(STBDS_BUCKET_LENGTH, NULL);
+    h->string.mode = (unsigned char)mode;
+    return STBDS_ARR_TO_HASH(a, elemsize);
+}
+
+void*
+stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode) {
+    if (a == NULL) {
+        return 0;
+    } else {
+        stbds_hash_index* table;
+        void*             raw_a = STBDS_HASH_TO_ARR(a, elemsize);
+        table = (stbds_hash_index*)stbds_header(raw_a)->hash_table;
+        stbds_temp(raw_a) = 0;
+        if (table == 0) {
+            return a;
+        } else {
+            ptrdiff_t slot;
+            slot = stbds_hm_find_slot(a, elemsize, key, keysize, keyoffset, mode);
+            if (slot < 0)
+                return a;
+            else {
+                stbds_hash_bucket* b = &table->storage[slot >> STBDS_BUCKET_SHIFT];
+                int                i = slot & STBDS_BUCKET_MASK;
+                ptrdiff_t          old_index = b->index[i];
+                ptrdiff_t          final_index =
+                    (ptrdiff_t)stbds_arrlen(raw_a) - 1 - 1;  // minus one for the raw_a vs a, and minus one for 'last'
+                STBDS_ASSERT(slot < (ptrdiff_t)table->slot_count);
+                --table->used_count;
+                ++table->tombstone_count;
+                stbds_temp(raw_a) = 1;
+                // STBDS_ASSERT(table->used_count >= 0);
+                //STBDS_ASSERT(table->tombstone_count < table->slot_count/4);
+                b->hash[i] = STBDS_HASH_DELETED;
+                b->index[i] = STBDS_INDEX_DELETED;
+
+                if (mode == STBDS_HM_STRING && table->string.mode == STBDS_SH_STRDUP) {
+                    STBDS_FREE(NULL, *(char**)((char*)a + elemsize * old_index));
+                }
+
+                // if indices are the same, memcpy is a no-op, but back-pointer-fixup will fail, so skip
+                if (old_index != final_index) {
+                    // swap delete
+                    prb_memmove((char*)a + elemsize * old_index, (char*)a + elemsize * final_index, elemsize);
+
+                    // now find the slot for the last element
+                    if (mode == STBDS_HM_STRING)
+                        slot = stbds_hm_find_slot(
+                            a,
+                            elemsize,
+                            *(char**)((char*)a + elemsize * old_index + keyoffset),
+                            keysize,
+                            keyoffset,
+                            mode
+                        );
+                    else
+                        slot = stbds_hm_find_slot(
+                            a,
+                            elemsize,
+                            (char*)a + elemsize * old_index + keyoffset,
+                            keysize,
+                            keyoffset,
+                            mode
+                        );
+                    STBDS_ASSERT(slot >= 0);
+                    b = &table->storage[slot >> STBDS_BUCKET_SHIFT];
+                    i = slot & STBDS_BUCKET_MASK;
+                    STBDS_ASSERT(b->index[i] == final_index);
+                    b->index[i] = old_index;
+                }
+                stbds_header(raw_a)->length -= 1;
+
+                if (table->used_count < table->used_count_shrink_threshold && table->slot_count > STBDS_BUCKET_LENGTH) {
+                    stbds_header(raw_a)->hash_table = stbds_make_hash_index(table->slot_count >> 1, table);
+                    STBDS_FREE(NULL, table);
+                    STBDS_STATS(++stbds_hash_shrink);
+                } else if (table->tombstone_count > table->tombstone_count_threshold) {
+                    stbds_header(raw_a)->hash_table = stbds_make_hash_index(table->slot_count, table);
+                    STBDS_FREE(NULL, table);
+                    STBDS_STATS(++stbds_hash_rebuild);
+                }
+
+                return a;
+            }
+        }
+    }
+    /* NOTREACHED */
+}
+
+static char*
+stbds_strdup(char* str) {
+    // to keep replaceable allocator simple, we don't want to use strdup.
+    // rolling our own also avoids problem of strdup vs _strdup
+    size_t len = prb_strlen(str) + 1;
+    char*  p = (char*)STBDS_REALLOC(NULL, 0, len);
+    prb_memmove(p, str, len);
+    return p;
+}
+
+#ifndef STBDS_STRING_ARENA_BLOCKSIZE_MIN
+    #define STBDS_STRING_ARENA_BLOCKSIZE_MIN 512u
+#endif
+#ifndef STBDS_STRING_ARENA_BLOCKSIZE_MAX
+    #define STBDS_STRING_ARENA_BLOCKSIZE_MAX (1u << 20)
+#endif
+
+char*
+stbds_stralloc(stbds_string_arena* a, char* str) {
+    char*  p;
+    size_t len = prb_strlen(str) + 1;
+    if (len > a->remaining) {
+        // compute the next blocksize
+        size_t blocksize = a->block;
+
+        // size is 512, 512, 1024, 1024, 2048, 2048, 4096, 4096, etc., so that
+        // there are log(SIZE) allocations to free when we destroy the table
+        blocksize = (size_t)(STBDS_STRING_ARENA_BLOCKSIZE_MIN) << (blocksize >> 1);
+
+        // if size is under 1M, advance to next blocktype
+        if (blocksize < (size_t)(STBDS_STRING_ARENA_BLOCKSIZE_MAX))
+            ++a->block;
+
+        if (len > blocksize) {
+            // if string is larger than blocksize, then just allocate the full size.
+            // note that we still advance string_block so block size will continue
+            // increasing, so e.g. if somebody only calls this with 1000-long strings,
+            // eventually the arena will start doubling and handling those as well
+            stbds_string_block* sb = (stbds_string_block*)STBDS_REALLOC(NULL, 0, sizeof(*sb) - 8 + len);
+            prb_memmove(sb->storage, str, len);
+            if (a->storage) {
+                // insert it after the first element, so that we don't waste the space there
+                sb->next = a->storage->next;
+                a->storage->next = sb;
+            } else {
+                sb->next = 0;
+                a->storage = sb;
+                a->remaining = 0;  // this is redundant, but good for clarity
+            }
+            return sb->storage;
+        } else {
+            stbds_string_block* sb = (stbds_string_block*)STBDS_REALLOC(NULL, 0, sizeof(*sb) - 8 + blocksize);
+            sb->next = a->storage;
+            a->storage = sb;
+            a->remaining = blocksize;
+        }
+    }
+
+    STBDS_ASSERT(len <= a->remaining);
+    p = a->storage->storage + a->remaining - len;
+    a->remaining -= len;
+    prb_memmove(p, str, len);
+    return p;
+}
+
+void
+stbds_strreset(stbds_string_arena* a) {
+    stbds_string_block *x, *y;
+    x = a->storage;
+    while (x) {
+        y = x->next;
+        STBDS_FREE(NULL, x);
+        x = y;
+    }
+    prb_memset(a, 0, sizeof(*a));
+}
 
 #endif  // PRB_IMPLEMENTATION

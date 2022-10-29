@@ -1,4 +1,11 @@
-#define prb_AssertAction_PrintAndCrash
+// NOTE(khvorov) This will only work if we can actually allocate memory for the string.
+// Lacking memory is an extremely unlikely problem for this library, so this is probably fine.
+#define prb_assertAction() do {\
+    prb_fmtAndPrintlnColor(prb_ColorID_Red, "%s:%d %s assertion failure", __FILE__, __LINE__, __FUNCTION__);\
+    prb_debugbreak();\
+    prb_terminate(1);\
+} while (0)
+
 #include "../programmable_build.h"
 
 #define function static
@@ -38,17 +45,50 @@ function void
 test_fileformat(void) {
     prb_Bytes        fileContents = prb_readEntireFile("programmable_build.h");
     prb_LineIterator lineIter = prb_createLineIter(fileContents.data, fileContents.len);
+
+    prb_String* headerSectionNames = 0;
+    prb_String* implSectionNames = 0;
+
     while (prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success) {
-        // TODO(khvorov) Make sure sections and functions in the header match the ones in the implementation
         if (prb_strStartsWith(lineIter.line, "// SECTION")) {
-            prb_writeToStdout(lineIter.line, lineIter.lineLen);
-            prb_writeToStdout("\n", 1);
+            i32 nameOffset = prb_strlen("// SECTION ");
+            prb_assert(lineIter.lineLen > nameOffset);  // NOTE(khvorov) Make sure there is a name
+            char* nameStart = lineIter.line + nameOffset;
+            i32   nameLen = lineIter.lineLen - nameOffset;
+            i32   implementationIndex = prb_strFindIndex(
+                nameStart,
+                nameLen,
+                " (implementation)",
+                prb_StringFindMode_Exact,
+                prb_StringFindDir_FromStart
+            );
+            if (implementationIndex != -1) {
+                nameLen = implementationIndex;
+            }
+
+            prb_String name = prb_fmt("%.*s", nameLen, nameStart);
+            if (implementationIndex != -1) {
+                stbds_arrput(implSectionNames, name);
+            } else {
+                stbds_arrput(headerSectionNames, name);
+            }
         }
+
+        // TODO(khvorov) Make sure functions in the header match the ones in the implementation
+    }
+
+    prb_assert(stbds_arrlen(headerSectionNames) == stbds_arrlen(implSectionNames));
+
+    for (i32 sectionIndex = 0; sectionIndex < stbds_arrlen(implSectionNames); sectionIndex++) {
+        prb_String headerName = headerSectionNames[sectionIndex];
+        prb_String implName = implSectionNames[sectionIndex];
+        prb_assert(prb_streq(headerName, implName));
     }
 }
 
 int
 main() {
+    prb_TimeStart testStart = prb_timeStart();
     prb_init(1 * prb_GIGABYTE);
 
     test_getParentDir();
@@ -56,5 +96,8 @@ main() {
 
     test_printColor();
 
+    prb_fmtAndPrintln("tests took %.2fms", prb_getMsFrom(testStart));
+    prb_terminate(0);
+    prb_assert(!"unreachable");
     return 0;
 }
