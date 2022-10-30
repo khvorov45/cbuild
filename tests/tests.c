@@ -1,11 +1,3 @@
-// NOTE(khvorov) This will only work if we can actually allocate memory for the string.
-// Lacking memory is an extremely unlikely problem for this library, so this is probably fine.
-#define prb_assertAction() do {\
-    prb_fmtAndPrintlnColor(prb_ColorID_Red, "%s:%d %s assertion failure", __FILE__, __LINE__, __FUNCTION__);\
-    prb_debugbreak();\
-    prb_terminate(1);\
-} while (0)
-
 #include "../programmable_build.h"
 
 #define function static

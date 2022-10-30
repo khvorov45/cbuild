@@ -83,7 +83,7 @@ compileStaticLib(
     for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesCount; inputPatternIndex++) {
         prb_String      inputPattern = compileSources[inputPatternIndex];
         prb_StringArray inputMatches = prb_getAllMatches(inputPattern);
-        // TODO(khvorov) Report no matches
+        prb_assert(inputMatches.len > 0);
         allInputMatches[inputPatternIndex] = inputMatches;
         allInputFilepathsCount += inputMatches.len;
     }
