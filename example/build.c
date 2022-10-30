@@ -203,8 +203,8 @@ main() {
     // TODO(khvorov) Argument parsing
     // TODO(khvorov) Release build
     // TODO(khvorov) Clone a specific commit probably
-    prb_init(1 * prb_GIGABYTE);
     prb_TimeStart scriptStartTime = prb_timeStart();
+    prb_init(1 * prb_GIGABYTE);
 
     prb_String rootDir = prb_getParentDir(__FILE__);
 
@@ -244,7 +244,7 @@ main() {
         prb_String datadir = prb_pathJoin(gentabDir, "unidata");
         prb_String unidat = prb_pathJoin(datadir, "UnicodeData.txt");
 
-        // TODO(khvorov) WTF does max-depth do?
+        // NOTE(khvorov) This max-depth is also known as compression and is set to 2 in makefiles
         int32_t maxDepth = 2;
 
         compileAndRunBidiGenTab(
