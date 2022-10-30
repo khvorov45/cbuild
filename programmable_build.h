@@ -11,11 +11,16 @@ Note that all memory operations (such as string formatting)
 are running off a linear allocator that is not thread-safe,
 (so don't call prb_fmt* from multiple threads, for example).
 
-Includes all of stb sprintf
+All string formatting functions are wrappers around stb printf
 https://github.com/nothings/stb/blob/master/stb_sprintf.h
+The strings are allocated on the linear allocator everything else is using.
+The original stb sprintf API is still exposed.
 
-and all of stb ds
+The library includes all of stb ds
 https://github.com/nothings/stb/blob/master/stb_ds.h
+There are no wrappers for it, use the original API.
+All memory allocation calls in stb ds are hooked up to the linear allocator 
+everything else is using (memory freeing doesn't do anything). 
 
 Some libc replacement functions are simplified versions of their implementations in musl
 https://musl.libc.org/
