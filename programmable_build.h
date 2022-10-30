@@ -367,6 +367,10 @@ prb_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
 #define STBSP__ASAN
 #endif
 
+#ifndef prb_NOT_STATIC
+#define STB_SPRINTF_STATIC
+#endif
+
 #ifdef STB_SPRINTF_STATIC
 #define STBSP__PUBLICDEC static
 #define STBSP__PUBLICDEF static STBSP__ASAN
