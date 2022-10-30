@@ -254,8 +254,8 @@ typedef struct prb_LineIterator {
 } prb_LineIterator;
 
 // SECTION Core
-prb_PUBLICDEC void         prb_init(int32_t virtualMemoryBytesToUse);
-prb_PUBLICDEC void         prb_terminate(int32_t code);
+prb_PUBLICDEC void prb_init(int32_t virtualMemoryBytesToUse);
+prb_PUBLICDEC void prb_terminate(int32_t code);
 
 // SECTION Memory
 prb_PUBLICDEC void*   prb_memcpy(void* dest, const void* src, size_t n);
@@ -434,36 +434,45 @@ STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char peri
 #define STBDS_NOTUSED(v) (void)sizeof(v)
 #endif
 
+#ifdef prb_NOT_STATIC
+#define STBDS__PUBLICDEC
+#define STBDS__PUBLICDEF
+#else
+#define STBDS__PUBLICDEC static
+#define STBDS__PUBLICDEF static
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // for security against attackers, seed the library with a random number, at least time() but stronger is better
-extern void stbds_rand_seed(size_t seed);
+STBDS__PUBLICDEC void stbds_rand_seed(size_t seed);
 
 // these are the hash functions used internally if you want to test them or use them for other purposes
-extern size_t stbds_hash_bytes(void* p, size_t len, size_t seed);
-extern size_t stbds_hash_string(char* str, size_t seed);
+STBDS__PUBLICDEC size_t stbds_hash_bytes(void* p, size_t len, size_t seed);
+STBDS__PUBLICDEC size_t stbds_hash_string(char* str, size_t seed);
 
 // this is a simple string arena allocator, initialize with e.g. 'stbds_string_arena my_arena={0}'.
 typedef struct stbds_string_arena stbds_string_arena;
-extern char*                      stbds_stralloc(stbds_string_arena* a, char* str);
-extern void                       stbds_strreset(stbds_string_arena* a);
+STBDS__PUBLICDEC char*            stbds_stralloc(stbds_string_arena* a, char* str);
+STBDS__PUBLICDEC void             stbds_strreset(stbds_string_arena* a);
 
 ///////////////
 //
 // Everything below here is implementation details
 //
 
-extern void* stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap);
-extern void  stbds_arrfreef(void* a);
-extern void  stbds_hmfree_func(void* p, size_t elemsize);
-extern void* stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
-extern void* stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode);
-extern void* stbds_hmput_default(void* a, size_t elemsize);
-extern void* stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
-extern void* stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode);
-extern void* stbds_shmode_func(size_t elemsize, int mode);
+STBDS__PUBLICDEC void* stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap);
+STBDS__PUBLICDEC void  stbds_arrfreef(void* a);
+STBDS__PUBLICDEC void  stbds_hmfree_func(void* p, size_t elemsize);
+STBDS__PUBLICDEC void* stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
+STBDS__PUBLICDEC void*
+stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode);
+STBDS__PUBLICDEC void* stbds_hmput_default(void* a, size_t elemsize);
+STBDS__PUBLICDEC void* stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
+STBDS__PUBLICDEC void* stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode);
+STBDS__PUBLICDEC void* stbds_shmode_func(size_t elemsize, int mode);
 
 #ifdef __cplusplus
 }
@@ -702,7 +711,7 @@ stbds_shmode_func_wrapper(T*, size_t elemsize, int mode) {
 //
 
 struct {
-    prb_Arena    arena;
+    prb_Arena arena;
 } prb_globalState;
 
 prb_PUBLICDEF void
@@ -1057,7 +1066,7 @@ prb_getCurrentWorkingDir(void) {
 #elif prb_PLATFORM_LINUX
 
     int32_t maxLen = PATH_MAX + 1;
-    char* ptr = (char*)prb_allocAndZero(maxLen, 1);
+    char*   ptr = (char*)prb_allocAndZero(maxLen, 1);
     prb_assert(getcwd(ptr, maxLen));
     return ptr;
 
@@ -1132,7 +1141,7 @@ prb_getAllMatches(prb_String pattern) {
         result.len = (int32_t)globResult.gl_pathc;
         result.ptr = prb_allocArray(prb_String, result.len);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char* path = globResult.gl_pathv[resultIndex];
+            char*   path = globResult.gl_pathv[resultIndex];
             int32_t pathlen = prb_strlen(path);
             result.ptr[resultIndex] = prb_stringCopy(path, 0, pathlen - 1);
         }
@@ -1172,7 +1181,7 @@ prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         prb_assert(globResult.gl_pathc <= INT32_MAX);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char* path = globResult.gl_pathv[resultIndex];
+            char*       path = globResult.gl_pathv[resultIndex];
             struct stat statBuf = {};
             if (stat(path, &statBuf) == 0) {
                 uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
@@ -1217,7 +1226,7 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         prb_assert(globResult.gl_pathc <= INT32_MAX);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char* path = globResult.gl_pathv[resultIndex];
+            char*       path = globResult.gl_pathv[resultIndex];
             struct stat statBuf = {};
             if (stat(path, &statBuf) == 0) {
                 uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
@@ -1275,7 +1284,7 @@ prb_readEntireFile(prb_String path) {
     struct stat statBuf = {};
     prb_assert(fstat(handle, &statBuf) == 0);
     uint8_t* buf = (uint8_t*)prb_allocAndZero(statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
-    int32_t readResult = read(handle, buf, statBuf.st_size);
+    int32_t  readResult = read(handle, buf, statBuf.st_size);
     prb_assert(readResult == statBuf.st_size);
     close(handle);
     prb_Bytes result = {buf, readResult};
@@ -1852,9 +1861,9 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
 
 #elif prb_PLATFORM_LINUX
 
-    bool fileActionsSucceeded = true;
+    bool                        fileActionsSucceeded = true;
     posix_spawn_file_actions_t* fileActionsPtr = 0;
-    posix_spawn_file_actions_t fileActions = {};
+    posix_spawn_file_actions_t  fileActions = {};
     if ((flags & prb_ProcessFlag_RedirectStdout) || (flags & prb_ProcessFlag_RedirectStderr)) {
         fileActionsPtr = &fileActions;
         int initResult = posix_spawn_file_actions_init(&fileActions);
@@ -1888,11 +1897,11 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
 
     if (fileActionsSucceeded) {
         prb_String* args = prb_getArgArrayFromString(cmd);
-        int spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
+        int         spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
         if (spawnResult == 0) {
             result.valid = true;
             if (!(flags & prb_ProcessFlag_DontWait)) {
-                int status = 0;
+                int   status = 0;
                 pid_t waitResult = waitpid(result.pid, &status, 0);
                 if (waitResult == result.pid && status == 0) {
                     result.completed = true;
@@ -1924,7 +1933,7 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
         if (handle->valid) {
             if (!handle->completed) {
                 int32_t status = 0;
-                pid_t waitResult = waitpid(handle->pid, &status, 0);
+                pid_t   waitResult = waitpid(handle->pid, &status, 0);
                 handle->completed = true;
                 if (waitResult == handle->pid && status == 0) {
                     handle->completionStatus = prb_CompletionStatus_Success;
@@ -3669,7 +3678,7 @@ size_t stbds_rehash_items;
 //int *prev_allocs[65536];
 //int num_prev;
 
-void*
+STBDS__PUBLICDEF void*
 stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap) {
     stbds_array_header temp = {};  // force debugging
     void*              b;
@@ -3707,7 +3716,7 @@ stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap) {
     return b;
 }
 
-void
+STBDS__PUBLICDEF void
 stbds_arrfreef(void* a) {
     STBDS_NOTUSED(a);
     STBDS_FREE(NULL, stbds_header(a));
@@ -3757,7 +3766,7 @@ typedef struct {
 
 static size_t stbds_hash_seed = 0x31415926;
 
-void
+STBDS__PUBLICDEF void
 stbds_rand_seed(size_t seed) {
     stbds_hash_seed = seed;
 }
@@ -3926,7 +3935,7 @@ stbds_make_hash_index(size_t slot_count, stbds_hash_index* ot) {
 #define STBDS_ROTATE_LEFT(val, n) (((val) << (n)) | ((val) >> (STBDS_SIZE_T_BITS - (n))))
 #define STBDS_ROTATE_RIGHT(val, n) (((val) >> (n)) | ((val) << (STBDS_SIZE_T_BITS - (n))))
 
-size_t
+STBDS__PUBLICDEF size_t
 stbds_hash_string(char* str, size_t seed) {
     size_t hash = seed;
     while (*str)
@@ -4037,7 +4046,7 @@ stbds_siphash_bytes(void* p, size_t len, size_t seed) {
 #endif
 }
 
-size_t
+STBDS__PUBLICDEF size_t
 stbds_hash_bytes(void* p, size_t len, size_t seed) {
 #ifdef STBDS_SIPHASH_2_4
     return stbds_siphash_bytes(p, len, seed);
@@ -4136,7 +4145,7 @@ stbds_is_key_equal(void* a, size_t elemsize, void* key, size_t keysize, size_t k
 
 #define stbds_hash_table(a) ((stbds_hash_index*)stbds_header(a)->hash_table)
 
-void
+STBDS__PUBLICDEF void
 stbds_hmfree_func(void* a, size_t elemsize) {
     STBDS_NOTUSED(elemsize);
     if (a == NULL)
@@ -4205,7 +4214,7 @@ stbds_hm_find_slot(void* a, size_t elemsize, void* key, size_t keysize, size_t k
     /* NOTREACHED */
 }
 
-void*
+STBDS__PUBLICDEF void*
 stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode) {
     size_t keyoffset = 0;
     if (a == NULL) {
@@ -4236,7 +4245,7 @@ stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_
     }
 }
 
-void*
+STBDS__PUBLICDEF void*
 stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
     ptrdiff_t temp;
     void*     p = stbds_hmget_key_ts(a, elemsize, key, keysize, &temp, mode);
@@ -4244,7 +4253,7 @@ stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
     return p;
 }
 
-void*
+STBDS__PUBLICDEF void*
 stbds_hmput_default(void* a, size_t elemsize) {
     // three cases:
     //   a is NULL <- allocate
@@ -4261,7 +4270,7 @@ stbds_hmput_default(void* a, size_t elemsize) {
 
 static char* stbds_strdup(char* str);
 
-void*
+STBDS__PUBLICDEF void*
 stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
     size_t            keyoffset = 0;
     void*             raw_a;
@@ -4391,7 +4400,7 @@ stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
     }
 }
 
-void*
+STBDS__PUBLICDEF void*
 stbds_shmode_func(size_t elemsize, int mode) {
     void*             a = stbds_arrgrowf(0, elemsize, 0, 1);
     stbds_hash_index* h;
@@ -4402,7 +4411,7 @@ stbds_shmode_func(size_t elemsize, int mode) {
     return STBDS_ARR_TO_HASH(a, elemsize);
 }
 
-void*
+STBDS__PUBLICDEF void*
 stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode) {
     if (a == NULL) {
         return 0;
@@ -4503,7 +4512,7 @@ stbds_strdup(char* str) {
 #define STBDS_STRING_ARENA_BLOCKSIZE_MAX (1u << 20)
 #endif
 
-char*
+STBDS__PUBLICDEF char*
 stbds_stralloc(stbds_string_arena* a, char* str) {
     char*  p;
     size_t len = prb_strlen(str) + 1;
@@ -4551,7 +4560,7 @@ stbds_stralloc(stbds_string_arena* a, char* str) {
     return p;
 }
 
-void
+STBDS__PUBLICDEF void
 stbds_strreset(stbds_string_arena* a) {
     stbds_string_block *x, *y;
     x = a->storage;
