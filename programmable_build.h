@@ -3,8 +3,8 @@
 Repository: https://github.com/khvorov45/programmable_build
 See example/build.c for an example build script.
 
-Define PRB_IMPLEMENTATION before including the header in exactly one translation unit.
-Define PRB_NOT_STATIC if using in multiple translation units.
+Define prb_IMPLEMENTATION before including the header in exactly one translation unit.
+Define prb_NOT_STATIC if using in multiple translation units.
 Don't forget to call prb_init() before doing anything.
 
 Note that all memory operations (such as string formatting) 
@@ -28,8 +28,8 @@ https://musl.libc.org/
 // TODO(khvorov) Check declarations/implementation placement in tests probably
 
 #ifdef __GNUC__
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 
 #ifndef PROGRAMMABLE_BUILD_H
@@ -41,31 +41,34 @@ https://musl.libc.org/
 #include <stdarg.h>
 
 #if defined(WIN32) || defined(_WIN32)
-    #define prb_PLATFORM_WINDOWS 1
+#define prb_PLATFORM_WINDOWS 1
 #elif (defined(linux) || defined(__linux) || defined(__linux__))
-    #define prb_PLATFORM_LINUX 1
+#define prb_PLATFORM_LINUX 1
 #else
-    #error unrecognized platform
+#error unrecognized platform
 #endif
 
 #if prb_PLATFORM_WINDOWS
-    #define WIN32_LEAN_AND_MEAN
-    #include <windows.h>
-    #include <shellapi.h>
 
-    #pragma comment(lib, "Shell32.lib")
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <shellapi.h>
+#pragma comment(lib, "Shell32.lib")
+
 #elif prb_PLATFORM_LINUX
-    #include <linux/limits.h>
-    #include <sys/mman.h>
-    #include <sys/stat.h>
-    #include <sys/wait.h>
-    #include <unistd.h>
-    #include <stdlib.h>
-    #include <spawn.h>
-    #include <dirent.h>
-    #include <glob.h>
-    #include <time.h>
-    #include <fcntl.h>
+
+#include <linux/limits.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <spawn.h>
+#include <dirent.h>
+#include <glob.h>
+#include <time.h>
+#include <fcntl.h>
+
 #endif
 
 #define prb_BYTE 1
@@ -74,9 +77,9 @@ https://musl.libc.org/
 #define prb_GIGABYTE 1024 * prb_MEGABYTE
 
 #if __cplusplus
-    #define prb_alignof alignof
+#define prb_alignof alignof
 #else
-    #define prb_alignof _Alignof
+#define prb_alignof _Alignof
 #endif
 
 // clang-format off
@@ -140,16 +143,16 @@ https://musl.libc.org/
 #endif
 // clang-format on
 
-#ifndef PRB_IMPLEMENTATION
-#define PRB_NOT_STATIC
+#ifndef prb_IMPLEMENTATION
+#define prb_NOT_STATIC
 #endif
 
-#ifdef PRB_NOT_STATIC
-    #define PRB_PUBLICDEC
-    #define PRB_PUBLICDEF
+#ifdef prb_NOT_STATIC
+#define prb_PUBLICDEC
+#define prb_PUBLICDEF
 #else
-    #define PRB_PUBLICDEC static
-    #define PRB_PUBLICDEF static
+#define prb_PUBLICDEC static
+#define prb_PUBLICDEF static
 #endif
 
 typedef struct prb_Arena {
@@ -210,11 +213,11 @@ typedef struct prb_ProcessHandle {
     prb_CompletionStatus completionStatus;
 
 #if prb_PLATFORM_WINDOWS
-    #error unimplemented
+#error unimplemented
 #elif prb_PLATFORM_LINUX
     pid_t pid;
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 } prb_ProcessHandle;
 
@@ -245,155 +248,155 @@ typedef struct prb_LineIterator {
 } prb_LineIterator;
 
 // SECTION Core
-PRB_PUBLICDEC void prb_init(int32_t virtualMemoryBytesToUse);
-PRB_PUBLICDEC void prb_terminate(int32_t code);
+prb_PUBLICDEC void         prb_init(int32_t virtualMemoryBytesToUse);
+prb_PUBLICDEC void         prb_terminate(int32_t code);
 
 // SECTION Memory
-PRB_PUBLICDEC void*   prb_memcpy(void* dest, const void* src, size_t n);
-PRB_PUBLICDEC void*   prb_memmove(void* dest, const void* src, size_t n);
-PRB_PUBLICDEC void*   prb_memset(void* dest, int32_t val, size_t n);
-PRB_PUBLICDEC bool    prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
-PRB_PUBLICDEC void*   prb_vmemAllocate(int32_t size);
-PRB_PUBLICDEC int32_t prb_getOffsetForAlignment(void* ptr, int32_t align);
-PRB_PUBLICDEC void*   prb_allocAndZero(int32_t size, int32_t align);
-PRB_PUBLICDEC void*   prb_realloc(void* ptr, int32_t size);
-PRB_PUBLICDEC void*   prb_globalArenaCurrentFreePtr(void);
-PRB_PUBLICDEC int32_t prb_globalArenaCurrentFreeSize(void);
-PRB_PUBLICDEC void*   prb_globalArenaAlignTo_(int32_t align);
+prb_PUBLICDEC void*   prb_memcpy(void* dest, const void* src, size_t n);
+prb_PUBLICDEC void*   prb_memmove(void* dest, const void* src, size_t n);
+prb_PUBLICDEC void*   prb_memset(void* dest, int32_t val, size_t n);
+prb_PUBLICDEC bool    prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
+prb_PUBLICDEC void*   prb_vmemAllocate(int32_t size);
+prb_PUBLICDEC int32_t prb_getOffsetForAlignment(void* ptr, int32_t align);
+prb_PUBLICDEC void*   prb_allocAndZero(int32_t size, int32_t align);
+prb_PUBLICDEC void*   prb_realloc(void* ptr, int32_t size);
+prb_PUBLICDEC void*   prb_globalArenaCurrentFreePtr(void);
+prb_PUBLICDEC int32_t prb_globalArenaCurrentFreeSize(void);
+prb_PUBLICDEC void*   prb_globalArenaAlignTo_(int32_t align);
 
 // SECTION Filesystem
-PRB_PUBLICDEC bool            prb_isDirectory(prb_String path);
-PRB_PUBLICDEC bool            prb_isFile(prb_String path);
-PRB_PUBLICDEC bool            prb_directoryIsEmpty(prb_String path);
-PRB_PUBLICDEC void            prb_createDirIfNotExists(prb_String path);
-PRB_PUBLICDEC void            prb_removeFileOrDirectoryIfExists(prb_String path);
-PRB_PUBLICDEC void            prb_removeFileIfExists(prb_String path);
-PRB_PUBLICDEC void            prb_removeDirectoryIfExists(prb_String path);
-PRB_PUBLICDEC void            prb_clearDirectory(prb_String path);
-PRB_PUBLICDEC prb_String      prb_getCurrentWorkingDir(void);
-PRB_PUBLICDEC prb_String      prb_pathJoin(prb_String path1, prb_String path2);
-PRB_PUBLICDEC prb_String      prb_getParentDir(prb_String path);
-PRB_PUBLICDEC prb_String      prb_getLastEntryInPath(prb_String path);
-PRB_PUBLICDEC prb_String      prb_replaceExt(prb_String path, prb_String newExt);
-PRB_PUBLICDEC prb_StringArray prb_getAllMatches(prb_String pattern);
-PRB_PUBLICDEC uint64_t        prb_getLatestLastModifiedFromPattern(prb_String pattern);
-PRB_PUBLICDEC uint64_t        prb_getEarliestLastModifiedFromPattern(prb_String pattern);
-PRB_PUBLICDEC uint64_t        prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
-PRB_PUBLICDEC uint64_t        prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
-PRB_PUBLICDEC void            prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement);
-PRB_PUBLICDEC prb_Bytes       prb_readEntireFile(prb_String path);
-PRB_PUBLICDEC void            prb_writeEntireFile(prb_String path, prb_Bytes content);
-PRB_PUBLICDEC void            prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
+prb_PUBLICDEC bool            prb_isDirectory(prb_String path);
+prb_PUBLICDEC bool            prb_isFile(prb_String path);
+prb_PUBLICDEC bool            prb_directoryIsEmpty(prb_String path);
+prb_PUBLICDEC void            prb_createDirIfNotExists(prb_String path);
+prb_PUBLICDEC void            prb_removeFileOrDirectoryIfExists(prb_String path);
+prb_PUBLICDEC void            prb_removeFileIfExists(prb_String path);
+prb_PUBLICDEC void            prb_removeDirectoryIfExists(prb_String path);
+prb_PUBLICDEC void            prb_clearDirectory(prb_String path);
+prb_PUBLICDEC prb_String      prb_getCurrentWorkingDir(void);
+prb_PUBLICDEC prb_String      prb_pathJoin(prb_String path1, prb_String path2);
+prb_PUBLICDEC prb_String      prb_getParentDir(prb_String path);
+prb_PUBLICDEC prb_String      prb_getLastEntryInPath(prb_String path);
+prb_PUBLICDEC prb_String      prb_replaceExt(prb_String path, prb_String newExt);
+prb_PUBLICDEC prb_StringArray prb_getAllMatches(prb_String pattern);
+prb_PUBLICDEC uint64_t        prb_getLatestLastModifiedFromPattern(prb_String pattern);
+prb_PUBLICDEC uint64_t        prb_getEarliestLastModifiedFromPattern(prb_String pattern);
+prb_PUBLICDEC uint64_t        prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
+prb_PUBLICDEC uint64_t        prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
+prb_PUBLICDEC void            prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement);
+prb_PUBLICDEC prb_Bytes       prb_readEntireFile(prb_String path);
+prb_PUBLICDEC void            prb_writeEntireFile(prb_String path, prb_Bytes content);
+prb_PUBLICDEC void            prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION Strings
-PRB_PUBLICDEC int32_t prb_strlen(prb_String string);
-PRB_PUBLICDEC bool    prb_streq(prb_String str1, prb_String str2);
-PRB_PUBLICDEC bool    prb_strStartsWith(prb_String str1, prb_String str2);
-PRB_PUBLICDEC bool    prb_strEndsWith(prb_String str1, prb_String str2);
-PRB_PUBLICDEC int32_t prb_strFindIndex(
+prb_PUBLICDEC int32_t prb_strlen(prb_String string);
+prb_PUBLICDEC bool    prb_streq(prb_String str1, prb_String str2);
+prb_PUBLICDEC bool    prb_strStartsWith(prb_String str1, prb_String str2);
+prb_PUBLICDEC bool    prb_strEndsWith(prb_String str1, prb_String str2);
+prb_PUBLICDEC int32_t prb_strFindIndex(
     prb_String         str,
     int32_t            onePastStrEndIndex,
     prb_String         pattern,
     prb_StringFindMode mode,
     prb_StringFindDir  dir
 );
-PRB_PUBLICDEC prb_String             prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
-PRB_PUBLICDEC prb_StringBuilder      prb_createStringBuilder(int32_t len);
-PRB_PUBLICDEC void                   prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source, int32_t len);
-PRB_PUBLICDEC prb_String             prb_stringBuilderGetString(prb_StringBuilder* builder);
-PRB_PUBLICDEC prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
-PRB_PUBLICDEC void                   prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
-PRB_PUBLICDEC prb_StringArray        prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder);
-PRB_PUBLICDEC prb_String             prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
-PRB_PUBLICDEC prb_String             prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
-PRB_PUBLICDEC prb_StringArray        prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2);
-PRB_PUBLICDEC prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...)
+prb_PUBLICDEC prb_String             prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
+prb_PUBLICDEC prb_StringBuilder      prb_createStringBuilder(int32_t len);
+prb_PUBLICDEC void                   prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source, int32_t len);
+prb_PUBLICDEC prb_String             prb_stringBuilderGetString(prb_StringBuilder* builder);
+prb_PUBLICDEC prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
+prb_PUBLICDEC void                   prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
+prb_PUBLICDEC prb_StringArray        prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder);
+prb_PUBLICDEC prb_String             prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
+prb_PUBLICDEC prb_String             prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
+prb_PUBLICDEC prb_StringArray        prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2);
+prb_PUBLICDEC prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...)
     prb_ATTRIBUTE_FORMAT(3, 4);
-PRB_PUBLICDEC prb_String prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args);
-PRB_PUBLICDEC prb_String prb_fmt(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-PRB_PUBLICDEC void       prb_fmtNoNullTerminator(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-PRB_PUBLICDEC prb_String prb_vfmt(prb_String fmt, va_list args);
-PRB_PUBLICDEC prb_String prb_fmtAndPrint(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-PRB_PUBLICDEC prb_String prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-PRB_PUBLICDEC prb_String prb_vfmtAndPrint(prb_String fmt, va_list args);
-PRB_PUBLICDEC prb_String prb_vfmtAndPrintColor(prb_ColorID color, prb_String fmt, va_list args);
-PRB_PUBLICDEC prb_String prb_fmtAndPrintln(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-PRB_PUBLICDEC prb_String prb_fmtAndPrintlnColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-PRB_PUBLICDEC prb_String prb_vfmtAndPrintln(prb_String fmt, va_list args);
-PRB_PUBLICDEC prb_String prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args);
-PRB_PUBLICDEC void       prb_writeToStdout(prb_String str, int32_t len);
-PRB_PUBLICDEC void       prb_setPrintColor(prb_ColorID color);
-PRB_PUBLICDEC void       prb_resetPrintColor(void);
-PRB_PUBLICDEC prb_LineIterator     prb_createLineIter(void* ptr, int32_t len);
-PRB_PUBLICDEC prb_CompletionStatus prb_lineIterNext(prb_LineIterator* iter);
+prb_PUBLICDEC prb_String prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String prb_fmt(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC void       prb_fmtNoNullTerminator(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC prb_String prb_vfmt(prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String prb_fmtAndPrint(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC prb_String prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_PUBLICDEC prb_String prb_vfmtAndPrint(prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String prb_vfmtAndPrintColor(prb_ColorID color, prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String prb_fmtAndPrintln(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC prb_String prb_fmtAndPrintlnColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_PUBLICDEC prb_String prb_vfmtAndPrintln(prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args);
+prb_PUBLICDEC void       prb_writeToStdout(prb_String str, int32_t len);
+prb_PUBLICDEC void       prb_setPrintColor(prb_ColorID color);
+prb_PUBLICDEC void       prb_resetPrintColor(void);
+prb_PUBLICDEC prb_LineIterator     prb_createLineIter(void* ptr, int32_t len);
+prb_PUBLICDEC prb_CompletionStatus prb_lineIterNext(prb_LineIterator* iter);
 
 // SECTION Processes
-PRB_PUBLICDEC prb_ProcessHandle    prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath);
-PRB_PUBLICDEC prb_CompletionStatus prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
+prb_PUBLICDEC prb_ProcessHandle    prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath);
+prb_PUBLICDEC prb_CompletionStatus prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
 
 // SECTION Timing
-PRB_PUBLICDEC prb_TimeStart prb_timeStart(void);
-PRB_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
+prb_PUBLICDEC prb_TimeStart prb_timeStart(void);
+prb_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
 
 // SECTION stb snprintf
 #if defined(__clang__)
-    #if defined(__has_feature) && defined(__has_attribute)
-        #if __has_feature(address_sanitizer)
-            #if __has_attribute(__no_sanitize__)
-                #define STBSP__ASAN __attribute__((__no_sanitize__("address")))
-            #elif __has_attribute(__no_sanitize_address__)
-                #define STBSP__ASAN __attribute__((__no_sanitize_address__))
-            #elif __has_attribute(__no_address_safety_analysis__)
-                #define STBSP__ASAN __attribute__((__no_address_safety_analysis__))
-            #endif
-        #endif
-    #endif
+#if defined(__has_feature) && defined(__has_attribute)
+#if __has_feature(address_sanitizer)
+#if __has_attribute(__no_sanitize__)
+#define STBSP__ASAN __attribute__((__no_sanitize__("address")))
+#elif __has_attribute(__no_sanitize_address__)
+#define STBSP__ASAN __attribute__((__no_sanitize_address__))
+#elif __has_attribute(__no_address_safety_analysis__)
+#define STBSP__ASAN __attribute__((__no_address_safety_analysis__))
+#endif
+#endif
+#endif
 #elif defined(__GNUC__) && (__GNUC__ >= 5 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8))
-    #if defined(__SANITIZE_ADDRESS__) && __SANITIZE_ADDRESS__
-        #define STBSP__ASAN __attribute__((__no_sanitize_address__))
-    #endif
+#if defined(__SANITIZE_ADDRESS__) && __SANITIZE_ADDRESS__
+#define STBSP__ASAN __attribute__((__no_sanitize_address__))
+#endif
 #endif
 
 #ifndef STBSP__ASAN
-    #define STBSP__ASAN
+#define STBSP__ASAN
 #endif
 
 #ifdef STB_SPRINTF_STATIC
-    #define STBSP__PUBLICDEC static
-    #define STBSP__PUBLICDEF static STBSP__ASAN
+#define STBSP__PUBLICDEC static
+#define STBSP__PUBLICDEF static STBSP__ASAN
 #else
-    #ifdef __cplusplus
-        #define STBSP__PUBLICDEC extern "C"
-        #define STBSP__PUBLICDEF extern "C" STBSP__ASAN
-    #else
-        #define STBSP__PUBLICDEC extern
-        #define STBSP__PUBLICDEF STBSP__ASAN
-    #endif
+#ifdef __cplusplus
+#define STBSP__PUBLICDEC extern "C"
+#define STBSP__PUBLICDEF extern "C" STBSP__ASAN
+#else
+#define STBSP__PUBLICDEC extern
+#define STBSP__PUBLICDEF STBSP__ASAN
+#endif
 #endif
 
 #if defined(__has_attribute)
-    #if __has_attribute(format)
-        #define STBSP__ATTRIBUTE_FORMAT(fmt, va) __attribute__((format(printf, fmt, va)))
-    #endif
+#if __has_attribute(format)
+#define STBSP__ATTRIBUTE_FORMAT(fmt, va) __attribute__((format(printf, fmt, va)))
+#endif
 #endif
 
 #ifndef STBSP__ATTRIBUTE_FORMAT
-    #define STBSP__ATTRIBUTE_FORMAT(fmt, va)
+#define STBSP__ATTRIBUTE_FORMAT(fmt, va)
 #endif
 
 #ifdef _MSC_VER
-    #define STBSP__NOTUSED(v) (void)(v)
+#define STBSP__NOTUSED(v) (void)(v)
 #else
-    #define STBSP__NOTUSED(v) (void)sizeof(v)
+#define STBSP__NOTUSED(v) (void)sizeof(v)
 #endif
 
 #ifndef STB_SPRINTF_MIN
-    #define STB_SPRINTF_MIN 512  // how many characters per callback
+#define STB_SPRINTF_MIN 512  // how many characters per callback
 #endif
 typedef char* STBSP_SPRINTFCB(const char* buf, void* user, int len);
 
 #ifndef STB_SPRINTF_DECORATE
-    #define STB_SPRINTF_DECORATE(name) stbsp_##name  // define this before including if you want to change the names
+#define STB_SPRINTF_DECORATE(name) stbsp_##name  // define this before including if you want to change the names
 #endif
 
 STBSP__PUBLICDEC int STB_SPRINTF_DECORATE(vsprintf)(char* buf, char const* fmt, va_list va);
@@ -411,14 +414,14 @@ STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char peri
 //
 
 #if !defined(STBDS_REALLOC) && !defined(STBDS_FREE)
-    #define STBDS_REALLOC(c, p, s) prb_realloc(p, s)
-    #define STBDS_FREE(c, p)
+#define STBDS_REALLOC(c, p, s) prb_realloc(p, s)
+#define STBDS_FREE(c, p)
 #endif
 
 #ifdef _MSC_VER
-    #define STBDS_NOTUSED(v) (void)(v)
+#define STBDS_NOTUSED(v) (void)(v)
 #else
-    #define STBDS_NOTUSED(v) (void)sizeof(v)
+#define STBDS_NOTUSED(v) (void)sizeof(v)
 #endif
 
 #ifdef __cplusplus
@@ -457,16 +460,16 @@ extern void* stbds_shmode_func(size_t elemsize, int mode);
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
-    #define STBDS_HAS_TYPEOF
-    #ifdef __cplusplus
-    //#define STBDS_HAS_LITERAL_ARRAY  // this is currently broken for clang
-    #endif
+#define STBDS_HAS_TYPEOF
+#ifdef __cplusplus
+//#define STBDS_HAS_LITERAL_ARRAY  // this is currently broken for clang
+#endif
 #endif
 
 #if !defined(__cplusplus)
-    #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-        #define STBDS_HAS_LITERAL_ARRAY
-    #endif
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#define STBDS_HAS_LITERAL_ARRAY
+#endif
 #endif
 
 // clang-format off
@@ -671,28 +674,28 @@ stbds_shmode_func_wrapper(T*, size_t elemsize, int mode) {
     return (T*)stbds_shmode_func(elemsize, mode);
 }
 #else
-    #define stbds_arrgrowf_wrapper stbds_arrgrowf
-    #define stbds_hmget_key_wrapper stbds_hmget_key
-    #define stbds_hmget_key_ts_wrapper stbds_hmget_key_ts
-    #define stbds_hmput_default_wrapper stbds_hmput_default
-    #define stbds_hmput_key_wrapper stbds_hmput_key
-    #define stbds_hmdel_key_wrapper stbds_hmdel_key
-    #define stbds_shmode_func_wrapper(t, e, m) stbds_shmode_func(e, m)
+#define stbds_arrgrowf_wrapper stbds_arrgrowf
+#define stbds_hmget_key_wrapper stbds_hmget_key
+#define stbds_hmget_key_ts_wrapper stbds_hmget_key_ts
+#define stbds_hmput_default_wrapper stbds_hmput_default
+#define stbds_hmput_key_wrapper stbds_hmput_key
+#define stbds_hmdel_key_wrapper stbds_hmdel_key
+#define stbds_shmode_func_wrapper(t, e, m) stbds_shmode_func(e, m)
 #endif
 
 #endif  // PROGRAMMABLE_BUILD_H
 
-#ifdef PRB_IMPLEMENTATION
+#ifdef prb_IMPLEMENTATION
 
 //
 // SECTION Core (implementation)
 //
 
 struct {
-    prb_Arena arena;
+    prb_Arena    arena;
 } prb_globalState;
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_init(int32_t virtualMemoryBytesToUse) {
     prb_globalState.arena = (prb_Arena) {
         .base = prb_vmemAllocate(virtualMemoryBytesToUse),
@@ -701,18 +704,18 @@ prb_init(int32_t virtualMemoryBytesToUse) {
     };
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_terminate(int32_t code) {
 #if prb_PLATFORM_WINDOWS
 
-    #error unimplemented
+#error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
     exit(code);
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 }
 
@@ -720,7 +723,7 @@ prb_terminate(int32_t code) {
 // SECTION Memory (implementation)
 //
 
-PRB_PUBLICDEF void*
+prb_PUBLICDEF void*
 prb_memcpy(void* dest, const void* src, size_t n) {
     uint8_t* d = (uint8_t*)dest;
     uint8_t* s = (uint8_t*)src;
@@ -730,7 +733,7 @@ prb_memcpy(void* dest, const void* src, size_t n) {
     return dest;
 }
 
-PRB_PUBLICDEF void*
+prb_PUBLICDEF void*
 prb_memmove(void* dest, const void* src, size_t n) {
     char*       d = (char*)dest;
     const char* s = (const char*)src;
@@ -752,7 +755,7 @@ prb_memmove(void* dest, const void* src, size_t n) {
     return d;
 }
 
-PRB_PUBLICDEF void*
+prb_PUBLICDEF void*
 prb_memset(void* dest, int32_t val, size_t n) {
     uint8_t* d = (uint8_t*)dest;
     for (size_t index = 0; index < n; index++) {
@@ -761,7 +764,7 @@ prb_memset(void* dest, int32_t val, size_t n) {
     return dest;
 }
 
-PRB_PUBLICDEF bool
+prb_PUBLICDEF bool
 prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes) {
     prb_assert(bytes >= 0);
     uint8_t* l = (uint8_t*)ptr1;
@@ -772,7 +775,7 @@ prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes) {
     return result;
 }
 
-PRB_PUBLICDEF void*
+prb_PUBLICDEF void*
 prb_vmemAllocate(int32_t size) {
 #if prb_PLATFORM_WINDOWS
 
@@ -787,11 +790,11 @@ prb_vmemAllocate(int32_t size) {
     return ptr;
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 }
 
-PRB_PUBLICDEF int32_t
+prb_PUBLICDEF int32_t
 prb_getOffsetForAlignment(void* ptr, int32_t align) {
     prb_assert(prb_isPowerOf2(align));
     uintptr_t ptrAligned = (uintptr_t)((uint8_t*)ptr + (align - 1)) & (uintptr_t)(~(align - 1));
@@ -801,7 +804,7 @@ prb_getOffsetForAlignment(void* ptr, int32_t align) {
     return (int32_t)diff;
 }
 
-PRB_PUBLICDEF void*
+prb_PUBLICDEF void*
 prb_allocAndZero(int32_t size, int32_t align) {
     void* result = prb_globalArenaAlignTo_(align);
     prb_assert(prb_globalArenaCurrentFreeSize() >= size);
@@ -809,7 +812,7 @@ prb_allocAndZero(int32_t size, int32_t align) {
     return result;
 }
 
-PRB_PUBLICDEF void*
+prb_PUBLICDEF void*
 prb_realloc(void* ptr, int32_t size) {
     void* result = prb_allocAndZero(size, prb_alignof(void*));
     if (ptr) {
@@ -818,19 +821,19 @@ prb_realloc(void* ptr, int32_t size) {
     return result;
 }
 
-PRB_PUBLICDEF void*
+prb_PUBLICDEF void*
 prb_globalArenaCurrentFreePtr(void) {
     void* result = (uint8_t*)prb_globalState.arena.base + prb_globalState.arena.used;
     return result;
 }
 
-PRB_PUBLICDEF int32_t
+prb_PUBLICDEF int32_t
 prb_globalArenaCurrentFreeSize(void) {
     int32_t result = prb_globalState.arena.size - prb_globalState.arena.used;
     return result;
 }
 
-PRB_PUBLICDEF void*
+prb_PUBLICDEF void*
 prb_globalArenaAlignTo_(int32_t align) {
     int32_t offset = prb_getOffsetForAlignment(prb_globalState.arena.base, align);
     prb_assert(prb_globalState.arena.used + offset <= prb_globalState.arena.size);
@@ -844,7 +847,7 @@ prb_globalArenaAlignTo_(int32_t align) {
 // SECTION Filesystem (implementation)
 //
 
-PRB_PUBLICDEF bool
+prb_PUBLICDEF bool
 prb_isDirectory(prb_String path) {
     int32_t pathlen = prb_strlen(path);
     prb_assert(path && pathlen > 0);
@@ -873,13 +876,13 @@ prb_isDirectory(prb_String path) {
     }
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 
     return result;
 }
 
-PRB_PUBLICDEF bool
+prb_PUBLICDEF bool
 prb_isFile(prb_String path) {
     int32_t pathlen = prb_strlen(path);
     prb_assert(path && pathlen > 0);
@@ -887,7 +890,7 @@ prb_isFile(prb_String path) {
 
 #if prb_PLATFORM_WINDOWS
 
-    #error unimplemented
+#error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
@@ -898,13 +901,13 @@ prb_isFile(prb_String path) {
     }
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 
     return result;
 }
 
-PRB_PUBLICDEF bool
+prb_PUBLICDEF bool
 prb_directoryIsEmpty(prb_String path) {
     prb_assert(prb_isDirectory(path));
     bool result = true;
@@ -940,13 +943,13 @@ prb_directoryIsEmpty(prb_String path) {
     closedir(pathHandle);
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 
     return result;
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_createDirIfNotExists(prb_String path) {
 #if prb_PLATFORM_WINDOWS
 
@@ -960,11 +963,11 @@ prb_createDirIfNotExists(prb_String path) {
     }
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_removeFileOrDirectoryIfExists(prb_String path) {
     if (prb_isDirectory(path)) {
         prb_removeDirectoryIfExists(path);
@@ -973,24 +976,24 @@ prb_removeFileOrDirectoryIfExists(prb_String path) {
     }
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_removeFileIfExists(prb_String path) {
     prb_assert(!prb_isDirectory(path));
 
 #if prb_PLATFORM_WINDOWS
 
-    #error unimplemented
+#error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
     unlink(path);
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_removeDirectoryIfExists(prb_String path) {
 #if prb_PLATFORM_WINDOWS
 
@@ -1020,17 +1023,17 @@ prb_removeDirectoryIfExists(prb_String path) {
     }
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_clearDirectory(prb_String path) {
     prb_removeFileOrDirectoryIfExists(path);
     prb_createDirIfNotExists(path);
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_getCurrentWorkingDir(void) {
 #if prb_PLATFORM_WINDOWS
 
@@ -1044,16 +1047,16 @@ prb_getCurrentWorkingDir(void) {
 #elif prb_PLATFORM_LINUX
 
     int32_t maxLen = PATH_MAX + 1;
-    char*   ptr = (char*)prb_allocAndZero(maxLen, 1);
+    char* ptr = (char*)prb_allocAndZero(maxLen, 1);
     prb_assert(getcwd(ptr, maxLen));
     return ptr;
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_pathJoin(prb_String path1, prb_String path2) {
     int32_t path1len = prb_strlen(path1);
     int32_t path2len = prb_strlen(path2);
@@ -1072,7 +1075,7 @@ prb_pathJoin(prb_String path1, prb_String path2) {
     return result;
 }
 
-PRB_PUBLICDEF int32_t
+prb_PUBLICDEF int32_t
 prb_getSepIndexBeforeLastEntry(prb_String path) {
     int32_t pathlen = prb_strlen(path);
     int32_t result = prb_strFindIndex(path, pathlen - 1, "/\\", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
@@ -1082,34 +1085,34 @@ prb_getSepIndexBeforeLastEntry(prb_String path) {
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_getParentDir(prb_String path) {
     int32_t    sepIndex = prb_getSepIndexBeforeLastEntry(path);
     prb_String result = sepIndex >= 0 ? prb_stringCopy(path, 0, sepIndex) : prb_getCurrentWorkingDir();
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_getLastEntryInPath(prb_String path) {
     int32_t    sepIndex = prb_getSepIndexBeforeLastEntry(path);
     prb_String result = sepIndex >= 0 ? prb_stringCopy(path, sepIndex + 1, -1) : path;
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_replaceExt(prb_String path, prb_String newExt) {
     int32_t    dotIndex = prb_strFindIndex(path, -1, ".", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
     prb_String result = prb_fmt("%.*s.%s", dotIndex, path, newExt);
     return result;
 }
 
-PRB_PUBLICDEF prb_StringArray
+prb_PUBLICDEF prb_StringArray
 prb_getAllMatches(prb_String pattern) {
     prb_StringArray result = {};
 
 #if prb_PLATFORM_WINDOWS
 
-    #error unimplemented
+#error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
@@ -1119,7 +1122,7 @@ prb_getAllMatches(prb_String pattern) {
         result.len = (int32_t)globResult.gl_pathc;
         result.ptr = prb_allocArray(prb_String, result.len);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char*   path = globResult.gl_pathv[resultIndex];
+            char* path = globResult.gl_pathv[resultIndex];
             int32_t pathlen = prb_strlen(path);
             result.ptr[resultIndex] = prb_stringCopy(path, 0, pathlen - 1);
         }
@@ -1127,13 +1130,13 @@ prb_getAllMatches(prb_String pattern) {
     globfree(&globResult);
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 
     return result;
 }
 
-PRB_PUBLICDEF uint64_t
+prb_PUBLICDEF uint64_t
 prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     uint64_t result = 0;
 
@@ -1159,7 +1162,7 @@ prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         prb_assert(globResult.gl_pathc <= INT32_MAX);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char*       path = globResult.gl_pathv[resultIndex];
+            char* path = globResult.gl_pathv[resultIndex];
             struct stat statBuf = {};
             if (stat(path, &statBuf) == 0) {
                 uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
@@ -1170,13 +1173,13 @@ prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     globfree(&globResult);
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 
     return result;
 }
 
-PRB_PUBLICDEF uint64_t
+prb_PUBLICDEF uint64_t
 prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     uint64_t result = UINT64_MAX;
 
@@ -1204,7 +1207,7 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         prb_assert(globResult.gl_pathc <= INT32_MAX);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char*       path = globResult.gl_pathv[resultIndex];
+            char* path = globResult.gl_pathv[resultIndex];
             struct stat statBuf = {};
             if (stat(path, &statBuf) == 0) {
                 uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
@@ -1217,13 +1220,13 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     globfree(&globResult);
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 
     return result;
 }
 
-PRB_PUBLICDEF uint64_t
+prb_PUBLICDEF uint64_t
 prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
     uint64_t result = 0;
     for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
@@ -1232,7 +1235,7 @@ prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCoun
     return result;
 }
 
-PRB_PUBLICDEF uint64_t
+prb_PUBLICDEF uint64_t
 prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
     uint64_t result = UINT64_MAX;
     for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
@@ -1241,7 +1244,7 @@ prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCo
     return result;
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
     prb_Bytes  content = prb_readEntireFile(path);
     prb_String newContent = prb_strReplace((char*)content.data, pattern, replacement);
@@ -1249,11 +1252,11 @@ prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement)
     prb_writeEntireFile(path, (prb_Bytes) {(uint8_t*)newContent, newContentLen});
 }
 
-PRB_PUBLICDEF prb_Bytes
+prb_PUBLICDEF prb_Bytes
 prb_readEntireFile(prb_String path) {
 #if prb_PLATFORM_WINDOWS
 
-    #error unimplemented
+#error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
@@ -1262,22 +1265,22 @@ prb_readEntireFile(prb_String path) {
     struct stat statBuf = {};
     prb_assert(fstat(handle, &statBuf) == 0);
     uint8_t* buf = (uint8_t*)prb_allocAndZero(statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
-    int32_t  readResult = read(handle, buf, statBuf.st_size);
+    int32_t readResult = read(handle, buf, statBuf.st_size);
     prb_assert(readResult == statBuf.st_size);
     close(handle);
     prb_Bytes result = {buf, readResult};
     return result;
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_writeEntireFile(prb_String path, prb_Bytes content) {
 #if prb_PLATFORM_WINDOWS
 
-    #error unimplemented
+#error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
@@ -1288,11 +1291,11 @@ prb_writeEntireFile(prb_String path, prb_Bytes content) {
     close(handle);
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) {
     prb_Bytes inContent = prb_readEntireFile(inPath);
     prb_assert(inContent.len > 0);
@@ -1317,7 +1320,7 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
 // SECTION Strings (implementation)
 //
 
-PRB_PUBLICDEF int32_t
+prb_PUBLICDEF int32_t
 prb_strlen(prb_String string) {
     prb_String ptr = string;
     for (; *ptr; ptr++) {}
@@ -1326,7 +1329,7 @@ prb_strlen(prb_String string) {
     return (int32_t)len;
 }
 
-PRB_PUBLICDEF bool
+prb_PUBLICDEF bool
 prb_streq(prb_String str1, prb_String str2) {
     bool    result = false;
     int32_t str1len = prb_strlen(str1);
@@ -1337,7 +1340,7 @@ prb_streq(prb_String str1, prb_String str2) {
     return result;
 }
 
-PRB_PUBLICDEF bool
+prb_PUBLICDEF bool
 prb_strStartsWith(prb_String str1, prb_String str2) {
     bool    result = false;
     int32_t str2len = prb_strlen(str2);
@@ -1354,7 +1357,7 @@ prb_strStartsWith(prb_String str1, prb_String str2) {
     return result;
 }
 
-PRB_PUBLICDEF bool
+prb_PUBLICDEF bool
 prb_strEndsWith(prb_String str1, prb_String str2) {
     bool    result = false;
     int32_t str1len = prb_strlen(str1);
@@ -1365,7 +1368,7 @@ prb_strEndsWith(prb_String str1, prb_String str2) {
     return result;
 }
 
-PRB_PUBLICDEF int32_t
+prb_PUBLICDEF int32_t
 prb_strFindIndex(
     prb_String         str,
     int32_t            onePastStrEndIndex,
@@ -1464,7 +1467,7 @@ prb_strFindIndex(
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_strReplace(prb_String str, prb_String pattern, prb_String replacement) {
     int32_t    patternIndex = prb_strFindIndex(str, -1, pattern, prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
     prb_String result = str;
@@ -1481,7 +1484,7 @@ prb_strReplace(prb_String str, prb_String pattern, prb_String replacement) {
     return result;
 }
 
-PRB_PUBLICDEF prb_StringBuilder
+prb_PUBLICDEF prb_StringBuilder
 prb_createStringBuilder(int32_t len) {
     prb_assert(len >= 0);
     // NOTE(khvorov) +1 is for the null terminator
@@ -1489,41 +1492,41 @@ prb_createStringBuilder(int32_t len) {
     return result;
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source, int32_t len) {
     prb_assert(len <= builder->capacity - builder->written);
     prb_memcpy(builder->ptr + builder->written, source, len);
     builder->written += len;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_stringBuilderGetString(prb_StringBuilder* builder) {
     prb_assert(builder->written == builder->capacity);
     prb_String result = builder->ptr;
     return result;
 }
 
-PRB_PUBLICDEF prb_StringArrayBuilder
+prb_PUBLICDEF prb_StringArrayBuilder
 prb_createStringArrayBuilder(int32_t len) {
     prb_StringArrayBuilder builder = {.ptr = prb_allocArray(prb_String, len), .capacity = len, .written = 0};
     return builder;
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr) {
     prb_assert(builder->capacity >= arr.len + builder->written);
     prb_memcpy(builder->ptr + builder->written, arr.ptr, arr.len * sizeof(prb_String));
     builder->written += arr.len;
 }
 
-PRB_PUBLICDEF prb_StringArray
+prb_PUBLICDEF prb_StringArray
 prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder) {
     prb_assert(builder->capacity == builder->written);
     prb_StringArray result = {builder->ptr, builder->written};
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
     if (toInclusive < 0) {
         toInclusive = INT32_MAX;
@@ -1543,7 +1546,7 @@ prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
     return (prb_String)dest;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
     int32_t seplen = prb_strlen(sep);
     prb_assert(seplen >= 0 && stringsCount >= 0);
@@ -1569,7 +1572,7 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
     return result;
 }
 
-PRB_PUBLICDEF prb_StringArray
+prb_PUBLICDEF prb_StringArray
 prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2) {
     prb_StringArrayBuilder builder = prb_createStringArrayBuilder(arr1.len + arr2.len);
     prb_stringArrayBuilderCopy(&builder, arr1);
@@ -1578,7 +1581,7 @@ prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2) {
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -1587,13 +1590,13 @@ prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...) {
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args) {
     stbsp_vsnprintf((char*)buf, bufSize, fmt, args);
     return (char*)buf;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_fmt(prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -1602,7 +1605,7 @@ prb_fmt(prb_String fmt, ...) {
     return result;
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_fmtNoNullTerminator(prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -1611,7 +1614,7 @@ prb_fmtNoNullTerminator(prb_String fmt, ...) {
     prb_globalState.arena.used -= 1;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_vfmt(prb_String fmt, va_list args) {
     prb_String result = prb_vfmtCustomBuffer(
         (uint8_t*)prb_globalState.arena.base + prb_globalState.arena.used,
@@ -1624,7 +1627,7 @@ prb_vfmt(prb_String fmt, va_list args) {
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_fmtAndPrint(prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -1633,7 +1636,7 @@ prb_fmtAndPrint(prb_String fmt, ...) {
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -1642,14 +1645,14 @@ prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) {
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_vfmtAndPrint(prb_String fmt, va_list args) {
     prb_String result = prb_vfmt(fmt, args);
     prb_writeToStdout(result, prb_strlen(result));
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_vfmtAndPrintColor(prb_ColorID color, prb_String fmt, va_list args) {
     prb_setPrintColor(color);
     prb_String result = prb_vfmtAndPrint(fmt, args);
@@ -1657,7 +1660,7 @@ prb_vfmtAndPrintColor(prb_ColorID color, prb_String fmt, va_list args) {
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_fmtAndPrintln(prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -1666,7 +1669,7 @@ prb_fmtAndPrintln(prb_String fmt, ...) {
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_fmtAndPrintlnColor(prb_ColorID color, prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -1675,14 +1678,14 @@ prb_fmtAndPrintlnColor(prb_ColorID color, prb_String fmt, ...) {
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_vfmtAndPrintln(prb_String fmt, va_list args) {
     prb_String result = prb_vfmtAndPrint(fmt, args);
     prb_fmtAndPrint("\n");
     return result;
 }
 
-PRB_PUBLICDEF prb_String
+prb_PUBLICDEF prb_String
 prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args) {
     prb_setPrintColor(color);
     prb_String result = prb_vfmtAndPrintln(fmt, args);
@@ -1690,7 +1693,7 @@ prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args) {
     return result;
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_writeToStdout(prb_String msg, int32_t len) {
 #if prb_PLATFORM_WINDOWS
 
@@ -1703,11 +1706,11 @@ prb_writeToStdout(prb_String msg, int32_t len) {
     prb_assert(writeResult == len);
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_setPrintColor(prb_ColorID color) {
     prb_String str = "BAD COLOR";
     switch (color) {
@@ -1723,19 +1726,19 @@ prb_setPrintColor(prb_ColorID color) {
     prb_writeToStdout(str, prb_strlen(str));
 }
 
-PRB_PUBLICDEF void
+prb_PUBLICDEF void
 prb_resetPrintColor() {
     prb_String str = "\x1b[0m";
     prb_writeToStdout(str, prb_strlen(str));
 }
 
-PRB_PUBLICDEF prb_LineIterator
+prb_PUBLICDEF prb_LineIterator
 prb_createLineIter(void* ptr, int32_t len) {
     prb_LineIterator iter = {.dataPtr = (uint8_t*)ptr, .dataLen = len, .offset = 0, .line = 0, .lineLen = 0};
     return iter;
 }
 
-PRB_PUBLICDEF prb_CompletionStatus
+prb_PUBLICDEF prb_CompletionStatus
 prb_lineIterNext(prb_LineIterator* iter) {
     prb_CompletionStatus result = prb_CompletionStatus_Failure;
 
@@ -1772,7 +1775,7 @@ prb_lineIterNext(prb_LineIterator* iter) {
 // SECTION Processes (implementation)
 //
 
-PRB_PUBLICDEF prb_String*
+prb_PUBLICDEF prb_String*
 prb_getArgArrayFromString(prb_String string) {
     int32_t stringlen = prb_strlen(string);
     int32_t spacesCount = 0;
@@ -1811,7 +1814,7 @@ prb_getArgArrayFromString(prb_String string) {
     return args;
 }
 
-PRB_PUBLICDEF prb_ProcessHandle
+prb_PUBLICDEF prb_ProcessHandle
 prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath) {
     prb_ProcessHandle result = {};
 
@@ -1835,13 +1838,13 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
         }
     }
 
-    #error unimplemented
+#error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
-    bool                        fileActionsSucceeded = true;
+    bool fileActionsSucceeded = true;
     posix_spawn_file_actions_t* fileActionsPtr = 0;
-    posix_spawn_file_actions_t  fileActions = {};
+    posix_spawn_file_actions_t fileActions = {};
     if ((flags & prb_ProcessFlag_RedirectStdout) || (flags & prb_ProcessFlag_RedirectStderr)) {
         fileActionsPtr = &fileActions;
         int initResult = posix_spawn_file_actions_init(&fileActions);
@@ -1875,11 +1878,11 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
 
     if (fileActionsSucceeded) {
         prb_String* args = prb_getArgArrayFromString(cmd);
-        int         spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
+        int spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
         if (spawnResult == 0) {
             result.valid = true;
             if (!(flags & prb_ProcessFlag_DontWait)) {
-                int   status = 0;
+                int status = 0;
                 pid_t waitResult = waitpid(result.pid, &status, 0);
                 if (waitResult == result.pid && status == 0) {
                     result.completed = true;
@@ -1890,19 +1893,19 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
     }
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 
     return result;
 }
 
-PRB_PUBLICDEF prb_CompletionStatus
+prb_PUBLICDEF prb_CompletionStatus
 prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
     prb_CompletionStatus result = prb_CompletionStatus_Success;
 
 #if prb_PLATFORM_WINDOWS
 
-    #error unimplemented
+#error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
@@ -1911,7 +1914,7 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
         if (handle->valid) {
             if (!handle->completed) {
                 int32_t status = 0;
-                pid_t   waitResult = waitpid(handle->pid, &status, 0);
+                pid_t waitResult = waitpid(handle->pid, &status, 0);
                 handle->completed = true;
                 if (waitResult == handle->pid && status == 0) {
                     handle->completionStatus = prb_CompletionStatus_Success;
@@ -1926,7 +1929,7 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
     }
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 
     return result;
@@ -1936,13 +1939,13 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
 // SECTION Timing (implementation)
 //
 
-PRB_PUBLICDEF prb_TimeStart
+prb_PUBLICDEF prb_TimeStart
 prb_timeStart(void) {
     prb_TimeStart result = {};
 
 #if prb_PLATFORM_WINDOWS
 
-    #error unimplemented
+#error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
@@ -1954,13 +1957,13 @@ prb_timeStart(void) {
     }
 
 #else
-    #error unimplemented
+#error unimplemented
 #endif
 
     return result;
 }
 
-PRB_PUBLICDEF float
+prb_PUBLICDEF float
 prb_getMsFrom(prb_TimeStart timeStart) {
     prb_TimeStart now = prb_timeStart();
     float         result = 0.0f;
@@ -1979,33 +1982,33 @@ prb_getMsFrom(prb_TimeStart timeStart) {
 #define stbsp__int32 signed int
 
 #ifdef _MSC_VER
-    #define stbsp__uint64 unsigned __int64
-    #define stbsp__int64 signed __int64
+#define stbsp__uint64 unsigned __int64
+#define stbsp__int64 signed __int64
 #else
-    #define stbsp__uint64 unsigned long long
-    #define stbsp__int64 signed long long
+#define stbsp__uint64 unsigned long long
+#define stbsp__int64 signed long long
 #endif
 #define stbsp__uint16 unsigned short
 
 #ifndef stbsp__uintptr
-    #if defined(__ppc64__) || defined(__powerpc64__) || defined(__aarch64__) || defined(_M_X64) || defined(__x86_64__) \
-        || defined(__x86_64) || defined(__s390x__)
-        #define stbsp__uintptr stbsp__uint64
-    #else
-        #define stbsp__uintptr stbsp__uint32
-    #endif
+#if defined(__ppc64__) || defined(__powerpc64__) || defined(__aarch64__) || defined(_M_X64) || defined(__x86_64__) \
+    || defined(__x86_64) || defined(__s390x__)
+#define stbsp__uintptr stbsp__uint64
+#else
+#define stbsp__uintptr stbsp__uint32
+#endif
 #endif
 
 #ifndef STB_SPRINTF_MSVC_MODE  // used for MSVC2013 and earlier (MSVC2015 matches GCC)
-    #if defined(_MSC_VER) && (_MSC_VER < 1900)
-        #define STB_SPRINTF_MSVC_MODE
-    #endif
+#if defined(_MSC_VER) && (_MSC_VER < 1900)
+#define STB_SPRINTF_MSVC_MODE
+#endif
 #endif
 
 #ifdef STB_SPRINTF_NOUNALIGNED  // define this before inclusion to force stbsp_sprintf to always use aligned accesses
-    #define STBSP__UNALIGNED(code)
+#define STBSP__UNALIGNED(code)
 #else
-    #define STBSP__UNALIGNED(code) code
+#define STBSP__UNALIGNED(code) code
 #endif
 
 #ifndef STB_SPRINTF_NOFLOAT
@@ -2019,7 +2022,7 @@ static stbsp__int32 stbsp__real_to_str(
     stbsp__uint32  frac_digits
 );
 static stbsp__int32 stbsp__real_to_parts(stbsp__int64* bits, stbsp__int32* expo, double value);
-    #define STBSP__SPECIAL 0x7000
+#define STBSP__SPECIAL 0x7000
 #endif
 
 static char stbsp__period = '.';
@@ -2418,16 +2421,16 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 n64 <<= (64 - 56);
                 if (pr < 15)
                     n64 += ((((stbsp__uint64)8) << 56) >> (pr * 4));
-                        // add leading chars
+                    // add leading chars
 
-    #ifdef STB_SPRINTF_MSVC_MODE
+#ifdef STB_SPRINTF_MSVC_MODE
                 *s++ = '0';
                 *s++ = 'x';
-    #else
+#else
                 lead[1 + lead[0]] = '0';
                 lead[2 + lead[0]] = 'x';
                 lead[0] += 2;
-    #endif
+#endif
                 *s++ = h[(n64 >> 60) & 15];
                 n64 <<= 4;
                 if (pr)
@@ -2547,11 +2550,11 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                     dp = -dp;
                 } else
                     tail[2] = '+';
-    #ifdef STB_SPRINTF_MSVC_MODE
+#ifdef STB_SPRINTF_MSVC_MODE
                 n = 5;
-    #else
+#else
                 n = (dp >= 100) ? 5 : 4;
-    #endif
+#endif
                 tail[0] = (char)n;
                 for (;;) {
                     tail[n] = '0' + dp % 10;
@@ -3237,13 +3240,13 @@ STB_SPRINTF_DECORATE(vsprintf)(char* buf, char const* fmt, va_list va) {
 
 #ifndef STB_SPRINTF_NOFLOAT
 
-    // copies d to bits w/ strict aliasing (this compiles to nothing on /Ox)
-    #define STBSP__COPYFP(dest, src) \
-        { \
-            int cn; \
-            for (cn = 0; cn < 8; cn++) \
-                ((char*)&dest)[cn] = ((char*)&src)[cn]; \
-        }
+// copies d to bits w/ strict aliasing (this compiles to nothing on /Ox)
+#define STBSP__COPYFP(dest, src) \
+    { \
+        int cn; \
+        for (cn = 0; cn < 8; cn++) \
+            ((char*)&dest)[cn] = ((char*)&src)[cn]; \
+    }
 
 // get float info
 static stbsp__int32
@@ -3308,7 +3311,7 @@ static double const stbsp__negtoperr[13] = {
     -9.436808465446358e-293,
     8.0970921678014997e-317};
 
-    #if defined(_MSC_VER) && (_MSC_VER <= 1200)
+#if defined(_MSC_VER) && (_MSC_VER <= 1200)
 static stbsp__uint64 const stbsp__powten[20] = {
     1,
     10,
@@ -3330,8 +3333,8 @@ static stbsp__uint64 const stbsp__powten[20] = {
     100000000000000000,
     1000000000000000000,
     10000000000000000000U};
-        #define stbsp__tento19th ((stbsp__uint64)1000000000000000000)
-    #else
+#define stbsp__tento19th ((stbsp__uint64)1000000000000000000)
+#else
 static stbsp__uint64 const stbsp__powten[20] = {
     1,
     10,
@@ -3353,47 +3356,47 @@ static stbsp__uint64 const stbsp__powten[20] = {
     100000000000000000ULL,
     1000000000000000000ULL,
     10000000000000000000ULL};
-        #define stbsp__tento19th (1000000000000000000ULL)
-    #endif
+#define stbsp__tento19th (1000000000000000000ULL)
+#endif
 
-    #define stbsp__ddmulthi(oh, ol, xh, yh) \
-        { \
-            double       ahi = 0, alo, bhi = 0, blo; \
-            stbsp__int64 bt; \
-            oh = xh * yh; \
-            STBSP__COPYFP(bt, xh); \
-            bt &= ((~(stbsp__uint64)0) << 27); \
-            STBSP__COPYFP(ahi, bt); \
-            alo = xh - ahi; \
-            STBSP__COPYFP(bt, yh); \
-            bt &= ((~(stbsp__uint64)0) << 27); \
-            STBSP__COPYFP(bhi, bt); \
-            blo = yh - bhi; \
-            ol = ((ahi * bhi - oh) + ahi * blo + alo * bhi) + alo * blo; \
-        }
+#define stbsp__ddmulthi(oh, ol, xh, yh) \
+    { \
+        double       ahi = 0, alo, bhi = 0, blo; \
+        stbsp__int64 bt; \
+        oh = xh * yh; \
+        STBSP__COPYFP(bt, xh); \
+        bt &= ((~(stbsp__uint64)0) << 27); \
+        STBSP__COPYFP(ahi, bt); \
+        alo = xh - ahi; \
+        STBSP__COPYFP(bt, yh); \
+        bt &= ((~(stbsp__uint64)0) << 27); \
+        STBSP__COPYFP(bhi, bt); \
+        blo = yh - bhi; \
+        ol = ((ahi * bhi - oh) + ahi * blo + alo * bhi) + alo * blo; \
+    }
 
-    #define stbsp__ddtoS64(ob, xh, xl) \
-        { \
-            double ahi = 0, alo, vh, t; \
-            ob = (stbsp__int64)xh; \
-            vh = (double)ob; \
-            ahi = (xh - vh); \
-            t = (ahi - xh); \
-            alo = (xh - (ahi - t)) - (vh + t); \
-            ob += (stbsp__int64)(ahi + alo + xl); \
-        }
+#define stbsp__ddtoS64(ob, xh, xl) \
+    { \
+        double ahi = 0, alo, vh, t; \
+        ob = (stbsp__int64)xh; \
+        vh = (double)ob; \
+        ahi = (xh - vh); \
+        t = (ahi - xh); \
+        alo = (xh - (ahi - t)) - (vh + t); \
+        ob += (stbsp__int64)(ahi + alo + xl); \
+    }
 
-    #define stbsp__ddrenorm(oh, ol) \
-        { \
-            double s; \
-            s = oh + ol; \
-            ol = ol - (s - oh); \
-            oh = s; \
-        }
+#define stbsp__ddrenorm(oh, ol) \
+    { \
+        double s; \
+        s = oh + ol; \
+        ol = ol - (s - oh); \
+        oh = s; \
+    }
 
-    #define stbsp__ddmultlo(oh, ol, xh, xl, yh, yl) ol = ol + (xh * yl + xl * yh);
+#define stbsp__ddmultlo(oh, ol, xh, xl, yh, yl) ol = ol + (xh * yl + xl * yh);
 
-    #define stbsp__ddmultlos(oh, ol, xh, yl) ol = ol + (xh * yl);
+#define stbsp__ddmultlos(oh, ol, xh, yl) ol = ol + (xh * yl);
 
 static void
 stbsp__raise_to_power10(double* ohi, double* olo, double d, stbsp__int32 power)  // power can be -323 to +350
@@ -3612,12 +3615,12 @@ stbsp__real_to_str(
     return ng;
 }
 
-    #undef stbsp__ddmulthi
-    #undef stbsp__ddrenorm
-    #undef stbsp__ddmultlo
-    #undef stbsp__ddmultlos
-    #undef STBSP__SPECIAL
-    #undef STBSP__COPYFP
+#undef stbsp__ddmulthi
+#undef stbsp__ddrenorm
+#undef stbsp__ddmultlo
+#undef stbsp__ddmultlos
+#undef STBSP__SPECIAL
+#undef STBSP__COPYFP
 
 #endif  // STB_SPRINTF_NOFLOAT
 
@@ -3636,7 +3639,7 @@ stbsp__real_to_str(
 #define STBDS_ASSERT(x) prb_assert(x)
 
 #ifdef STBDS_STATISTICS
-    #define STBDS_STATS(x) x
+#define STBDS_STATS(x) x
 size_t stbds_array_grow;
 size_t stbds_hash_grow;
 size_t stbds_hash_shrink;
@@ -3646,7 +3649,7 @@ size_t stbds_hash_alloc;
 size_t stbds_rehash_probes;
 size_t stbds_rehash_items;
 #else
-    #define STBDS_STATS(x)
+#define STBDS_STATS(x)
 #endif
 
 //
@@ -3705,9 +3708,9 @@ stbds_arrfreef(void* a) {
 //
 
 #ifdef STBDS_INTERNAL_SMALL_BUCKET
-    #define STBDS_BUCKET_LENGTH 4
+#define STBDS_BUCKET_LENGTH 4
 #else
-    #define STBDS_BUCKET_LENGTH 8
+#define STBDS_BUCKET_LENGTH 8
 #endif
 
 #define STBDS_BUCKET_SHIFT (STBDS_BUCKET_LENGTH == 8 ? 3 : 2)
@@ -3931,21 +3934,21 @@ stbds_hash_string(char* str, size_t seed) {
 }
 
 #ifdef STBDS_SIPHASH_2_4
-    #define STBDS_SIPHASH_C_ROUNDS 2
-    #define STBDS_SIPHASH_D_ROUNDS 4
+#define STBDS_SIPHASH_C_ROUNDS 2
+#define STBDS_SIPHASH_D_ROUNDS 4
 typedef int STBDS_SIPHASH_2_4_can_only_be_used_in_64_bit_builds[sizeof(size_t) == 8 ? 1 : -1];
 #endif
 
 #ifndef STBDS_SIPHASH_C_ROUNDS
-    #define STBDS_SIPHASH_C_ROUNDS 1
+#define STBDS_SIPHASH_C_ROUNDS 1
 #endif
 #ifndef STBDS_SIPHASH_D_ROUNDS
-    #define STBDS_SIPHASH_D_ROUNDS 1
+#define STBDS_SIPHASH_D_ROUNDS 1
 #endif
 
 #ifdef _MSC_VER
-    #pragma warning(push)
-    #pragma warning(disable : 4127)  // conditional expression is constant, for do..while(0) and sizeof()==
+#pragma warning(push)
+#pragma warning(disable : 4127)  // conditional expression is constant, for do..while(0) and sizeof()==
 #endif
 
 static size_t
@@ -4033,7 +4036,7 @@ stbds_hash_bytes(void* p, size_t len, size_t seed) {
 
     if (len == 4) {
         unsigned int hash = d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24);
-    #if 0
+#if 0
     // HASH32-A  Bob Jenkin's hash function w/o large constants
     hash ^= seed;
     hash -= (hash<<6);
@@ -4044,7 +4047,7 @@ stbds_hash_bytes(void* p, size_t len, size_t seed) {
     hash -= (hash<<3);
     hash ^= (hash<<10);
     hash ^= (hash>>15);
-    #elif 1
+#elif 1
         // HASH32-BB  Bob Jenkin's presumably-accidental version of Thomas Wang hash with rotates turned into shifts.
         // Note that converting these back to rotates makes it run a lot slower, presumably due to collisions, so I'm
         // not really sure what's going on.
@@ -4055,7 +4058,7 @@ stbds_hash_bytes(void* p, size_t len, size_t seed) {
         hash = hash * 0x27d4eb2d;
         hash ^= seed;
         hash = hash ^ (hash >> 15);
-    #else  // HASH32-C   -  Murmur3
+#else  // HASH32-C   -  Murmur3
         hash ^= seed;
         hash *= 0xcc9e2d51;
         hash = (hash << 17) | (hash >> 15);
@@ -4069,7 +4072,7 @@ stbds_hash_bytes(void* p, size_t len, size_t seed) {
         hash ^= hash >> 13;
         hash *= 0xc2b2ae35;
         hash ^= hash >> 16;
-    #endif
+#endif
         // Following statistics were measured on a Core i7-6700 @ 4.00Ghz, compiled with clang 7.0.1 -O2
         // Note that the larger tables have high variance as they were run fewer times
         //  HASH32-A   //  HASH32-BB  //  HASH32-C
@@ -4107,7 +4110,7 @@ stbds_hash_bytes(void* p, size_t len, size_t seed) {
 #endif
 }
 #ifdef _MSC_VER
-    #pragma warning(pop)
+#pragma warning(pop)
 #endif
 
 static int
@@ -4484,10 +4487,10 @@ stbds_strdup(char* str) {
 }
 
 #ifndef STBDS_STRING_ARENA_BLOCKSIZE_MIN
-    #define STBDS_STRING_ARENA_BLOCKSIZE_MIN 512u
+#define STBDS_STRING_ARENA_BLOCKSIZE_MIN 512u
 #endif
 #ifndef STBDS_STRING_ARENA_BLOCKSIZE_MAX
-    #define STBDS_STRING_ARENA_BLOCKSIZE_MAX (1u << 20)
+#define STBDS_STRING_ARENA_BLOCKSIZE_MAX (1u << 20)
 #endif
 
 char*
@@ -4550,7 +4553,7 @@ stbds_strreset(stbds_string_arena* a) {
     prb_memset(a, 0, sizeof(*a));
 }
 
-#endif  // PRB_IMPLEMENTATION
+#endif  // prb_IMPLEMENTATION
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

@@ -3,14 +3,14 @@ set -e # stop on error
 echo Main tests
 rm -f tests/*gcno
 rm -f tests/*gcda
-gcc -g -Wall -Wextra -O0 -DPRB_IMPLEMENTATION \
+gcc -g -Wall -Wextra -O0 -Dprb_IMPLEMENTATION \
     --coverage -fno-inline -fno-inline-small-functions -fno-default-inline -dumpbase '' \
     tests/tests.c -o tests/tests.bin  
 tests/tests.bin 
 
 echo
 echo C++ compatability
-g++ -g -Wall -Wextra -O0 -DPRB_IMPLEMENTATION \
+g++ -g -Wall -Wextra -O0 -Dprb_IMPLEMENTATION \
     tests/tests.c -o tests/tests-cpp.bin
 tests/tests-cpp.bin 
 

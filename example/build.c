@@ -1,4 +1,4 @@
-#define PRB_IMPLEMENTATION
+#define prb_IMPLEMENTATION
 #include "../programmable_build.h"
 
 typedef struct StaticLib {
@@ -215,6 +215,8 @@ main() {
     prb_String compileCmdStart = "cl /nologo /diagnostics:column /FC /Zi";
 #elif prb_PLATFORM_LINUX
     prb_String compileCmdStart = "gcc -g";
+#else
+#error unimlemented
 #endif
 
     //
@@ -680,8 +682,6 @@ main() {
         harfbuzz.libFile,
         icu.libFile,
         fribidi.libFile,
-#if prb_PLATFORM_LINUX
-#endif
     };
 
 #if prb_PLATFORM_WINDOWS
