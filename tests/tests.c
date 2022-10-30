@@ -97,5 +97,7 @@ main() {
     test_printColor();
 
     prb_fmtAndPrintln("tests took %.2fms", prb_getMsFrom(testStart));
+    prb_terminate(0);
+    prb_assert(!"unreachable");
     return 0;
 }

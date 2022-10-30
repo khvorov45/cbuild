@@ -54,6 +54,7 @@ https://musl.libc.org/
     #include <sys/stat.h>
     #include <sys/wait.h>
     #include <unistd.h>
+    #include <stdlib.h>
     #include <spawn.h>
     #include <dirent.h>
     #include <glob.h>
@@ -689,7 +690,7 @@ prb_terminate(int32_t code) {
 
 #elif prb_PLATFORM_LINUX
 
-    _exit(code);
+    exit(code);
 
 #else
     #error unimplemented
