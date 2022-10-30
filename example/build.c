@@ -19,7 +19,7 @@ typedef struct DownloadResult {
     prb_String     includeFlag;
 } DownloadResult;
 
-DownloadResult
+static DownloadResult
 downloadRepo(prb_String rootDir, prb_String name, prb_String downloadUrl, prb_String includeDirRelToDownload) {
     prb_String     downloadDir = prb_pathJoin(rootDir, name);
     DownloadStatus downloadStatus = DownloadStatus_Failed;
@@ -44,10 +44,9 @@ downloadRepo(prb_String rootDir, prb_String name, prb_String downloadUrl, prb_St
     return result;
 }
 
-StaticLib
+static StaticLib
 compileStaticLib(
     prb_String     name,
-    prb_String     rootDir,
     prb_String     compileOutDir,
     prb_String     compileCmdStart,
     DownloadResult download,
@@ -172,7 +171,7 @@ compileStaticLib(
     return result;
 }
 
-void
+static void
 compileAndRunBidiGenTab(prb_String src, prb_String compileCmdStart, prb_String runArgs, prb_String outpath) {
     if (!prb_isFile(outpath)) {
 #if prb_PLATFORM_LINUX
@@ -301,7 +300,6 @@ main() {
     // prb_clearDirectory(prb_pathJoin(compileOutDir, fribidiName));
     StaticLib fribidi = compileStaticLib(
         fribidiName,
-        rootDir,
         compileOutDir,
         compileCmdStart,
         fribidiDownload,
@@ -394,7 +392,6 @@ main() {
     // prb_clearDirectory(prb_pathJoin(compileOutDir, icuName));
     StaticLib icu = compileStaticLib(
         icuName,
-        rootDir,
         compileOutDir,
         compileCmdStart,
         icuDownload,
@@ -494,7 +491,6 @@ main() {
     // prb_clearDirectory(prb_pathJoin(compileOutDir, freetypeName));
     StaticLib freetype = compileStaticLib(
         freetypeName,
-        rootDir,
         compileOutDir,
         compileCmdStart,
         freetypeDownload,
@@ -524,7 +520,6 @@ main() {
     // prb_clearDirectory(prb_pathJoin(compileOutDir, harfbuzzName));
     StaticLib harfbuzz = compileStaticLib(
         harfbuzzName,
-        rootDir,
         compileOutDir,
         compileCmdStart,
         harfbuzzDownload,
@@ -643,7 +638,6 @@ main() {
     // prb_clearDirectory(prb_pathJoin(compileOutDir, sdlName));
     StaticLib sdl = compileStaticLib(
         sdlName,
-        rootDir,
         compileOutDir,
         compileCmdStart,
         sdlDownload,
