@@ -235,7 +235,7 @@ void*   prb_memmove(void* dest, const void* src, size_t n);
 void*   prb_memset(void* dest, int32_t val, size_t n);
 bool    prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
 void*   prb_vmemAllocate(int32_t size);
-void    prb_alignPtr(void** ptr, int32_t align, int32_t* size);
+int32_t prb_getOffsetForAlignment(void* ptr, int32_t align);
 void*   prb_allocAndZero(int32_t size, int32_t align);
 void*   prb_realloc(void* ptr, int32_t size);
 void*   prb_globalArenaCurrentFreePtr(void);
@@ -771,18 +771,14 @@ prb_vmemAllocate(int32_t size) {
 #endif
 }
 
-void
-prb_alignPtr(void** ptr, int32_t align, int32_t* size) {
+int32_t
+prb_getOffsetForAlignment(void* ptr, int32_t align) {
     prb_assert(prb_isPowerOf2(align));
-    void*   ptrOg = *ptr;
-    int32_t offBy = ((size_t)ptrOg) & (align - 1);
-    int32_t moveBy = 0;
-    if (offBy > 0) {
-        moveBy = align - offBy;
-    }
-    void* ptrAligned = (uint8_t*)ptrOg + moveBy;
-    *ptr = ptrAligned;
-    *size = *size + moveBy;
+    uintptr_t ptrAligned = (uintptr_t)((uint8_t*)ptr + (align - 1)) & (uintptr_t)(~(align - 1));
+    prb_assert(ptrAligned >= (uintptr_t)ptr);
+    intptr_t diff = ptrAligned - (uintptr_t)ptr;
+    prb_assert(diff < align && diff >= 0);
+    return (int32_t)diff;
 }
 
 void*
@@ -816,8 +812,10 @@ prb_globalArenaCurrentFreeSize(void) {
 
 void*
 prb_globalArenaAlignTo_(int32_t align) {
-    prb_alignPtr(&prb_globalState.arena.base, align, &prb_globalState.arena.used);
-    prb_assert(prb_globalState.arena.used <= prb_globalState.arena.size);
+    int32_t offset = prb_getOffsetForAlignment(prb_globalState.arena.base, align);
+    prb_assert(prb_globalState.arena.used + offset <= prb_globalState.arena.size);
+    prb_globalState.arena.base = (uint8_t*)prb_globalState.arena.base + offset;
+    prb_globalState.arena.used += offset;
     void* result = prb_globalArenaCurrentFreePtr();
     return result;
 }
