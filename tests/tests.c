@@ -33,47 +33,98 @@ test_getParentDir(void) {
     // TODO(khvorov) More cases
 }
 
+function prb_String*
+setdiff(prb_String* arr1, prb_String* arr2) {
+    prb_String* result = 0;
+    for (i32 arr1Index = 0; arr1Index < arrlen(arr1); arr1Index++) {
+        prb_String str1 = arr1[arr1Index];
+        bool       foundIn2 = false;
+        for (i32 arr2Index = 0; arr2Index < arrlen(arr2); arr2Index++) {
+            prb_String str2 = arr2[arr2Index];
+            if (prb_streq(str1, str2)) {
+                foundIn2 = true;
+                break;
+            }
+        }
+        if (!foundIn2) {
+            arrput(result, str1);
+        }
+    }
+    return result;
+}
+
 function void
 test_fileformat(void) {
     prb_Bytes        fileContents = prb_readEntireFile("programmable_build.h");
     prb_LineIterator lineIter = prb_createLineIter(fileContents.data, fileContents.len);
 
-    prb_String* headerSectionNames = 0;
-    prb_String* implSectionNames = 0;
-
+    prb_String* headerNames = 0;
     while (prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success) {
+        prb_assert(!prb_strStartsWith(lineIter.line, "prb_PUBLICDEF"));
+
         if (prb_strStartsWith(lineIter.line, "// SECTION")) {
-            i32 nameOffset = prb_strlen("// SECTION ");
-            prb_assert(lineIter.lineLen > nameOffset);  // NOTE(khvorov) Make sure there is a name
-            char* nameStart = lineIter.line + nameOffset;
-            i32   nameLen = lineIter.lineLen - nameOffset;
-            i32   implementationIndex = prb_strFindIndex(
-                nameStart,
-                nameLen,
-                " (implementation)",
-                prb_StringFindMode_Exact,
-                prb_StringFindDir_FromStart
-            );
-            if (implementationIndex != -1) {
-                nameLen = implementationIndex;
-            }
-
-            prb_String name = prb_fmt("%.*s", nameLen, nameStart);
-            if (implementationIndex != -1) {
-                stbds_arrput(implSectionNames, name);
-            } else {
-                stbds_arrput(headerSectionNames, name);
-            }
+            prb_String name = prb_fmt("%.*s", lineIter.lineLen, lineIter.line);
+            arrput(headerNames, name);
+        } else if (prb_strStartsWith(lineIter.line, "prb_PUBLICDEC")) {
+            i32 onePastNameEnd =
+                prb_strFindIndex(lineIter.line, lineIter.lineLen, "(", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
+            prb_assert(onePastNameEnd != -1);
+            prb_StringWindow win = prb_createStringWindow(lineIter.line, onePastNameEnd);
+            i32              nameStart =
+                prb_strFindIndex(win.cur, win.curLen, " ", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
+            prb_assert(nameStart != -1);
+            prb_strWindowForward(&win, nameStart + 1);
+            prb_String name = prb_fmt("%.*s", win.curLen, win.cur);
+            arrput(headerNames, name);
+        } else if (prb_strStartsWith(lineIter.line, "#ifdef prb_IMPLEMENTATION")) {
+            break;
         }
-
-        // TODO(khvorov) Make sure functions in the header match the ones in the implementation
     }
 
-    prb_assert(stbds_arrlen(headerSectionNames) == stbds_arrlen(implSectionNames));
+    prb_String* implNames = 0;
+    while (prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success) {
+        prb_assert(!prb_strStartsWith(lineIter.line, "prb_PUBLICDEC"));
 
-    for (i32 sectionIndex = 0; sectionIndex < stbds_arrlen(implSectionNames); sectionIndex++) {
-        prb_String headerName = headerSectionNames[sectionIndex];
-        prb_String implName = implSectionNames[sectionIndex];
+        if (prb_strStartsWith(lineIter.line, "// SECTION")) {
+            i32 implementationIndex =
+                prb_strFindIndex(lineIter.line, lineIter.lineLen, " (implementation)", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
+            prb_assert(implementationIndex != -1);
+            prb_String name = prb_fmt("%.*s", implementationIndex, lineIter.line);
+            arrput(implNames, name);
+        } else if (prb_strStartsWith(lineIter.line, "prb_PUBLICDEF")) {
+            prb_assert(prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success);
+            prb_assert(prb_strStartsWith(lineIter.line, "prb_"));
+            i32 nameLen =
+                prb_strFindIndex(lineIter.line, lineIter.lineLen, "(", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
+            prb_assert(nameLen != -1);
+            prb_String name = prb_fmt("%.*s", nameLen, lineIter.line);
+            arrput(implNames, name);
+        }
+    }
+
+    prb_String* headerNotInImpl = setdiff(headerNames, implNames);
+    if (arrlen(headerNotInImpl) > 0) {
+        prb_fmtAndPrintln("names in header but not in impl:");
+        for (i32 index = 0; index < arrlen(headerNotInImpl); index++) {
+            prb_String str = headerNotInImpl[index];
+            prb_fmtAndPrintln("%s", str);
+        }
+    }
+    prb_assert(arrlen(headerNotInImpl) == 0);
+
+    prb_String* implNotInHeader = setdiff(implNames, headerNames);
+    if (arrlen(implNotInHeader) > 0) {
+        prb_fmtAndPrintln("names in impl but not in header:");
+        for (i32 index = 0; index < arrlen(implNotInHeader); index++) {
+            prb_String str = implNotInHeader[index];
+            prb_fmtAndPrintln("%s", str);
+        }
+    }
+    prb_assert(arrlen(implNotInHeader) == 0);
+
+    for (i32 index = 0; index < arrlen(headerNames); index++) {
+        prb_String headerName = headerNames[index];
+        prb_String implName = implNames[index];
         prb_assert(prb_streq(headerName, implName));
     }
 }

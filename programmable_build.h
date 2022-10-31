@@ -258,6 +258,13 @@ typedef struct prb_LineIterator {
     int32_t lineLen;
 } prb_LineIterator;
 
+typedef struct prb_StringWindow {
+    char*   og;
+    int32_t ogLen;
+    char*   cur;
+    int32_t curLen;
+} prb_StringWindow;
+
 // SECTION Core
 prb_PUBLICDEC void prb_init(int32_t virtualMemoryBytesToUse);
 prb_PUBLICDEC void prb_terminate(int32_t code);
@@ -286,6 +293,7 @@ prb_PUBLICDEC void            prb_removeDirectoryIfExists(prb_String path);
 prb_PUBLICDEC void            prb_clearDirectory(prb_String path);
 prb_PUBLICDEC prb_String      prb_getCurrentWorkingDir(void);
 prb_PUBLICDEC prb_String      prb_pathJoin(prb_String path1, prb_String path2);
+prb_PUBLICDEC int32_t         prb_getSepIndexBeforeLastEntry(prb_String path);
 prb_PUBLICDEC prb_String      prb_getParentDir(prb_String path);
 prb_PUBLICDEC prb_String      prb_getLastEntryInPath(prb_String path);
 prb_PUBLICDEC prb_String      prb_replaceExt(prb_String path, prb_String newExt);
@@ -300,17 +308,11 @@ prb_PUBLICDEC void            prb_writeEntireFile(prb_String path, prb_Bytes con
 prb_PUBLICDEC void            prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION Strings
-prb_PUBLICDEC int32_t prb_strlen(prb_String string);
-prb_PUBLICDEC bool    prb_streq(prb_String str1, prb_String str2);
-prb_PUBLICDEC bool    prb_strStartsWith(prb_String str1, prb_String str2);
-prb_PUBLICDEC bool    prb_strEndsWith(prb_String str1, prb_String str2);
-prb_PUBLICDEC int32_t prb_strFindIndex(
-    prb_String         str,
-    int32_t            onePastStrEndIndex,
-    prb_String         pattern,
-    prb_StringFindMode mode,
-    prb_StringFindDir  dir
-);
+prb_PUBLICDEC int32_t                prb_strlen(prb_String string);
+prb_PUBLICDEC bool                   prb_streq(prb_String str1, prb_String str2);
+prb_PUBLICDEC bool                   prb_strStartsWith(prb_String str1, prb_String str2);
+prb_PUBLICDEC bool                   prb_strEndsWith(prb_String str1, prb_String str2);
+prb_PUBLICDEC int32_t                prb_strFindIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringFindMode mode, prb_StringFindDir dir);
 prb_PUBLICDEC prb_String             prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
 prb_PUBLICDEC prb_StringBuilder      prb_createStringBuilder(int32_t len);
 prb_PUBLICDEC void                   prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source, int32_t len);
@@ -321,27 +323,29 @@ prb_PUBLICDEC prb_StringArray        prb_stringArrayBuilderGetArray(prb_StringAr
 prb_PUBLICDEC prb_String             prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
 prb_PUBLICDEC prb_String             prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
 prb_PUBLICDEC prb_StringArray        prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2);
-prb_PUBLICDEC prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...)
-    prb_ATTRIBUTE_FORMAT(3, 4);
-prb_PUBLICDEC prb_String prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args);
-prb_PUBLICDEC prb_String prb_fmt(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_PUBLICDEC void       prb_fmtNoNullTerminator(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_PUBLICDEC prb_String prb_vfmt(prb_String fmt, va_list args);
-prb_PUBLICDEC prb_String prb_fmtAndPrint(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_PUBLICDEC prb_String prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC prb_String prb_vfmtAndPrint(prb_String fmt, va_list args);
-prb_PUBLICDEC prb_String prb_vfmtAndPrintColor(prb_ColorID color, prb_String fmt, va_list args);
-prb_PUBLICDEC prb_String prb_fmtAndPrintln(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_PUBLICDEC prb_String prb_fmtAndPrintlnColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC prb_String prb_vfmtAndPrintln(prb_String fmt, va_list args);
-prb_PUBLICDEC prb_String prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args);
-prb_PUBLICDEC void       prb_writeToStdout(prb_String str, int32_t len);
-prb_PUBLICDEC void       prb_setPrintColor(prb_ColorID color);
-prb_PUBLICDEC void       prb_resetPrintColor(void);
-prb_PUBLICDEC prb_LineIterator     prb_createLineIter(void* ptr, int32_t len);
-prb_PUBLICDEC prb_CompletionStatus prb_lineIterNext(prb_LineIterator* iter);
+prb_PUBLICDEC prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
+prb_PUBLICDEC prb_String             prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String             prb_fmt(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC void                   prb_fmtNoNullTerminator(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC prb_String             prb_vfmt(prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String             prb_fmtAndPrint(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC prb_String             prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_PUBLICDEC prb_String             prb_vfmtAndPrint(prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String             prb_vfmtAndPrintColor(prb_ColorID color, prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String             prb_fmtAndPrintln(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC prb_String             prb_fmtAndPrintlnColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_PUBLICDEC prb_String             prb_vfmtAndPrintln(prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String             prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args);
+prb_PUBLICDEC void                   prb_writeToStdout(prb_String str, int32_t len);
+prb_PUBLICDEC void                   prb_setPrintColor(prb_ColorID color);
+prb_PUBLICDEC void                   prb_resetPrintColor(void);
+prb_PUBLICDEC prb_LineIterator       prb_createLineIter(void* ptr, int32_t len);
+prb_PUBLICDEC prb_CompletionStatus   prb_lineIterNext(prb_LineIterator* iter);
+prb_PUBLICDEC prb_StringWindow       prb_createStringWindow(void* ptr, int32_t len);
+prb_PUBLICDEC void                   prb_strWindowForward(prb_StringWindow* win, int32_t len);
 
 // SECTION Processes
+prb_PUBLICDEC prb_String*          prb_getArgArrayFromString(prb_String string);
 prb_PUBLICDEC prb_ProcessHandle    prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath);
 prb_PUBLICDEC prb_CompletionStatus prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
 
@@ -428,6 +432,64 @@ STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char peri
 // SECTION stb ds
 //
 
+#ifndef STBDS_NO_SHORT_NAMES
+#define arrlen stbds_arrlen
+#define arrlenu stbds_arrlenu
+#define arrput stbds_arrput
+#define arrpush stbds_arrput
+#define arrpop stbds_arrpop
+#define arrfree stbds_arrfree
+#define arraddn stbds_arraddn  // deprecated, use one of the following instead:
+#define arraddnptr stbds_arraddnptr
+#define arraddnindex stbds_arraddnindex
+#define arrsetlen stbds_arrsetlen
+#define arrlast stbds_arrlast
+#define arrins stbds_arrins
+#define arrinsn stbds_arrinsn
+#define arrdel stbds_arrdel
+#define arrdeln stbds_arrdeln
+#define arrdelswap stbds_arrdelswap
+#define arrcap stbds_arrcap
+#define arrsetcap stbds_arrsetcap
+
+#define hmput stbds_hmput
+#define hmputs stbds_hmputs
+#define hmget stbds_hmget
+#define hmget_ts stbds_hmget_ts
+#define hmgets stbds_hmgets
+#define hmgetp stbds_hmgetp
+#define hmgetp_ts stbds_hmgetp_ts
+#define hmgetp_null stbds_hmgetp_null
+#define hmgeti stbds_hmgeti
+#define hmgeti_ts stbds_hmgeti_ts
+#define hmdel stbds_hmdel
+#define hmlen stbds_hmlen
+#define hmlenu stbds_hmlenu
+#define hmfree stbds_hmfree
+#define hmdefault stbds_hmdefault
+#define hmdefaults stbds_hmdefaults
+
+#define shput stbds_shput
+#define shputi stbds_shputi
+#define shputs stbds_shputs
+#define shget stbds_shget
+#define shgeti stbds_shgeti
+#define shgets stbds_shgets
+#define shgetp stbds_shgetp
+#define shgetp_null stbds_shgetp_null
+#define shdel stbds_shdel
+#define shlen stbds_shlen
+#define shlenu stbds_shlenu
+#define shfree stbds_shfree
+#define shdefault stbds_shdefault
+#define shdefaults stbds_shdefaults
+#define sh_new_arena stbds_sh_new_arena
+#define sh_new_strdup stbds_sh_new_strdup
+
+#define stralloc stbds_stralloc
+#define strreset stbds_strreset
+#endif
+
 #if !defined(STBDS_REALLOC) && !defined(STBDS_FREE)
 #define STBDS_REALLOC(c, p, s) prb_realloc(p, s)
 #define STBDS_FREE(c, p)
@@ -472,8 +534,7 @@ STBDS__PUBLICDEC void* stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, s
 STBDS__PUBLICDEC void  stbds_arrfreef(void* a);
 STBDS__PUBLICDEC void  stbds_hmfree_func(void* p, size_t elemsize);
 STBDS__PUBLICDEC void* stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
-STBDS__PUBLICDEC void*
-stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode);
+STBDS__PUBLICDEC void* stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode);
 STBDS__PUBLICDEC void* stbds_hmput_default(void* a, size_t elemsize);
 STBDS__PUBLICDEC void* stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
 STBDS__PUBLICDEC void* stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode);
@@ -657,7 +718,12 @@ struct stbds_string_arena {
 #define STBDS_HM_BINARY 0
 #define STBDS_HM_STRING 1
 
-enum { STBDS_SH_NONE, STBDS_SH_DEFAULT, STBDS_SH_STRDUP, STBDS_SH_ARENA };
+enum {
+    STBDS_SH_NONE,
+    STBDS_SH_DEFAULT,
+    STBDS_SH_STRDUP,
+    STBDS_SH_ARENA,
+};
 
 #ifdef __cplusplus
 // in C we use implicit assignment from these void*-returning functions to T*.
@@ -1355,12 +1421,10 @@ prb_strlen(prb_String string) {
 
 prb_PUBLICDEF bool
 prb_streq(prb_String str1, prb_String str2) {
-    bool    result = false;
-    int32_t str1len = prb_strlen(str1);
-    int32_t str2len = prb_strlen(str2);
-    if (str1len == str2len) {
-        result = prb_memeq(str1, str2, str1len);
-    }
+    prb_String l = str1;
+    prb_String r = str2;
+    for (; *l == *r && *l; l++, r++) {}
+    bool result = (*l == '\0') && (*r == '\0');
     return result;
 }
 
@@ -1393,13 +1457,7 @@ prb_strEndsWith(prb_String str1, prb_String str2) {
 }
 
 prb_PUBLICDEF int32_t
-prb_strFindIndex(
-    prb_String         str,
-    int32_t            onePastStrEndIndex,
-    prb_String         pattern,
-    prb_StringFindMode mode,
-    prb_StringFindDir  dir
-) {
+prb_strFindIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringFindMode mode, prb_StringFindDir dir) {
     int32_t result = -1;
     int32_t patlen = prb_strlen(pattern);
 
@@ -1433,7 +1491,7 @@ prb_strFindIndex(
                     bool notEnoughStrLeft = false;
                     for (int32_t strIndex = j; strIndex < j + patlen; strIndex++) {
                         char testCh = str[strIndex];
-                        if (testCh == '\0' || strIndex == onePastStrEndIndex) {
+                        if (testCh == '\0' || strIndex == strLen) {
                             notEnoughStrLeft = true;
                             break;
                         }
@@ -1456,13 +1514,13 @@ prb_strFindIndex(
             case prb_StringFindMode_AnyChar: {
                 int32_t searchStartIndex = 0;
                 int32_t onePastSearchEndIndex = INT32_MAX;
-                if (onePastStrEndIndex >= 0 && onePastStrEndIndex < INT32_MAX) {
-                    onePastSearchEndIndex = onePastStrEndIndex;
+                if (strLen >= 0 && strLen < INT32_MAX) {
+                    onePastSearchEndIndex = strLen;
                 }
                 int32_t searchIndexDelta = 1;
                 if (dir == prb_StringFindDir_FromEnd) {
-                    searchStartIndex = onePastStrEndIndex - 1;
-                    if (onePastStrEndIndex < 0 || onePastStrEndIndex == INT32_MAX) {
+                    searchStartIndex = strLen - 1;
+                    if (strLen < 0 || strLen == INT32_MAX) {
                         searchStartIndex = prb_strlen(str) - 1;
                     }
                     onePastSearchEndIndex = -1;
@@ -1793,6 +1851,19 @@ prb_lineIterNext(prb_LineIterator* iter) {
     }
 
     return result;
+}
+
+prb_PUBLICDEF prb_StringWindow
+prb_createStringWindow(void* ptr, int32_t len) {
+    prb_StringWindow result = {.og = (char*)ptr, .ogLen = len, .cur = (char*)ptr, .curLen = len};
+    return result;
+}
+
+prb_PUBLICDEF void
+prb_strWindowForward(prb_StringWindow* win, int32_t len) {
+    prb_assert(len <= win->curLen);
+    win->cur += len;
+    win->curLen -= len;
 }
 
 //
@@ -3222,7 +3293,8 @@ STB_SPRINTF_DECORATE(vsnprintf)(char* buf, int count, char const* fmt, va_list v
     if ((count == 0) && !buf) {
         c.length = 0;
 
-        STB_SPRINTF_DECORATE(vsprintfcb)(stbsp__count_clamp_callback, &c, c.tmp, fmt, va);
+        STB_SPRINTF_DECORATE(vsprintfcb)
+        (stbsp__count_clamp_callback, &c, c.tmp, fmt, va);
     } else {
         int l;
 
@@ -3230,7 +3302,8 @@ STB_SPRINTF_DECORATE(vsnprintf)(char* buf, int count, char const* fmt, va_list v
         c.count = count;
         c.length = 0;
 
-        STB_SPRINTF_DECORATE(vsprintfcb)(stbsp__clamp_callback, &c, stbsp__clamp_callback(0, &c, 0), fmt, va);
+        STB_SPRINTF_DECORATE(vsprintfcb)
+        (stbsp__clamp_callback, &c, stbsp__clamp_callback(0, &c, 0), fmt, va);
 
         // zero-terminate
         l = (int)(c.buf - buf);
@@ -3289,6 +3362,7 @@ stbsp__real_to_parts(stbsp__int64* bits, stbsp__int32* expo, double value) {
     return (stbsp__int32)((stbsp__uint64)b >> 63);
 }
 
+// clang-format off
 static double const stbsp__bot[23] = {1e+000, 1e+001, 1e+002, 1e+003, 1e+004, 1e+005, 1e+006, 1e+007,
                                       1e+008, 1e+009, 1e+010, 1e+011, 1e+012, 1e+013, 1e+014, 1e+015,
                                       1e+016, 1e+017, 1e+018, 1e+019, 1e+020, 1e+021, 1e+022};
@@ -3307,33 +3381,16 @@ static double const stbsp__top[13] =
 static double const stbsp__negtop[13] =
     {1e-023, 1e-046, 1e-069, 1e-092, 1e-115, 1e-138, 1e-161, 1e-184, 1e-207, 1e-230, 1e-253, 1e-276, 1e-299};
 static double const stbsp__toperr[13] = {
-    8388608,
-    6.8601809640529717e+028,
-    -7.253143638152921e+052,
-    -4.3377296974619174e+075,
-    -1.5559416129466825e+098,
-    -3.2841562489204913e+121,
-    -3.7745893248228135e+144,
-    -1.7356668416969134e+167,
-    -3.8893577551088374e+190,
-    -9.9566444326005119e+213,
-    6.3641293062232429e+236,
-    -5.2069140800249813e+259,
-    -5.2504760255204387e+282};
+    8388608, 6.8601809640529717e+028, -7.253143638152921e+052,
+    -4.3377296974619174e+075, -1.5559416129466825e+098, -3.2841562489204913e+121, -3.7745893248228135e+144,
+    -1.7356668416969134e+167, -3.8893577551088374e+190, -9.9566444326005119e+213, 6.3641293062232429e+236,
+    -5.2069140800249813e+259, -5.2504760255204387e+282};
 static double const stbsp__negtoperr[13] = {
-    3.9565301985100693e-040,
-    -2.299904345391321e-063,
-    3.6506201437945798e-086,
-    1.1875228833981544e-109,
-    -5.0644902316928607e-132,
-    -6.7156837247865426e-155,
-    -2.812077463003139e-178,
-    -5.7778912386589953e-201,
-    7.4997100559334532e-224,
-    -4.6439668915134491e-247,
-    -6.3691100762962136e-270,
-    -9.436808465446358e-293,
-    8.0970921678014997e-317};
+   3.9565301985100693e-040,  -2.299904345391321e-063,  3.6506201437945798e-086,  1.1875228833981544e-109,
+   -5.0644902316928607e-132, -6.7156837247865426e-155, -2.812077463003139e-178,  -5.7778912386589953e-201,
+   7.4997100559334532e-224,  -4.6439668915134491e-247, -6.3691100762962136e-270, -9.436808465446358e-293,
+   8.0970921678014997e-317};
+// clang-format on
 
 #if defined(_MSC_VER) && (_MSC_VER <= 1200)
 static stbsp__uint64 const stbsp__powten[20] = {
