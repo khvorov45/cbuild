@@ -129,6 +129,32 @@ test_fileformat(void) {
     }
 }
 
+function void
+test_strFindIndex(void) {
+    prb_String strWith = "p1at4pattern1 pattern2 pattern3p2a.t";
+
+    {
+        i32 patIndex = prb_strFindIndex(strWith, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
+        prb_assert(patIndex == 5);
+    }
+
+    {
+        i32 patIndex = prb_strFindIndex(strWith, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
+        prb_assert(patIndex == 23);
+    }
+
+    prb_String strWithout = "p1at4pat1ern1 pat1ern2 pat1ern3p2a.p";
+    {
+        i32 patIndex = prb_strFindIndex(strWithout, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
+        prb_assert(patIndex == -1);
+    }
+
+    {
+        i32 patIndex = prb_strFindIndex(strWithout, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
+        prb_assert(patIndex == -1);
+    }
+}
+
 int
 main() {
     prb_TimeStart testStart = prb_timeStart();
@@ -136,6 +162,7 @@ main() {
 
     test_getParentDir();
     test_fileformat();
+    test_strFindIndex();
 
     test_printColor();
 

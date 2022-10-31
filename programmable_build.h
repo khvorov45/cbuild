@@ -1466,45 +1466,85 @@ prb_strFindIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringF
 
         switch (mode) {
             case prb_StringFindMode_Exact: {
-                // TODO(khvorov) Implement from end
-                prb_assert(dir == prb_StringFindDir_FromStart);
-
                 // Raita string matching algorithm
                 // https://en.wikipedia.org/wiki/Raita_algorithm
-                ptrdiff_t bmBc[256];
+                ptrdiff_t charOffsets[256];
 
                 for (int32_t i = 0; i < 256; ++i) {
-                    bmBc[i] = patlen;
+                    charOffsets[i] = patlen;
                 }
-                for (int32_t i = 0; i < patlen - 1; ++i) {
-                    char patternChar = pattern[i];
-                    bmBc[(int32_t)patternChar] = patlen - i - 1;
+
+                {
+                    int32_t from = 0;
+                    int32_t to = patlen - 1;
+                    int32_t delta = 1;
+                    if (dir == prb_StringFindDir_FromEnd) {
+                        from = patlen - 1;
+                        to = 0;
+                        delta = -1;
+                    }
+
+                    int32_t count = 0;
+                    for (int32_t i = from; i != to; i += delta) {
+                        char patternChar = pattern[i];
+                        charOffsets[(int32_t)patternChar] = patlen - count++ - 1;
+                    }
+
+                    if (dir == prb_StringFindDir_FromEnd) {
+                        for (int32_t i = 0; i < 256; ++i) {
+                            charOffsets[i] *= -1;
+                        }
+                    }
                 }
 
                 char patFirstCh = pattern[0];
                 char patMiddleCh = pattern[patlen / 2];
                 char patLastCh = pattern[patlen - 1];
 
-                for (int32_t j = 0;;) {
+                if (dir == prb_StringFindDir_FromEnd && (strLen < 0 || strLen == INT32_MAX)) {
+                    strLen = prb_strlen(str);
+                }
+
+                int32_t off = 0;
+                if (dir == prb_StringFindDir_FromEnd) {
+                    off = strLen - patlen;
+                }
+
+                for (;;) {
                     bool notEnoughStrLeft = false;
-                    for (int32_t strIndex = j; strIndex < j + patlen; strIndex++) {
-                        char testCh = str[strIndex];
-                        if (testCh == '\0' || strIndex == strLen) {
-                            notEnoughStrLeft = true;
-                            break;
-                        }
+                    switch (dir) {
+                        case prb_StringFindDir_FromStart: {
+                            for (int32_t strIndex = off; strIndex < off + patlen; strIndex++) {
+                                char testCh = str[strIndex];
+                                if (testCh == '\0' || strIndex == strLen) {
+                                    notEnoughStrLeft = true;
+                                    break;
+                                }
+                            }
+                        } break;
+
+                        case prb_StringFindDir_FromEnd: {
+                            notEnoughStrLeft = off < 0;
+                        } break;
                     }
+
                     if (notEnoughStrLeft) {
                         break;
                     }
 
-                    char strLastCh = str[j + patlen - 1];
-                    if (patLastCh == strLastCh && patMiddleCh == str[j + patlen / 2] && patFirstCh == str[j]
-                        && prb_memeq(pattern + 1, str + j + 1, patlen - 2)) {
-                        result = j;
+                    char strFirstChar = str[off];
+                    char strLastCh = str[off + patlen - 1];
+                    if (patLastCh == strLastCh && patMiddleCh == str[off + patlen / 2] && patFirstCh == strFirstChar
+                        && prb_memeq(pattern + 1, str + off + 1, patlen - 2)) {
+                        result = off;
                         break;
                     }
-                    j += bmBc[(int32_t)strLastCh];
+
+                    char relChar = strLastCh;
+                    if (dir == prb_StringFindDir_FromEnd) {
+                        relChar = strFirstChar;
+                    }
+                    off += charOffsets[(int32_t)relChar];
                 }
 
             } break;
