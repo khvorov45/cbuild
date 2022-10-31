@@ -29,8 +29,6 @@ https://musl.libc.org/
 // TODO(khvorov) Make sure utf8 paths work on windows
 // TODO(khvorov) String regex ops
 // TODO(khvorov) File search by regex + recursive
-// TODO(khvorov) Reorganise platform-specific stuff to be per-function probably
-// TODO(khvorov) Check declarations/implementation placement in tests probably
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
