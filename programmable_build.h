@@ -284,7 +284,7 @@ prb_PUBLICDEC int32_t     prb_getSepIndexBeforeLastEntry(prb_String path);
 prb_PUBLICDEC prb_String  prb_getParentDir(prb_String path);
 prb_PUBLICDEC prb_String  prb_getLastEntryInPath(prb_String path);
 prb_PUBLICDEC prb_String  prb_replaceExt(prb_String path, prb_String newExt);
-prb_PUBLICDEC prb_String* prb_getAllMatches(prb_String pattern);
+prb_PUBLICDEC prb_String* prb_findAllMatchingPaths(prb_String pattern);
 prb_PUBLICDEC uint64_t    prb_getLatestLastModifiedFromPattern(prb_String pattern);
 prb_PUBLICDEC uint64_t    prb_getEarliestLastModifiedFromPattern(prb_String pattern);
 prb_PUBLICDEC uint64_t    prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
@@ -1135,7 +1135,7 @@ prb_replaceExt(prb_String path, prb_String newExt) {
 }
 
 prb_PUBLICDEF prb_String*
-prb_getAllMatches(prb_String pattern) {
+prb_findAllMatchingPaths(prb_String pattern) {
     prb_String* result = 0;
 
 #if prb_PLATFORM_WINDOWS
