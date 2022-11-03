@@ -21,9 +21,6 @@ https://github.com/nothings/stb/blob/master/stb_ds.h
 There are no wrappers for it, use the original API.
 All memory allocation calls in stb ds are hooked up to the linear allocator 
 everything else is using (memory freeing doesn't do anything). 
-
-Some libc replacement functions are simplified versions of their implementations in musl
-https://musl.libc.org/
 */
 
 // TODO(khvorov) Make sure utf8 paths work on windows
@@ -42,6 +39,8 @@ https://musl.libc.org/
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdarg.h>
+
+#include <string.h>
 
 #if defined(WIN32) || defined(_WIN32)
 #define prb_PLATFORM_WINDOWS 1
@@ -85,7 +84,13 @@ https://musl.libc.org/
 #define prb_alignof _Alignof
 #endif
 
-// clang-format off
+#define prb_memcpy memcpy
+#define prb_memmove memmove
+#define prb_memset memset
+#define prb_memcmp memcmp
+#define prb_strcmp strcmp
+#define prb_strlen strlen
+
 #define prb_max(a, b) (((a) > (b)) ? (a) : (b))
 #define prb_min(a, b) (((a) < (b)) ? (a) : (b))
 #define prb_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
@@ -93,8 +98,9 @@ https://musl.libc.org/
 #define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), prb_alignof(type))
 #define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), prb_alignof(type))
 #define prb_globalArenaAlignTo(type) (type*)prb_globalArenaAlignTo_(prb_alignof(type))
-#define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x) - 1)) == 0))
+#define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 
+// clang-format off
 // Debug break taken from SDL
 // https://github.com/libsdl-org/SDL/blob/main/include/SDL_assert.h
 #ifdef __has_builtin
@@ -268,9 +274,6 @@ prb_PUBLICDEC void prb_init(int32_t virtualMemoryBytesToUse);
 prb_PUBLICDEC void prb_terminate(int32_t code);
 
 // SECTION Memory
-prb_PUBLICDEC void*   prb_memcpy(void* dest, const void* src, size_t n);
-prb_PUBLICDEC void*   prb_memmove(void* dest, const void* src, size_t n);
-prb_PUBLICDEC void*   prb_memset(void* dest, int32_t val, size_t n);
 prb_PUBLICDEC bool    prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
 prb_PUBLICDEC void*   prb_vmemAllocate(int32_t size);
 prb_PUBLICDEC int32_t prb_getOffsetForAlignment(void* ptr, int32_t align);
@@ -306,7 +309,6 @@ prb_PUBLICDEC void            prb_writeEntireFile(prb_String path, prb_Bytes con
 prb_PUBLICDEC void            prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION Strings
-prb_PUBLICDEC int32_t                prb_strlen(prb_String string);
 prb_PUBLICDEC bool                   prb_streq(prb_String str1, prb_String str2);
 prb_PUBLICDEC bool                   prb_strStartsWith(prb_String str1, prb_String str2);
 prb_PUBLICDEC bool                   prb_strEndsWith(prb_String str1, prb_String str2);
@@ -811,55 +813,11 @@ prb_terminate(int32_t code) {
 // SECTION Memory (implementation)
 //
 
-prb_PUBLICDEF void*
-prb_memcpy(void* dest, const void* src, size_t n) {
-    uint8_t* d = (uint8_t*)dest;
-    uint8_t* s = (uint8_t*)src;
-    for (; n; n--) {
-        *d++ = *s++;
-    }
-    return dest;
-}
-
-prb_PUBLICDEF void*
-prb_memmove(void* dest, const void* src, size_t n) {
-    char*       d = (char*)dest;
-    const char* s = (const char*)src;
-
-    if (d != s) {
-        if ((uintptr_t)s - (uintptr_t)d - n <= -2 * n) {
-            d = (char*)prb_memcpy(d, s, n);
-        } else {
-            if (d < s) {
-                for (; n; n--)
-                    *d++ = *s++;
-            } else {
-                while (n)
-                    n--, d[n] = s[n];
-            }
-        }
-    }
-
-    return d;
-}
-
-prb_PUBLICDEF void*
-prb_memset(void* dest, int32_t val, size_t n) {
-    uint8_t* d = (uint8_t*)dest;
-    for (size_t index = 0; index < n; index++) {
-        d[index] = val;
-    }
-    return dest;
-}
-
 prb_PUBLICDEF bool
 prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes) {
     prb_assert(bytes >= 0);
-    uint8_t* l = (uint8_t*)ptr1;
-    uint8_t* r = (uint8_t*)ptr2;
-    int32_t  left = bytes;
-    for (; left > 0 && *l == *r; left--, l++, r++) {}
-    bool result = left == 0;
+    int memcmpResult = prb_memcmp(ptr1, ptr2, bytes);
+    bool result = memcmpResult == 0;
     return result;
 }
 
@@ -1408,21 +1366,10 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
 // SECTION Strings (implementation)
 //
 
-prb_PUBLICDEF int32_t
-prb_strlen(prb_String string) {
-    prb_String ptr = string;
-    for (; *ptr; ptr++) {}
-    size_t len = ptr - string;
-    prb_assert(len <= INT32_MAX);
-    return (int32_t)len;
-}
-
 prb_PUBLICDEF bool
 prb_streq(prb_String str1, prb_String str2) {
-    prb_String l = str1;
-    prb_String r = str2;
-    for (; *l == *r && *l; l++, r++) {}
-    bool result = (*l == '\0') && (*r == '\0');
+    int strcmpResult = prb_strcmp(str1, str2);
+    bool result = strcmpResult == 0;
     return result;
 }
 
