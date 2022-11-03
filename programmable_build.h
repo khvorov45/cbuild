@@ -22,7 +22,7 @@ There are no wrappers for it, use the original API.
 All memory allocation calls in stb ds are hooked up to the linear allocator 
 everything else is using (memory freeing doesn't do anything). 
 
-If a prb_* function ever return an array (pointer to multiple elements) then it's
+If a prb_* function ever returns an array (pointer to multiple elements) then it's
 a stb ds array, so get its length with arrlen()
 */
 
