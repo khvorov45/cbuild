@@ -23,7 +23,7 @@ All memory allocation calls in stb ds are hooked up to the linear allocator
 everything else is using (memory freeing doesn't do anything). 
 
 If a prb_* function ever returns an array (pointer to multiple elements) then it's
-a stb ds array, so get its length with arrlen()
+an stb ds array, so get its length with arrlen()
 */
 
 // TODO(khvorov) Make sure utf8 paths work on windows
