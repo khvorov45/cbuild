@@ -67,11 +67,11 @@ test_fileformat(void) {
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.line, "prb_PUBLICDEC")) {
             i32 onePastNameEnd =
-                prb_strFindIndex(lineIter.line, lineIter.lineLen, "(", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
+                prb_strFindByteIndex(lineIter.line, lineIter.lineLen, "(", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
             prb_assert(onePastNameEnd != -1);
             prb_StringWindow win = prb_createStringWindow(lineIter.line, onePastNameEnd);
             i32              nameStart =
-                prb_strFindIndex(win.cur, win.curLen, " ", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
+                prb_strFindByteIndex(win.cur, win.curLen, " ", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
             prb_assert(nameStart != -1);
             prb_strWindowForward(&win, nameStart + 1);
             prb_String name = prb_fmt("%.*s", win.curLen, win.cur);
@@ -87,7 +87,7 @@ test_fileformat(void) {
 
         if (prb_strStartsWith(lineIter.line, "// SECTION")) {
             i32 implementationIndex =
-                prb_strFindIndex(lineIter.line, lineIter.lineLen, " (implementation)", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
+                prb_strFindByteIndex(lineIter.line, lineIter.lineLen, " (implementation)", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
             prb_assert(implementationIndex != -1);
             prb_String name = prb_fmt("%.*s", implementationIndex, lineIter.line);
             arrput(implNames, name);
@@ -95,7 +95,7 @@ test_fileformat(void) {
             prb_assert(prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success);
             prb_assert(prb_strStartsWith(lineIter.line, "prb_"));
             i32 nameLen =
-                prb_strFindIndex(lineIter.line, lineIter.lineLen, "(", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
+                prb_strFindByteIndex(lineIter.line, lineIter.lineLen, "(", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
             prb_assert(nameLen != -1);
             prb_String name = prb_fmt("%.*s", nameLen, lineIter.line);
             arrput(implNames, name);
@@ -134,23 +134,23 @@ test_strFindIndex(void) {
     prb_String strWith = "p1at4pattern1 pattern2 pattern3p2a.t";
 
     {
-        i32 patIndex = prb_strFindIndex(strWith, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
+        i32 patIndex = prb_strFindByteIndex(strWith, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
         prb_assert(patIndex == 5);
     }
 
     {
-        i32 patIndex = prb_strFindIndex(strWith, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
+        i32 patIndex = prb_strFindByteIndex(strWith, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
         prb_assert(patIndex == 23);
     }
 
     prb_String strWithout = "p1at4pat1ern1 pat1ern2 pat1ern3p2a.p";
     {
-        i32 patIndex = prb_strFindIndex(strWithout, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
+        i32 patIndex = prb_strFindByteIndex(strWithout, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
         prb_assert(patIndex == -1);
     }
 
     {
-        i32 patIndex = prb_strFindIndex(strWithout, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
+        i32 patIndex = prb_strFindByteIndex(strWithout, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
         prb_assert(patIndex == -1);
     }
 }

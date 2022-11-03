@@ -312,7 +312,7 @@ prb_PUBLICDEC void            prb_binaryToCArray(prb_String inPath, prb_String o
 prb_PUBLICDEC bool                   prb_streq(prb_String str1, prb_String str2);
 prb_PUBLICDEC bool                   prb_strStartsWith(prb_String str1, prb_String str2);
 prb_PUBLICDEC bool                   prb_strEndsWith(prb_String str1, prb_String str2);
-prb_PUBLICDEC int32_t                prb_strFindIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringFindMode mode, prb_StringFindDir dir);
+prb_PUBLICDEC int32_t                prb_strFindByteIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringFindMode mode, prb_StringFindDir dir);
 prb_PUBLICDEC prb_String             prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
 prb_PUBLICDEC prb_StringBuilder      prb_createStringBuilder(int32_t len);
 prb_PUBLICDEC void                   prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source, int32_t len);
@@ -1124,9 +1124,9 @@ prb_pathJoin(prb_String path1, prb_String path2) {
 prb_PUBLICDEF int32_t
 prb_getSepIndexBeforeLastEntry(prb_String path) {
     int32_t pathlen = prb_strlen(path);
-    int32_t result = prb_strFindIndex(path, pathlen - 1, "/\\", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
+    int32_t result = prb_strFindByteIndex(path, pathlen - 1, "/\\", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
     if (result == pathlen - 1 && pathlen > 1) {
-        result = prb_strFindIndex(path, pathlen - 2, "/\\", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
+        result = prb_strFindByteIndex(path, pathlen - 2, "/\\", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
     }
     return result;
 }
@@ -1147,7 +1147,7 @@ prb_getLastEntryInPath(prb_String path) {
 
 prb_PUBLICDEF prb_String
 prb_replaceExt(prb_String path, prb_String newExt) {
-    int32_t    dotIndex = prb_strFindIndex(path, -1, ".", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
+    int32_t    dotIndex = prb_strFindByteIndex(path, -1, ".", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
     prb_String result = prb_fmt("%.*s.%s", dotIndex, path, newExt);
     return result;
 }
@@ -1402,7 +1402,7 @@ prb_strEndsWith(prb_String str1, prb_String str2) {
 }
 
 prb_PUBLICDEF int32_t
-prb_strFindIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringFindMode mode, prb_StringFindDir dir) {
+prb_strFindByteIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringFindMode mode, prb_StringFindDir dir) {
     int32_t result = -1;
     int32_t patlen = prb_strlen(pattern);
 
@@ -1536,7 +1536,7 @@ prb_strFindIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringF
 
 prb_PUBLICDEF prb_String
 prb_strReplace(prb_String str, prb_String pattern, prb_String replacement) {
-    int32_t    patternIndex = prb_strFindIndex(str, -1, pattern, prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
+    int32_t    patternIndex = prb_strFindByteIndex(str, -1, pattern, prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
     prb_String result = str;
     int32_t    stringlen = prb_strlen(str);
     int32_t    patlen = prb_strlen(pattern);
@@ -1827,7 +1827,7 @@ prb_lineIterNext(prb_LineIterator* iter) {
     if (iter->offset < iter->dataLen) {
         iter->line = (char*)(iter->dataPtr + iter->offset);
         iter->lineLen =
-            prb_strFindIndex(iter->line, -1, "\r\n", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
+            prb_strFindByteIndex(iter->line, -1, "\r\n", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
         if (iter->lineLen == -1) {
             iter->lineLen = iter->dataLen - iter->offset;
         }
