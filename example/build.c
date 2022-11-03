@@ -124,7 +124,7 @@ compileStaticLib(
 #if prb_PLATFORM_WINDOWS
                 prb_fmt("/Fo%s/", objDir);
 #elif prb_PLATFORM_LINUX
-                prb_String cmd = prb_fmtAndPrint("%s -c -o %s %s", cmdStart, outputFilepath, inputFilepath);
+                prb_String cmd = prb_fmtAndPrintln("%s -c -o %s %s", cmdStart, outputFilepath, inputFilepath);
 #endif
                 processes[processCount++] = prb_execCmd(cmd, prb_ProcessFlag_DontWait, 0);
             }
@@ -152,9 +152,9 @@ compileStaticLib(
             prb_CompletionStatus libStatus = prb_CompletionStatus_Success;
             if (sourceLastMod > outputLastMod) {
 #if prb_PLATFORM_WINDOWS
-                prb_String libCmd = prb_fmtAndPrint("lib /nologo -out:%s %s", libFile, objsPattern);
+                prb_String libCmd = prb_fmtAndPrintln("lib /nologo -out:%s %s", libFile, objsPattern);
 #elif prb_PLATFORM_LINUX
-            prb_String libCmd = prb_fmtAndPrint("ar rcs %s %s", libFile, objsPathsString);
+            prb_String libCmd = prb_fmtAndPrintln("ar rcs %s %s", libFile, objsPathsString);
 #endif
                 prb_removeFileIfExists(libFile);
                 prb_ProcessHandle libHandle = prb_execCmd(libCmd, 0, 0);
