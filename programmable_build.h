@@ -184,18 +184,6 @@ typedef struct prb_StringArray {
     int32_t     len;
 } prb_StringArray;
 
-typedef struct prb_StringBuilder {
-    char*   ptr;
-    int32_t capacity;
-    int32_t written;
-} prb_StringBuilder;
-
-typedef struct prb_StringArrayBuilder {
-    prb_String* ptr;
-    int32_t     capacity;
-    int32_t     written;
-} prb_StringArrayBuilder;
-
 typedef enum prb_CompletionStatus {
     prb_CompletionStatus_Failure,
     prb_CompletionStatus_Success,
@@ -314,9 +302,6 @@ prb_PUBLICDEC bool                   prb_strStartsWith(prb_String str1, prb_Stri
 prb_PUBLICDEC bool                   prb_strEndsWith(prb_String str1, prb_String str2);
 prb_PUBLICDEC int32_t                prb_strFindByteIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringFindMode mode, prb_StringFindDir dir);
 prb_PUBLICDEC prb_String             prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
-prb_PUBLICDEC prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
-prb_PUBLICDEC void                   prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
-prb_PUBLICDEC prb_StringArray        prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder);
 prb_PUBLICDEC prb_String             prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
 prb_PUBLICDEC prb_String             prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
 prb_PUBLICDEC prb_StringArray        prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2);
@@ -1550,26 +1535,6 @@ prb_strReplace(prb_String str, prb_String pattern, prb_String replacement) {
     return result;
 }
 
-prb_PUBLICDEF prb_StringArrayBuilder
-prb_createStringArrayBuilder(int32_t len) {
-    prb_StringArrayBuilder builder = {.ptr = prb_allocArray(prb_String, len), .capacity = len, .written = 0};
-    return builder;
-}
-
-prb_PUBLICDEF void
-prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr) {
-    prb_assert(builder->capacity >= arr.len + builder->written);
-    prb_memcpy(builder->ptr + builder->written, arr.ptr, arr.len * sizeof(prb_String));
-    builder->written += arr.len;
-}
-
-prb_PUBLICDEF prb_StringArray
-prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder) {
-    prb_assert(builder->capacity == builder->written);
-    prb_StringArray result = {builder->ptr, builder->written};
-    return result;
-}
-
 prb_PUBLICDEF prb_String
 prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
     if (toInclusive < 0) {
@@ -1606,10 +1571,15 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
 
 prb_PUBLICDEF prb_StringArray
 prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2) {
-    prb_StringArrayBuilder builder = prb_createStringArrayBuilder(arr1.len + arr2.len);
-    prb_stringArrayBuilderCopy(&builder, arr1);
-    prb_stringArrayBuilderCopy(&builder, arr2);
-    prb_StringArray result = prb_stringArrayBuilderGetArray(&builder);
+    int32_t buflen = arr1.len + arr2.len;
+    prb_String* buf = prb_allocArray(prb_String, buflen);
+    for (int32_t index = 0; index < arr1.len; index++) {
+        buf[index] = arr1.ptr[index];
+    }
+    for (int32_t index = 0; index < arr2.len; index++) {
+        buf[index + arr1.len] = arr2.ptr[index];
+    }
+    prb_StringArray result = (prb_StringArray){buf, buflen};
     return result;
 }
 
