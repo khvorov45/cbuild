@@ -21,6 +21,9 @@ https://github.com/nothings/stb/blob/master/stb_ds.h
 There are no wrappers for it, use the original API.
 All memory allocation calls in stb ds are hooked up to the linear allocator 
 everything else is using (memory freeing doesn't do anything). 
+
+If a prb_* function ever return an array (pointer to multiple elements) then it's
+a stb ds array, so get its length with arrlen()
 */
 
 // TODO(khvorov) Make sure utf8 paths work on windows
@@ -179,11 +182,6 @@ typedef struct prb_Arena {
 // Assume: null-terminated, permanently allocated, immutable, utf8
 typedef const char* prb_String;
 
-typedef struct prb_StringArray {
-    prb_String* ptr;
-    int32_t     len;
-} prb_StringArray;
-
 typedef enum prb_CompletionStatus {
     prb_CompletionStatus_Failure,
     prb_CompletionStatus_Success,
@@ -272,59 +270,59 @@ prb_PUBLICDEC int32_t prb_globalArenaCurrentFreeSize(void);
 prb_PUBLICDEC void*   prb_globalArenaAlignTo_(int32_t align);
 
 // SECTION Filesystem
-prb_PUBLICDEC bool            prb_isDirectory(prb_String path);
-prb_PUBLICDEC bool            prb_isFile(prb_String path);
-prb_PUBLICDEC bool            prb_directoryIsEmpty(prb_String path);
-prb_PUBLICDEC void            prb_createDirIfNotExists(prb_String path);
-prb_PUBLICDEC void            prb_removeFileOrDirectoryIfExists(prb_String path);
-prb_PUBLICDEC void            prb_removeFileIfExists(prb_String path);
-prb_PUBLICDEC void            prb_removeDirectoryIfExists(prb_String path);
-prb_PUBLICDEC void            prb_clearDirectory(prb_String path);
-prb_PUBLICDEC prb_String      prb_getCurrentWorkingDir(void);
-prb_PUBLICDEC prb_String      prb_pathJoin(prb_String path1, prb_String path2);
-prb_PUBLICDEC int32_t         prb_getSepIndexBeforeLastEntry(prb_String path);
-prb_PUBLICDEC prb_String      prb_getParentDir(prb_String path);
-prb_PUBLICDEC prb_String      prb_getLastEntryInPath(prb_String path);
-prb_PUBLICDEC prb_String      prb_replaceExt(prb_String path, prb_String newExt);
-prb_PUBLICDEC prb_StringArray prb_getAllMatches(prb_String pattern);
-prb_PUBLICDEC uint64_t        prb_getLatestLastModifiedFromPattern(prb_String pattern);
-prb_PUBLICDEC uint64_t        prb_getEarliestLastModifiedFromPattern(prb_String pattern);
-prb_PUBLICDEC uint64_t        prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
-prb_PUBLICDEC uint64_t        prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
-prb_PUBLICDEC void            prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement);
-prb_PUBLICDEC prb_Bytes       prb_readEntireFile(prb_String path);
-prb_PUBLICDEC void            prb_writeEntireFile(prb_String path, prb_Bytes content);
-prb_PUBLICDEC void            prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
+prb_PUBLICDEC bool        prb_isDirectory(prb_String path);
+prb_PUBLICDEC bool        prb_isFile(prb_String path);
+prb_PUBLICDEC bool        prb_directoryIsEmpty(prb_String path);
+prb_PUBLICDEC void        prb_createDirIfNotExists(prb_String path);
+prb_PUBLICDEC void        prb_removeFileOrDirectoryIfExists(prb_String path);
+prb_PUBLICDEC void        prb_removeFileIfExists(prb_String path);
+prb_PUBLICDEC void        prb_removeDirectoryIfExists(prb_String path);
+prb_PUBLICDEC void        prb_clearDirectory(prb_String path);
+prb_PUBLICDEC prb_String  prb_getCurrentWorkingDir(void);
+prb_PUBLICDEC prb_String  prb_pathJoin(prb_String path1, prb_String path2);
+prb_PUBLICDEC int32_t     prb_getSepIndexBeforeLastEntry(prb_String path);
+prb_PUBLICDEC prb_String  prb_getParentDir(prb_String path);
+prb_PUBLICDEC prb_String  prb_getLastEntryInPath(prb_String path);
+prb_PUBLICDEC prb_String  prb_replaceExt(prb_String path, prb_String newExt);
+prb_PUBLICDEC prb_String* prb_getAllMatches(prb_String pattern);
+prb_PUBLICDEC uint64_t    prb_getLatestLastModifiedFromPattern(prb_String pattern);
+prb_PUBLICDEC uint64_t    prb_getEarliestLastModifiedFromPattern(prb_String pattern);
+prb_PUBLICDEC uint64_t    prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
+prb_PUBLICDEC uint64_t    prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
+prb_PUBLICDEC void        prb_textfileReplace(prb_String path, prb_String pattern, prb_String replacement);
+prb_PUBLICDEC prb_Bytes   prb_readEntireFile(prb_String path);
+prb_PUBLICDEC void        prb_writeEntireFile(prb_String path, prb_Bytes content);
+prb_PUBLICDEC void        prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION Strings
-prb_PUBLICDEC bool                   prb_streq(prb_String str1, prb_String str2);
-prb_PUBLICDEC bool                   prb_strStartsWith(prb_String str1, prb_String str2);
-prb_PUBLICDEC bool                   prb_strEndsWith(prb_String str1, prb_String str2);
-prb_PUBLICDEC int32_t                prb_strFindByteIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringFindMode mode, prb_StringFindDir dir);
-prb_PUBLICDEC prb_String             prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
-prb_PUBLICDEC prb_String             prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
-prb_PUBLICDEC prb_String             prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
-prb_PUBLICDEC prb_StringArray        prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2);
-prb_PUBLICDEC prb_String             prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
-prb_PUBLICDEC prb_String             prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args);
-prb_PUBLICDEC prb_String             prb_fmt(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_PUBLICDEC void                   prb_fmtNoNullTerminator(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_PUBLICDEC prb_String             prb_vfmt(prb_String fmt, va_list args);
-prb_PUBLICDEC prb_String             prb_fmtAndPrint(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_PUBLICDEC prb_String             prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC prb_String             prb_vfmtAndPrint(prb_String fmt, va_list args);
-prb_PUBLICDEC prb_String             prb_vfmtAndPrintColor(prb_ColorID color, prb_String fmt, va_list args);
-prb_PUBLICDEC prb_String             prb_fmtAndPrintln(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_PUBLICDEC prb_String             prb_fmtAndPrintlnColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC prb_String             prb_vfmtAndPrintln(prb_String fmt, va_list args);
-prb_PUBLICDEC prb_String             prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args);
-prb_PUBLICDEC void                   prb_writeToStdout(prb_String str, int32_t len);
-prb_PUBLICDEC void                   prb_setPrintColor(prb_ColorID color);
-prb_PUBLICDEC void                   prb_resetPrintColor(void);
-prb_PUBLICDEC prb_LineIterator       prb_createLineIter(void* ptr, int32_t len);
-prb_PUBLICDEC prb_CompletionStatus   prb_lineIterNext(prb_LineIterator* iter);
-prb_PUBLICDEC prb_StringWindow       prb_createStringWindow(void* ptr, int32_t len);
-prb_PUBLICDEC void                   prb_strWindowForward(prb_StringWindow* win, int32_t len);
+prb_PUBLICDEC bool                 prb_streq(prb_String str1, prb_String str2);
+prb_PUBLICDEC bool                 prb_strStartsWith(prb_String str1, prb_String str2);
+prb_PUBLICDEC bool                 prb_strEndsWith(prb_String str1, prb_String str2);
+prb_PUBLICDEC int32_t              prb_strFindByteIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringFindMode mode, prb_StringFindDir dir);
+prb_PUBLICDEC prb_String           prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
+prb_PUBLICDEC prb_String           prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
+prb_PUBLICDEC prb_String           prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
+prb_PUBLICDEC prb_String*          prb_stringArrayJoin(prb_String* arr1, int32_t arr1len, prb_String* arr2, int32_t arr2len);
+prb_PUBLICDEC prb_String           prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
+prb_PUBLICDEC prb_String           prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String           prb_fmt(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC void                 prb_fmtNoNullTerminator(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC prb_String           prb_vfmt(prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String           prb_fmtAndPrint(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC prb_String           prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_PUBLICDEC prb_String           prb_vfmtAndPrint(prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String           prb_vfmtAndPrintColor(prb_ColorID color, prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String           prb_fmtAndPrintln(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
+prb_PUBLICDEC prb_String           prb_fmtAndPrintlnColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_PUBLICDEC prb_String           prb_vfmtAndPrintln(prb_String fmt, va_list args);
+prb_PUBLICDEC prb_String           prb_vfmtAndPrintlnColor(prb_ColorID color, prb_String fmt, va_list args);
+prb_PUBLICDEC void                 prb_writeToStdout(prb_String str, int32_t len);
+prb_PUBLICDEC void                 prb_setPrintColor(prb_ColorID color);
+prb_PUBLICDEC void                 prb_resetPrintColor(void);
+prb_PUBLICDEC prb_LineIterator     prb_createLineIter(void* ptr, int32_t len);
+prb_PUBLICDEC prb_CompletionStatus prb_lineIterNext(prb_LineIterator* iter);
+prb_PUBLICDEC prb_StringWindow     prb_createStringWindow(void* ptr, int32_t len);
+prb_PUBLICDEC void                 prb_strWindowForward(prb_StringWindow* win, int32_t len);
 
 // SECTION Processes
 prb_PUBLICDEC prb_String*          prb_getArgArrayFromString(prb_String string);
@@ -1136,9 +1134,9 @@ prb_replaceExt(prb_String path, prb_String newExt) {
     return result;
 }
 
-prb_PUBLICDEF prb_StringArray
+prb_PUBLICDEF prb_String*
 prb_getAllMatches(prb_String pattern) {
-    prb_StringArray result = {};
+    prb_String* result = 0;
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1148,13 +1146,11 @@ prb_getAllMatches(prb_String pattern) {
 
     glob_t globResult = {};
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
-        prb_assert(globResult.gl_pathc <= INT32_MAX && globResult.gl_pathc > 0);
-        result.len = (int32_t)globResult.gl_pathc;
-        result.ptr = prb_allocArray(prb_String, result.len);
+        arrsetcap(result, globResult.gl_pathc);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
             char*   path = globResult.gl_pathv[resultIndex];
             int32_t pathlen = prb_strlen(path);
-            result.ptr[resultIndex] = prb_stringCopy(path, 0, pathlen - 1);
+            arrput(result, prb_stringCopy(path, 0, pathlen - 1));
         }
     }
     globfree(&globResult);
@@ -1565,22 +1561,22 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
             prb_fmtNoNullTerminator("%s", sep);
         }
     }
-    prb_allocAndZero(1, 1); // NOTE(khvorov) Null terminator
+    prb_allocAndZero(1, 1);  // NOTE(khvorov) Null terminator
     return result;
 }
 
-prb_PUBLICDEF prb_StringArray
-prb_stringArrayJoin(prb_StringArray arr1, prb_StringArray arr2) {
-    int32_t buflen = arr1.len + arr2.len;
-    prb_String* buf = prb_allocArray(prb_String, buflen);
-    for (int32_t index = 0; index < arr1.len; index++) {
-        buf[index] = arr1.ptr[index];
+prb_PUBLICDEF prb_String*
+prb_stringArrayJoin(prb_String* arr1, int32_t arr1len, prb_String* arr2, int32_t arr2len) {
+    int32_t     buflen = arr1len + arr2len;
+    prb_String* buf = 0;
+    arrsetcap(buf, buflen);
+    for (int32_t index = 0; index < arr1len; index++) {
+        arrput(buf, arr1[index]);
     }
-    for (int32_t index = 0; index < arr2.len; index++) {
-        buf[index + arr1.len] = arr2.ptr[index];
+    for (int32_t index = 0; index < arr2len; index++) {
+        arrput(buf, arr2[index]);
     }
-    prb_StringArray result = (prb_StringArray){buf, buflen};
-    return result;
+    return buf;
 }
 
 prb_PUBLICDEF prb_String

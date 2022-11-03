@@ -77,15 +77,16 @@ compileStaticLib(
         compileSources[sourceIndex] = prb_pathJoin(download.downloadDir, compileSourcesRelToDownload[sourceIndex]);
     }
 
-    int32_t          allInputMatchesCount = compileSourcesCount;
-    prb_StringArray* allInputMatches = prb_allocArray(prb_StringArray, allInputMatchesCount);
-    int32_t          allInputFilepathsCount = 0;
+    int32_t      allInputMatchesCount = compileSourcesCount;
+    prb_String** allInputMatches = 0;
+    arrsetcap(allInputMatches, allInputMatchesCount);
+    int32_t allInputFilepathsCount = 0;
     for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesCount; inputPatternIndex++) {
-        prb_String      inputPattern = compileSources[inputPatternIndex];
-        prb_StringArray inputMatches = prb_getAllMatches(inputPattern);
-        prb_assert(inputMatches.len > 0);
+        prb_String  inputPattern = compileSources[inputPatternIndex];
+        prb_String* inputMatches = prb_getAllMatches(inputPattern);
+        prb_assert(arrlen(inputMatches) > 0);
         allInputMatches[inputPatternIndex] = inputMatches;
-        allInputFilepathsCount += inputMatches.len;
+        allInputFilepathsCount += arrlen(inputMatches);
     }
 
     // NOTE(khvorov) Recompile everything whenever any .h file changes
@@ -93,9 +94,9 @@ compileStaticLib(
     prb_String hfilesInIncludePattern = prb_pathJoin(download.includeDir, "*.h");
     uint64_t   latestHFileChange = prb_getLatestLastModifiedFromPattern(hfilesInIncludePattern);
     for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
-        prb_StringArray inputMatch = allInputMatches[inputMatchIndex];
-        for (int32_t inputFilepathIndex = 0; inputFilepathIndex < inputMatch.len; inputFilepathIndex++) {
-            prb_String inputFilepath = inputMatch.ptr[inputFilepathIndex];
+        prb_String* inputMatch = allInputMatches[inputMatchIndex];
+        for (int32_t inputFilepathIndex = 0; inputFilepathIndex < arrlen(inputMatch); inputFilepathIndex++) {
+            prb_String inputFilepath = inputMatch[inputFilepathIndex];
             prb_String inputDir = prb_getParentDir(inputFilepath);
             prb_String adjacentHFilesPattern = prb_pathJoin(inputDir, "*.h");
             latestHFileChange = prb_max(latestHFileChange, prb_getLatestLastModifiedFromPattern(adjacentHFilesPattern));
@@ -107,9 +108,9 @@ compileStaticLib(
     int32_t            processCount = 0;
     int32_t            allOutputFilepathsCount = 0;
     for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
-        prb_StringArray inputMatch = allInputMatches[inputMatchIndex];
-        for (int32_t inputFilepathIndex = 0; inputFilepathIndex < inputMatch.len; inputFilepathIndex++) {
-            prb_String inputFilepath = inputMatch.ptr[inputFilepathIndex];
+        prb_String* inputMatch = allInputMatches[inputMatchIndex];
+        for (int32_t inputFilepathIndex = 0; inputFilepathIndex < arrlen(inputMatch); inputFilepathIndex++) {
+            prb_String inputFilepath = inputMatch[inputFilepathIndex];
             prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
             prb_String outputFilename = prb_replaceExt(inputFilename, "obj");
             prb_String outputFilepath = prb_pathJoin(objDir, outputFilename);
@@ -146,8 +147,8 @@ compileStaticLib(
 
             prb_String objsPathsString = prb_stringsJoin(allOutputFilepaths, allOutputFilepathsCount, " ");
 
-            uint64_t sourceLastMod = prb_getLatestLastModifiedFromPatterns(allOutputFilepaths, allOutputFilepathsCount);
-            uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(libFile);
+            uint64_t             sourceLastMod = prb_getLatestLastModifiedFromPatterns(allOutputFilepaths, allOutputFilepathsCount);
+            uint64_t             outputLastMod = prb_getEarliestLastModifiedFromPattern(libFile);
             prb_CompletionStatus libStatus = prb_CompletionStatus_Success;
             if (sourceLastMod > outputLastMod) {
 #if prb_PLATFORM_WINDOWS
