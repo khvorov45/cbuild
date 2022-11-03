@@ -100,7 +100,6 @@ a stb ds array, so get its length with arrlen()
 #define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
 #define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), prb_alignof(type))
 #define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), prb_alignof(type))
-#define prb_globalArenaAlignTo(type) (type*)prb_globalArenaAlignTo_(prb_alignof(type))
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 
 // clang-format off
@@ -267,7 +266,6 @@ prb_PUBLICDEC void*   prb_allocAndZero(int32_t size, int32_t align);
 prb_PUBLICDEC void*   prb_realloc(void* ptr, int32_t size);
 prb_PUBLICDEC void*   prb_globalArenaCurrentFreePtr(void);
 prb_PUBLICDEC int32_t prb_globalArenaCurrentFreeSize(void);
-prb_PUBLICDEC void*   prb_globalArenaAlignTo_(int32_t align);
 
 // SECTION Filesystem
 prb_PUBLICDEC bool        prb_isDirectory(prb_String path);
@@ -832,8 +830,12 @@ prb_getOffsetForAlignment(void* ptr, int32_t align) {
 
 prb_PUBLICDEF void*
 prb_allocAndZero(int32_t size, int32_t align) {
-    void* result = prb_globalArenaAlignTo_(align);
+    int32_t offset = prb_getOffsetForAlignment(prb_globalState.arena.base, align);
+    prb_assert(prb_globalState.arena.used + offset <= prb_globalState.arena.size);
+    prb_globalState.arena.base = (uint8_t*)prb_globalState.arena.base + offset;
+    prb_globalState.arena.used += offset;
     prb_assert(prb_globalArenaCurrentFreeSize() >= size);
+    void* result = prb_globalArenaCurrentFreePtr();
     prb_globalState.arena.used += size;
     return result;
 }
@@ -856,16 +858,6 @@ prb_globalArenaCurrentFreePtr(void) {
 prb_PUBLICDEF int32_t
 prb_globalArenaCurrentFreeSize(void) {
     int32_t result = prb_globalState.arena.size - prb_globalState.arena.used;
-    return result;
-}
-
-prb_PUBLICDEF void*
-prb_globalArenaAlignTo_(int32_t align) {
-    int32_t offset = prb_getOffsetForAlignment(prb_globalState.arena.base, align);
-    prb_assert(prb_globalState.arena.used + offset <= prb_globalState.arena.size);
-    prb_globalState.arena.base = (uint8_t*)prb_globalState.arena.base + offset;
-    prb_globalState.arena.used += offset;
-    void* result = prb_globalArenaCurrentFreePtr();
     return result;
 }
 
@@ -1533,22 +1525,16 @@ prb_strReplace(prb_String str, prb_String pattern, prb_String replacement) {
 
 prb_PUBLICDEF prb_String
 prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
+    prb_assert(fromInclusive >= 0);
+    prb_String srcFrom = source + fromInclusive;
+    prb_String result = 0;
     if (toInclusive < 0) {
-        toInclusive = INT32_MAX;
+        result = prb_fmt("%s", srcFrom);
+    } else {
+        prb_assert(toInclusive >= fromInclusive);
+        result = prb_fmt("%.*s", toInclusive - fromInclusive + 1, srcFrom);
     }
-    prb_assert(toInclusive >= fromInclusive && toInclusive >= 0 && fromInclusive >= 0);
-    char*   dest = (char*)prb_globalArenaCurrentFreePtr();
-    int32_t copied = 0;
-    for (int32_t strIndex = fromInclusive; strIndex <= toInclusive; strIndex++, copied++) {
-        char sourceCh = source[strIndex];
-        if (sourceCh == '\0') {
-            break;
-        }
-        dest[copied] = sourceCh;
-    }
-    dest[copied++] = '\0';
-    prb_globalState.arena.used += copied;
-    return (prb_String)dest;
+    return result;
 }
 
 prb_PUBLICDEF prb_String
