@@ -314,9 +314,6 @@ prb_PUBLICDEC bool                   prb_strStartsWith(prb_String str1, prb_Stri
 prb_PUBLICDEC bool                   prb_strEndsWith(prb_String str1, prb_String str2);
 prb_PUBLICDEC int32_t                prb_strFindByteIndex(prb_String str, int32_t strLen, prb_String pattern, prb_StringFindMode mode, prb_StringFindDir dir);
 prb_PUBLICDEC prb_String             prb_strReplace(prb_String str, prb_String pattern, prb_String replacement);
-prb_PUBLICDEC prb_StringBuilder      prb_createStringBuilder(int32_t len);
-prb_PUBLICDEC void                   prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source, int32_t len);
-prb_PUBLICDEC prb_String             prb_stringBuilderGetString(prb_StringBuilder* builder);
 prb_PUBLICDEC prb_StringArrayBuilder prb_createStringArrayBuilder(int32_t len);
 prb_PUBLICDEC void                   prb_stringArrayBuilderCopy(prb_StringArrayBuilder* builder, prb_StringArray arr);
 prb_PUBLICDEC prb_StringArray        prb_stringArrayBuilderGetArray(prb_StringArrayBuilder* builder);
@@ -816,7 +813,7 @@ prb_terminate(int32_t code) {
 prb_PUBLICDEF bool
 prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes) {
     prb_assert(bytes >= 0);
-    int memcmpResult = prb_memcmp(ptr1, ptr2, bytes);
+    int  memcmpResult = prb_memcmp(ptr1, ptr2, bytes);
     bool result = memcmpResult == 0;
     return result;
 }
@@ -1104,20 +1101,22 @@ prb_getCurrentWorkingDir(void) {
 
 prb_PUBLICDEF prb_String
 prb_pathJoin(prb_String path1, prb_String path2) {
+    prb_assert(path1 && path2);
     int32_t path1len = prb_strlen(path1);
     int32_t path2len = prb_strlen(path2);
-    prb_assert(path1 && path1len > 0 && path2 && path2len > 0);
-    char              path1LastChar = path1[path1len - 1];
-    bool              path1EndsOnSep = path1LastChar == '/' || path1LastChar == '\\';
-    int32_t           totalLen = path1EndsOnSep ? path1len + path2len : path1len + 1 + path2len;
-    prb_StringBuilder builder = prb_createStringBuilder(totalLen);
-    prb_stringBuilderWrite(&builder, path1, path1len);
-    if (!path1EndsOnSep) {
-        // NOTE(khvorov) Windows seems to handle mixing \ and / just fine
-        prb_stringBuilderWrite(&builder, "/", 1);
+    prb_assert(path1len > 0 && path2len > 0);
+    char path1LastChar = path1[path1len - 1];
+    bool path1EndsOnSep = path1LastChar == '/' || path1LastChar == '\\';
+    if (path1EndsOnSep) {
+        path1len -= 1;
     }
-    prb_stringBuilderWrite(&builder, path2, path2len);
-    prb_String result = prb_stringBuilderGetString(&builder);
+    char path2FirstChar = path2[0];
+    bool path2StartsOnSep = path2FirstChar == '/' || path2FirstChar == '\\';
+    if (path2StartsOnSep) {
+        path2 += 1;
+        path2len -= 1;
+    }
+    prb_String result = prb_fmt("%.*s/%.*s", path1len, path1, path2len, path2);
     return result;
 }
 
@@ -1368,7 +1367,7 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
 
 prb_PUBLICDEF bool
 prb_streq(prb_String str1, prb_String str2) {
-    int strcmpResult = prb_strcmp(str1, str2);
+    int  strcmpResult = prb_strcmp(str1, str2);
     bool result = strcmpResult == 0;
     return result;
 }
@@ -1538,38 +1537,16 @@ prb_PUBLICDEF prb_String
 prb_strReplace(prb_String str, prb_String pattern, prb_String replacement) {
     int32_t    patternIndex = prb_strFindByteIndex(str, -1, pattern, prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
     prb_String result = str;
-    int32_t    stringlen = prb_strlen(str);
     int32_t    patlen = prb_strlen(pattern);
-    int32_t    replaceLen = prb_strlen(replacement);
     if (patternIndex != -1) {
-        prb_StringBuilder builder = prb_createStringBuilder(stringlen - patlen + replaceLen);
-        prb_stringBuilderWrite(&builder, str, patternIndex);
-        prb_stringBuilderWrite(&builder, replacement, replaceLen);
-        prb_stringBuilderWrite(&builder, str + patternIndex + patlen, stringlen - patternIndex - patlen);
-        result = prb_stringBuilderGetString(&builder);
+        result = prb_fmt(
+            "%.*s%s%s",
+            patternIndex,
+            str,
+            replacement,
+            str + patternIndex + patlen
+        );
     }
-    return result;
-}
-
-prb_PUBLICDEF prb_StringBuilder
-prb_createStringBuilder(int32_t len) {
-    prb_assert(len >= 0);
-    // NOTE(khvorov) +1 is for the null terminator
-    prb_StringBuilder result = {.ptr = (char*)prb_allocAndZero(len + 1, 1), .capacity = len, .written = 0};
-    return result;
-}
-
-prb_PUBLICDEF void
-prb_stringBuilderWrite(prb_StringBuilder* builder, prb_String source, int32_t len) {
-    prb_assert(len <= builder->capacity - builder->written);
-    prb_memcpy(builder->ptr + builder->written, source, len);
-    builder->written += len;
-}
-
-prb_PUBLICDEF prb_String
-prb_stringBuilderGetString(prb_StringBuilder* builder) {
-    prb_assert(builder->written == builder->capacity);
-    prb_String result = builder->ptr;
     return result;
 }
 
@@ -1615,27 +1592,15 @@ prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
 
 prb_PUBLICDEF prb_String
 prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
-    int32_t seplen = prb_strlen(sep);
-    prb_assert(seplen >= 0 && stringsCount >= 0);
-
-    int32_t totalLen = prb_max(stringsCount - 1, 0) * seplen;
+    prb_String result = (prb_String)prb_globalArenaCurrentFreePtr();
     for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
         prb_String str = strings[strIndex];
-        int32_t    stringlen = prb_strlen(str);
-        totalLen += stringlen;
-    }
-
-    prb_StringBuilder builder = prb_createStringBuilder(totalLen);
-    for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
-        prb_String str = strings[strIndex];
-        int32_t    stringlen = prb_strlen(str);
-        prb_stringBuilderWrite(&builder, str, stringlen);
+        prb_fmtNoNullTerminator("%s", str);
         if (strIndex < stringsCount - 1) {
-            prb_stringBuilderWrite(&builder, sep, seplen);
+            prb_fmtNoNullTerminator("%s", sep);
         }
     }
-    prb_String result = prb_stringBuilderGetString(&builder);
-
+    prb_allocAndZero(1, 1); // NOTE(khvorov) Null terminator
     return result;
 }
 
