@@ -19,10 +19,10 @@
 #define PLATFORM_LINUX __LINUX__
 
 #if PLATFORM_WINDOWS
-    #error unimlemented
+#error unimlemented
 #elif PLATFORM_LINUX
-    #include <sys/mman.h>
-    #include <fontconfig/fontconfig.h>
+#include <sys/mman.h>
+#include <fontconfig/fontconfig.h>
 #endif
 
 #define function static
@@ -64,7 +64,7 @@ typedef enum CompletionStatus {
 function void*
 vmemAlloc(i32 size) {
 #if PLATFORM_WINDOWS
-    #error unimplemented
+#error unimplemented
 #elif PLATFORM_LINUX
     void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     assert(ptr != MAP_FAILED);
@@ -379,7 +379,7 @@ typedef struct FontManager {
     Font*        fonts;
     hb_buffer_t* hbBuf;
 #if PLATFORM_WINDOWS
-    #error unimplemented;
+#error unimplemented;
 #elif PLATFORM_LINUX
     FcCharSet** fcCharSets;
 #endif
@@ -441,7 +441,7 @@ getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriB
 
 #if PLATFORM_WINDOWS
 
-    #error unimplemented
+#error unimplemented
 
 #elif PLATFORM_LINUX
     if (script >= 0 && script < USCRIPT_CODE_LIMIT) {
@@ -516,6 +516,7 @@ createFontManager(Arena* arena) {
         FcConfigSubstitute(fontManager.fcConfig, fontManager.fcPattern, FcMatchPattern);
         FcDefaultSubstitute(fontManager.fcPattern);
 
+        // clang-format off
         FriBidiChar ascii[] = {
             ' ', '!', '"', '#',  '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2',
             '3', '4', '5', '6',  '7', '8', '9', ':',  ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E',
@@ -523,6 +524,8 @@ createFontManager(Arena* arena) {
             'Y', 'Z', '[', '\\', ']', '^', '_', '`',  'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k',
             'l', 'm', 'n', 'o',  'p', 'q', 'r', 's',  't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~',
         };
+        // clang-format on
+
         GetFontResult getDefaultFontResult =
             getFontForScriptAndUtf32Chars(&fontManager, USCRIPT_LATIN, ascii, arrayLen(ascii));
 
@@ -795,8 +798,8 @@ drawTextline(Renderer* renderer, String text, i32 leftX, i32 topY, Color color) 
                 Font* font = getFontResult.font;
                 hb_shape(font->hbFont, renderer->fontManager.hbBuf, 0, 0);
 
-                u32              hbGlyphCount = 0;
-                hb_glyph_info_t* hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->fontManager.hbBuf, &hbGlyphCount);
+                u32                  hbGlyphCount = 0;
+                hb_glyph_info_t*     hbGlyphInfos = hb_buffer_get_glyph_infos(renderer->fontManager.hbBuf, &hbGlyphCount);
                 hb_glyph_position_t* hbGlyphPositions =
                     hb_buffer_get_glyph_positions(renderer->fontManager.hbBuf, &hbGlyphCount);
 
@@ -994,7 +997,7 @@ main(int argc, char* argv[]) {
             };
 
             u64  prevFrameTicks = 0;
-            u64  unicodeDrawTicks = 0;
+            u64  prevFrameUnicodeDrawTicks = 0;
             f32  ticksPerMS = (f32)SDL_GetPerformanceFrequency() / 1000.0f;
             bool running = true;
             while (running) {
@@ -1018,7 +1021,7 @@ main(int argc, char* argv[]) {
                     i32 arbitraryLineHeight = 50;
                     curTextTopY += arbitraryLineHeight;
                 }
-                unicodeDrawTicks = SDL_GetPerformanceCounter() - unicodeDrawStart;
+                u64 unicodeDrawTicks = SDL_GetPerformanceCounter() - unicodeDrawStart;
 
                 // NOTE(khvorov) Visualize memory usage
                 {
@@ -1070,18 +1073,18 @@ main(int argc, char* argv[]) {
                 // NOTE(khvorov) Print timings
                 {
                     TempMemory tempMem = arenaBeginTemp(renderer.arena);
-                    f32        unicodeDrawMs = (f32)unicodeDrawTicks / ticksPerMS;
+                    f32        unicodeDrawMs = (f32)prevFrameUnicodeDrawTicks / ticksPerMS;
                     f32        frameMs = (f32)prevFrameTicks / ticksPerMS;
                     drawTextline(
                         &renderer,
-                        stringFmt(renderer.arena, "unicode draw: %.1fms", unicodeDrawMs),
+                        stringFmt(renderer.arena, "prev frame unicode draw: %.1fms", unicodeDrawMs),
                         400,
                         600,
                         (Color) {.r = 200, .g = 200, .b = 200, .a = 255}
                     );
                     drawTextline(
                         &renderer,
-                        stringFmt(renderer.arena, "prev frame: %.1fms", frameMs),
+                        stringFmt(renderer.arena, "prev frame total: %.1fms", frameMs),
                         400,
                         630,
                         (Color) {.r = 200, .g = 200, .b = 200, .a = 255}
@@ -1091,6 +1094,7 @@ main(int argc, char* argv[]) {
 
                 renderEnd(&renderer);
                 prevFrameTicks = SDL_GetPerformanceCounter() - frameStart;
+                prevFrameUnicodeDrawTicks = unicodeDrawTicks;
             }
         }
     } else {
