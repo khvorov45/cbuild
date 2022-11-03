@@ -331,7 +331,10 @@ prb_PUBLICDEC prb_CompletionStatus prb_waitForProcesses(prb_ProcessHandle* handl
 prb_PUBLICDEC prb_TimeStart prb_timeStart(void);
 prb_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
 
+//
 // SECTION stb snprintf
+//
+
 #if defined(__clang__)
 #if defined(__has_feature) && defined(__has_attribute)
 #if __has_feature(address_sanitizer)
@@ -842,7 +845,7 @@ prb_allocAndZero(int32_t size, int32_t align) {
 
 prb_PUBLICDEF void*
 prb_realloc(void* ptr, int32_t size) {
-    void* result = prb_allocAndZero(size, prb_alignof(void*));
+    void* result = prb_allocAndZero(size, 8);
     if (ptr) {
         prb_memcpy(result, ptr, size);
     }
