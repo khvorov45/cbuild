@@ -208,7 +208,7 @@ textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
         .pattern = pattern,
         .patternLen = -1,
         .mode = prb_StringFindMode_Exact,
-        .direction = prb_StringFindDirection_FromStart,
+        .direction = prb_StringDirection_FromStart,
     };
     prb_String newContent = prb_strReplace(spec, replacement);
     int32_t    newContentLen = prb_strlen(newContent);

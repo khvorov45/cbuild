@@ -102,6 +102,9 @@ an stb ds array, so get its length with arrlen()
 #define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), prb_alignof(type))
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 
+#define prb_countLeading1sU32(x) __builtin_clz(~(x))
+#define prb_countLeading1sU8(x) prb_countLeading1sU32((x) << 24)
+
 // clang-format off
 // Debug break taken from SDL
 // https://github.com/libsdl-org/SDL/blob/main/include/SDL_assert.h
@@ -233,10 +236,10 @@ typedef enum prb_StringFindMode {
     prb_StringFindMode_AnyChar,
 } prb_StringFindMode;
 
-typedef enum prb_StringFindDirection {
-    prb_StringFindDirection_FromStart,
-    prb_StringFindDirection_FromEnd,
-} prb_StringFindDirection;
+typedef enum prb_StringDirection {
+    prb_StringDirection_FromStart,
+    prb_StringDirection_FromEnd,
+} prb_StringDirection;
 
 typedef struct prb_StringFindSpec {
     prb_String str;
@@ -247,8 +250,8 @@ typedef struct prb_StringFindSpec {
     // Can be -1 to calculate automatically if necessary
     int32_t patternLen;
 
-    prb_StringFindMode      mode;
-    prb_StringFindDirection direction;
+    prb_StringFindMode  mode;
+    prb_StringDirection direction;
 } prb_StringFindSpec;
 
 typedef struct prb_StringFindResult {
@@ -265,6 +268,16 @@ typedef struct prb_LineIterator {
     char*   line;
     int32_t lineLen;
 } prb_LineIterator;
+
+typedef struct prb_Utf8CharIterator {
+    prb_String          str;
+    int32_t             strLen;
+    prb_StringDirection direction;
+    int32_t             curByteOffset;
+    uint32_t            curUtf32Char;
+    int32_t             curUtf8Bytes;
+    bool                curIsValid;
+} prb_Utf8CharIterator;
 
 typedef struct prb_StringWindow {
     char*   og;
@@ -335,6 +348,8 @@ prb_PUBLICDEC prb_String           prb_vfmtAndPrintlnColor(prb_ColorID color, pr
 prb_PUBLICDEC void                 prb_writeToStdout(prb_String str, int32_t len);
 prb_PUBLICDEC void                 prb_setPrintColor(prb_ColorID color);
 prb_PUBLICDEC void                 prb_resetPrintColor(void);
+prb_PUBLICDEC prb_Utf8CharIterator prb_createUtf8CharIter(prb_String str, int32_t strLen, prb_StringDirection direction);
+prb_PUBLICDEC prb_CompletionStatus prb_utf8CharIterNext(prb_Utf8CharIterator* iter);
 prb_PUBLICDEC prb_LineIterator     prb_createLineIter(void* ptr, int32_t len);
 prb_PUBLICDEC prb_CompletionStatus prb_lineIterNext(prb_LineIterator* iter);
 prb_PUBLICDEC prb_StringWindow     prb_createStringWindow(void* ptr, int32_t len);
@@ -1124,7 +1139,7 @@ prb_findSepBeforeLastEntry(prb_String path) {
         .pattern = "/\\",
         .patternLen = -1,
         .mode = prb_StringFindMode_AnyChar,
-        .direction = prb_StringFindDirection_FromEnd,
+        .direction = prb_StringDirection_FromEnd,
     };
     prb_StringFindResult result = prb_strFind(spec);
     if (result.matchByteIndex == spec.strLen - 1 && spec.strLen > 1) {
@@ -1156,7 +1171,7 @@ prb_replaceExt(prb_String path, prb_String newExt) {
         .pattern = ".",
         .patternLen = -1,
         .mode = prb_StringFindMode_AnyChar,
-        .direction = prb_StringFindDirection_FromEnd,
+        .direction = prb_StringDirection_FromEnd,
     };
     prb_StringFindResult dotFind = prb_strFind(spec);
     prb_String           result = 0;
@@ -1422,7 +1437,9 @@ prb_strFind(prb_StringFindSpec spec) {
             case prb_StringFindMode_Exact: {
                 // Raita string matching algorithm
                 // https://en.wikipedia.org/wiki/Raita_algorithm
-                ptrdiff_t charOffsets[256];
+                uint8_t* str = (uint8_t*)spec.str;
+                uint8_t* pat = (uint8_t*)spec.pattern;
+                int32_t  charOffsets[256];
 
                 for (int32_t i = 0; i < 256; ++i) {
                     charOffsets[i] = patlen;
@@ -1432,7 +1449,7 @@ prb_strFind(prb_StringFindSpec spec) {
                     int32_t from = 0;
                     int32_t to = patlen - 1;
                     int32_t delta = 1;
-                    if (spec.direction == prb_StringFindDirection_FromEnd) {
+                    if (spec.direction == prb_StringDirection_FromEnd) {
                         from = patlen - 1;
                         to = 0;
                         delta = -1;
@@ -1440,37 +1457,37 @@ prb_strFind(prb_StringFindSpec spec) {
 
                     int32_t count = 0;
                     for (int32_t i = from; i != to; i += delta) {
-                        char patternChar = spec.pattern[i];
-                        charOffsets[(int32_t)patternChar] = patlen - count++ - 1;
+                        uint8_t patternChar = pat[i];
+                        charOffsets[patternChar] = patlen - count++ - 1;
                     }
 
-                    if (spec.direction == prb_StringFindDirection_FromEnd) {
+                    if (spec.direction == prb_StringDirection_FromEnd) {
                         for (int32_t i = 0; i < 256; ++i) {
                             charOffsets[i] *= -1;
                         }
                     }
                 }
 
-                char patFirstCh = spec.pattern[0];
-                char patMiddleCh = spec.pattern[patlen / 2];
-                char patLastCh = spec.pattern[patlen - 1];
+                uint8_t patFirstCh = pat[0];
+                uint8_t patMiddleCh = pat[patlen / 2];
+                uint8_t patLastCh = pat[patlen - 1];
 
                 int32_t strLen = spec.strLen;
-                if (spec.direction == prb_StringFindDirection_FromEnd && (strLen < 0 || strLen == INT32_MAX)) {
+                if (spec.direction == prb_StringDirection_FromEnd && strLen < 0) {
                     strLen = prb_strlen(spec.str);
                 }
 
                 int32_t off = 0;
-                if (spec.direction == prb_StringFindDirection_FromEnd) {
+                if (spec.direction == prb_StringDirection_FromEnd) {
                     off = strLen - patlen;
                 }
 
                 for (;;) {
                     bool notEnoughStrLeft = false;
                     switch (spec.direction) {
-                        case prb_StringFindDirection_FromStart: {
+                        case prb_StringDirection_FromStart: {
                             for (int32_t strIndex = off; strIndex < off + patlen; strIndex++) {
-                                char testCh = spec.str[strIndex];
+                                uint8_t testCh = str[strIndex];
                                 if (testCh == '\0' || strIndex == strLen) {
                                     notEnoughStrLeft = true;
                                     break;
@@ -1478,7 +1495,7 @@ prb_strFind(prb_StringFindSpec spec) {
                             }
                         } break;
 
-                        case prb_StringFindDirection_FromEnd: {
+                        case prb_StringDirection_FromEnd: {
                             notEnoughStrLeft = off < 0;
                         } break;
                     }
@@ -1487,56 +1504,39 @@ prb_strFind(prb_StringFindSpec spec) {
                         break;
                     }
 
-                    char strFirstChar = spec.str[off];
-                    char strLastCh = spec.str[off + patlen - 1];
-                    if (patLastCh == strLastCh && patMiddleCh == spec.str[off + patlen / 2] && patFirstCh == strFirstChar
-                        && prb_memeq(spec.pattern + 1, spec.str + off + 1, patlen - 2)) {
+                    uint8_t strFirstChar = str[off];
+                    uint8_t strLastCh = str[off + patlen - 1];
+                    if (patLastCh == strLastCh && patMiddleCh == str[off + patlen / 2] && patFirstCh == strFirstChar
+                        && prb_memeq(pat + 1, str + off + 1, patlen - 2)) {
                         result.found = true;
                         result.matchByteIndex = off;
                         result.matchLen = patlen;
                         break;
                     }
 
-                    char relChar = strLastCh;
-                    if (spec.direction == prb_StringFindDirection_FromEnd) {
+                    uint8_t relChar = strLastCh;
+                    if (spec.direction == prb_StringDirection_FromEnd) {
                         relChar = strFirstChar;
                     }
-                    off += charOffsets[(int32_t)relChar];
+                    off += charOffsets[relChar];
                 }
 
             } break;
 
-            // TODO(khvorov) Make work for all utf8
             case prb_StringFindMode_AnyChar: {
-                int32_t searchStartIndex = 0;
-                int32_t onePastSearchEndIndex = INT32_MAX;
-                if (spec.strLen >= 0 && spec.strLen < INT32_MAX) {
-                    onePastSearchEndIndex = spec.strLen;
-                }
-                int32_t searchIndexDelta = 1;
-                if (spec.direction == prb_StringFindDirection_FromEnd) {
-                    searchStartIndex = spec.strLen - 1;
-                    if (spec.strLen < 0 || spec.strLen == INT32_MAX) {
-                        searchStartIndex = prb_strlen(spec.str) - 1;
-                    }
-                    onePastSearchEndIndex = -1;
-                    searchIndexDelta = -1;
-                }
-
-                for (int32_t searchIndex = searchStartIndex; searchIndex != onePastSearchEndIndex && !result.found;
-                     searchIndex += searchIndexDelta) {
-                    char testCh = spec.str[searchIndex];
-                    if (spec.direction == prb_StringFindDirection_FromStart && testCh == '\0') {
-                        break;
-                    }
-
-                    for (int32_t patIndex = 0; patIndex < patlen && !result.found; patIndex++) {
-                        char patCh = spec.pattern[patIndex];
-                        if (testCh == patCh) {
-                            result.found = true;
-                            result.matchByteIndex = searchIndex;
-                            result.matchLen = 1;
-                            break;
+                for (prb_Utf8CharIterator iter = prb_createUtf8CharIter(spec.str, spec.strLen, spec.direction);
+                     prb_utf8CharIterNext(&iter) == prb_CompletionStatus_Success && !result.found;) {
+                    if (iter.curIsValid) {
+                        for (prb_Utf8CharIterator patIter = prb_createUtf8CharIter(spec.pattern, patlen, prb_StringDirection_FromStart);
+                             prb_utf8CharIterNext(&patIter) == prb_CompletionStatus_Success && !result.found;) {
+                            if (patIter.curIsValid) {
+                                if (iter.curUtf32Char == patIter.curUtf32Char) {
+                                    result.found = true;
+                                    result.matchByteIndex = iter.curByteOffset;
+                                    result.matchLen = iter.curUtf8Bytes;
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
@@ -1756,6 +1756,132 @@ prb_resetPrintColor() {
     prb_writeToStdout(str, prb_strlen(str));
 }
 
+prb_PUBLICDEF prb_Utf8CharIterator
+prb_createUtf8CharIter(prb_String str, int32_t strLen, prb_StringDirection direction) {
+    int32_t curByteOffset = 0;
+    if (direction == prb_StringDirection_FromEnd) {
+        if (strLen < 0) {
+            strLen = prb_strlen(str);
+        }
+        curByteOffset = strLen - 1;
+    }
+
+    prb_Utf8CharIterator iter = {
+        .str = str,
+        .strLen = strLen,
+        .direction = direction,
+        .curByteOffset = curByteOffset,
+        .curUtf32Char = 0,
+        .curUtf8Bytes = 0,
+        .curIsValid = false,
+    };
+
+    return iter;
+}
+
+prb_PUBLICDEF prb_CompletionStatus
+prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
+    prb_CompletionStatus result = prb_CompletionStatus_Failure;
+
+    if (iter->curIsValid) {
+        switch (iter->direction) {
+            case prb_StringDirection_FromStart: iter->curByteOffset += iter->curUtf8Bytes; break;
+            case prb_StringDirection_FromEnd: iter->curByteOffset -= 1; break;
+        }
+    }
+    iter->curUtf8Bytes = 0;
+    iter->curUtf32Char = 0;
+    iter->curIsValid = false;
+
+    bool more = iter->curByteOffset < iter->strLen;
+    if (iter->direction == prb_StringDirection_FromStart && iter->strLen < 0) {
+        more = iter->str[iter->curByteOffset] != '\0';
+    }
+    if (iter->direction == prb_StringDirection_FromEnd) {
+        more = iter->curByteOffset >= 0;
+    }
+
+    if (more) {
+        result = prb_CompletionStatus_Success;
+        iter->curIsValid = true;
+
+        uint8_t firstByte = iter->str[iter->curByteOffset];
+        int32_t leading1s = prb_countLeading1sU8(firstByte);
+
+        bool firstByteValid = false;
+        switch (iter->direction) {
+            case prb_StringDirection_FromStart:
+                firstByteValid = (leading1s == 0 || leading1s == 2 || leading1s == 3 || leading1s == 4);
+                break;
+            case prb_StringDirection_FromEnd:
+                firstByteValid = (leading1s == 0 || leading1s == 1);
+                break;
+        }
+
+        if (firstByteValid) {
+            uint8_t firstByteMask[] = {
+                0b01111111,
+                0b00011111,
+                0b00001111,
+                0b00000111,
+            };
+
+            uint32_t ch = 0;
+            switch (iter->direction) {
+                case prb_StringDirection_FromStart: {
+                    int32_t charBytes = leading1s == 0 ? 1 : leading1s;
+                    iter->curUtf8Bytes = charBytes;
+                    ch = firstByte & firstByteMask[charBytes - 1];
+                    for (int32_t byteIndex = 1; byteIndex < charBytes; byteIndex++) {
+                        uint8_t byte = iter->str[iter->curByteOffset + byteIndex];
+                        if (prb_countLeading1sU8(byte) == 1) {
+                            ch = (ch << 6) | (byte & 0b00111111);
+                        } else {
+                            iter->curByteOffset += byteIndex;
+                            iter->curUtf8Bytes = 0;
+                            iter->curIsValid = false;
+                            break;
+                        }
+                    }
+                } break;
+
+                case prb_StringDirection_FromEnd: {
+                    if (leading1s != 0) {
+                        ch = firstByte & 0b00111111;
+                        int32_t maxExtraBytes = prb_min(3, iter->curByteOffset);
+                        for (int32_t byteIndex = 0; byteIndex < maxExtraBytes; byteIndex++) {
+                            uint8_t byte = iter->str[--iter->curByteOffset];
+                            int32_t byteLeading1s = prb_countLeading1sU8(byte);
+                            int32_t chBytesTaken = 6 * (byteIndex + 1);
+                            if (byteLeading1s == 1) {
+                                ch = ((byte & 0b00111111) << chBytesTaken) | ch;
+                            } else if (byteLeading1s == byteIndex + 2) {
+                                iter->curUtf8Bytes = byteLeading1s;
+                                ch = ((byte & firstByteMask[byteLeading1s - 1]) << chBytesTaken) | ch;
+                                break;
+                            } else {
+                                iter->curIsValid = false;
+                                break;
+                            }
+                        }
+                    } else {
+                        ch = firstByte;
+                    }
+                } break;
+            }
+
+            if (iter->curIsValid) {
+                iter->curUtf32Char = ch;
+            }
+        } else {
+            iter->curByteOffset += iter->direction == prb_StringDirection_FromStart ? 1 : -1;
+            iter->curIsValid = false;
+        }
+    }
+
+    return result;
+}
+
 prb_PUBLICDEF prb_LineIterator
 prb_createLineIter(void* ptr, int32_t len) {
     prb_LineIterator iter = {.dataPtr = (uint8_t*)ptr, .dataLen = len, .offset = 0, .line = 0, .lineLen = 0};
@@ -1789,7 +1915,7 @@ prb_lineIterNext(prb_LineIterator* iter) {
             .pattern = "\r\n",
             .patternLen = -1,
             .mode = prb_StringFindMode_AnyChar,
-            .direction = prb_StringFindDirection_FromStart,
+            .direction = prb_StringDirection_FromStart,
         };
         prb_StringFindResult lineEndResult = prb_strFind(spec);
         if (lineEndResult.found) {

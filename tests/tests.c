@@ -72,7 +72,7 @@ test_fileformat(void) {
                 .pattern = "(",
                 .patternLen = 1,
                 .mode = prb_StringFindMode_AnyChar,
-                .direction = prb_StringFindDirection_FromStart,
+                .direction = prb_StringDirection_FromStart,
             });
             prb_assert(onePastNameEndRes.found);
             prb_StringWindow     win = prb_createStringWindow(lineIter.line, onePastNameEndRes.matchByteIndex);
@@ -82,7 +82,7 @@ test_fileformat(void) {
                 .pattern = " ",
                 .patternLen = 1,
                 .mode = prb_StringFindMode_AnyChar,
-                .direction = prb_StringFindDirection_FromEnd,
+                .direction = prb_StringDirection_FromEnd,
             });
             prb_assert(nameStartRes.found);
             prb_strWindowForward(&win, nameStartRes.matchByteIndex + 1);
@@ -104,7 +104,7 @@ test_fileformat(void) {
                 .pattern = " (implementation)",
                 .patternLen = -1,
                 .mode = prb_StringFindMode_Exact,
-                .direction = prb_StringFindDirection_FromStart,
+                .direction = prb_StringDirection_FromStart,
             }
             );
             prb_assert(implementationRes.found);
@@ -119,7 +119,7 @@ test_fileformat(void) {
                 .pattern = "(",
                 .patternLen = 1,
                 .mode = prb_StringFindMode_AnyChar,
-                .direction = prb_StringFindDirection_FromStart,
+                .direction = prb_StringDirection_FromStart,
             });
             prb_assert(nameLenRes.found);
             prb_String name = prb_fmt("%.*s", nameLenRes.matchByteIndex, lineIter.line);
@@ -162,7 +162,7 @@ test_strFind(void) {
         .pattern = "pattern",
         .patternLen = -1,
         .mode = prb_StringFindMode_Exact,
-        .direction = prb_StringFindDirection_FromStart,
+        .direction = prb_StringDirection_FromStart,
     };
 
     {
@@ -171,10 +171,10 @@ test_strFind(void) {
     }
 
     {
-        spec.direction = prb_StringFindDirection_FromEnd;
+        spec.direction = prb_StringDirection_FromEnd;
         prb_StringFindResult res = prb_strFind(spec);
         prb_assert(res.found && res.matchByteIndex == 23 && res.matchLen == 7);
-        spec.direction = prb_StringFindDirection_FromStart;
+        spec.direction = prb_StringDirection_FromStart;
     }
 
     spec.str = "p1at4pat1ern1 pat1ern2 pat1ern3p2a.p";
@@ -184,10 +184,32 @@ test_strFind(void) {
     }
 
     {
-        spec.direction = prb_StringFindDirection_FromEnd;
+        spec.direction = prb_StringDirection_FromEnd;
         prb_StringFindResult res = prb_strFind(spec);
         prb_assert(!res.found && res.matchByteIndex == 0 && res.matchLen == 0);
-        spec.direction = prb_StringFindDirection_FromStart;
+        spec.direction = prb_StringDirection_FromStart;
+    }
+
+    spec.str = "中华人民共和国是目前世界上人口最多的国家";
+    spec.pattern = "民共和国";
+    {
+        prb_StringFindResult res = prb_strFind(spec);
+        prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 4 * 3);
+        spec.direction = prb_StringDirection_FromEnd;
+        res = prb_strFind(spec);
+        prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 4 * 3);
+        spec.direction = prb_StringDirection_FromStart;
+    }
+
+    {
+        spec.mode = prb_StringFindMode_AnyChar;
+        prb_StringFindResult res = prb_strFind(spec);
+        prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 1 * 3);
+        spec.direction = prb_StringDirection_FromEnd;
+        res = prb_strFind(spec);
+        prb_assert(res.found && res.matchByteIndex == 18 * 3 && res.matchLen == 1 * 3);
+        spec.direction = prb_StringDirection_FromStart;
+        spec.mode = prb_StringFindMode_Exact;
     }
 }
 
