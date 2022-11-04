@@ -199,6 +199,22 @@ compileAndRunBidiGenTab(prb_String src, prb_String compileCmdStart, prb_String r
     }
 }
 
+prb_PUBLICDEF void
+textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
+    prb_Bytes  content = prb_readEntireFile(path);
+    prb_StringFindSpec spec = {
+        .str = (prb_String)content.data,
+        .strLen = -1,
+        .pattern = pattern,
+        .patternLen = -1,
+        .mode = prb_StringFindMode_Exact,
+        .direction = prb_StringFindDirection_FromStart,
+    };
+    prb_String newContent = prb_strReplace(spec, replacement);
+    int32_t    newContentLen = prb_strlen(newContent);
+    prb_writeEntireFile(path, (prb_Bytes) {(uint8_t*)newContent, newContentLen});
+}
+
 int
 main() {
     // TODO(khvorov) Argument parsing
@@ -614,12 +630,12 @@ main() {
 
         // NOTE(khvorov) Purge dynamic api because otherwise you have to compile a lot more of sdl
         prb_String dynapiPath = prb_pathJoin(downloadDir, "src/dynapi/SDL_dynapi.h");
-        prb_textfileReplace(dynapiPath, "#define SDL_DYNAMIC_API 1", "#define SDL_DYNAMIC_API 0");
+        textfileReplace(dynapiPath, "#define SDL_DYNAMIC_API 1", "#define SDL_DYNAMIC_API 0");
 
         // NOTE(khvorov) This XMissingExtension function is in X11 extensions and SDL doesn't use it.
         // Saves us from having to -lXext for no reason
         prb_String x11sym = prb_pathJoin(downloadDir, "src/video/x11/SDL_x11sym.h");
-        prb_textfileReplace(
+        textfileReplace(
             x11sym,
             "SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return)",
             "//SDL_X11_SYM(int,XMissingExtension,(Display* a,_Xconst char* b),(a,b),return"
@@ -631,7 +647,7 @@ main() {
         // crash when trying to free a pointer allocated with something other than
         // libc malloc.
         prb_String x11FrameBuffer = prb_pathJoin(downloadDir, "src/video/x11/SDL_x11framebuffer.c");
-        prb_textfileReplace(
+        textfileReplace(
             x11FrameBuffer,
             "XDestroyImage(data->ximage);",
             "SDL_free(data->ximage->data);data->ximage->data = 0;XDestroyImage(data->ximage);"

@@ -66,14 +66,26 @@ test_fileformat(void) {
             prb_String name = prb_fmt("%.*s", lineIter.lineLen, lineIter.line);
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.line, "prb_PUBLICDEC")) {
-            i32 onePastNameEnd =
-                prb_strFindByteIndex(lineIter.line, lineIter.lineLen, "(", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
-            prb_assert(onePastNameEnd != -1);
-            prb_StringWindow win = prb_createStringWindow(lineIter.line, onePastNameEnd);
-            i32              nameStart =
-                prb_strFindByteIndex(win.cur, win.curLen, " ", prb_StringFindMode_AnyChar, prb_StringFindDir_FromEnd);
-            prb_assert(nameStart != -1);
-            prb_strWindowForward(&win, nameStart + 1);
+            prb_StringFindResult onePastNameEndRes = prb_strFind((prb_StringFindSpec) {
+                .str = lineIter.line,
+                .strLen = lineIter.lineLen,
+                .pattern = "(",
+                .patternLen = 1,
+                .mode = prb_StringFindMode_AnyChar,
+                .direction = prb_StringFindDirection_FromStart,
+            });
+            prb_assert(onePastNameEndRes.found);
+            prb_StringWindow     win = prb_createStringWindow(lineIter.line, onePastNameEndRes.matchByteIndex);
+            prb_StringFindResult nameStartRes = prb_strFind((prb_StringFindSpec) {
+                .str = win.cur,
+                .strLen = win.curLen,
+                .pattern = " ",
+                .patternLen = 1,
+                .mode = prb_StringFindMode_AnyChar,
+                .direction = prb_StringFindDirection_FromEnd,
+            });
+            prb_assert(nameStartRes.found);
+            prb_strWindowForward(&win, nameStartRes.matchByteIndex + 1);
             prb_String name = prb_fmt("%.*s", win.curLen, win.cur);
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.line, "#ifdef prb_IMPLEMENTATION")) {
@@ -86,18 +98,31 @@ test_fileformat(void) {
         prb_assert(!prb_strStartsWith(lineIter.line, "prb_PUBLICDEC"));
 
         if (prb_strStartsWith(lineIter.line, "// SECTION")) {
-            i32 implementationIndex =
-                prb_strFindByteIndex(lineIter.line, lineIter.lineLen, " (implementation)", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
-            prb_assert(implementationIndex != -1);
-            prb_String name = prb_fmt("%.*s", implementationIndex, lineIter.line);
+            prb_StringFindResult implementationRes = prb_strFind((prb_StringFindSpec) {
+                .str = lineIter.line,
+                .strLen = lineIter.lineLen,
+                .pattern = " (implementation)",
+                .patternLen = -1,
+                .mode = prb_StringFindMode_Exact,
+                .direction = prb_StringFindDirection_FromStart,
+            }
+            );
+            prb_assert(implementationRes.found);
+            prb_String name = prb_fmt("%.*s", implementationRes.matchByteIndex, lineIter.line);
             arrput(implNames, name);
         } else if (prb_strStartsWith(lineIter.line, "prb_PUBLICDEF")) {
             prb_assert(prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success);
             prb_assert(prb_strStartsWith(lineIter.line, "prb_"));
-            i32 nameLen =
-                prb_strFindByteIndex(lineIter.line, lineIter.lineLen, "(", prb_StringFindMode_AnyChar, prb_StringFindDir_FromStart);
-            prb_assert(nameLen != -1);
-            prb_String name = prb_fmt("%.*s", nameLen, lineIter.line);
+            prb_StringFindResult nameLenRes = prb_strFind((prb_StringFindSpec) {
+                .str = lineIter.line,
+                .strLen = lineIter.lineLen,
+                .pattern = "(",
+                .patternLen = 1,
+                .mode = prb_StringFindMode_AnyChar,
+                .direction = prb_StringFindDirection_FromStart,
+            });
+            prb_assert(nameLenRes.found);
+            prb_String name = prb_fmt("%.*s", nameLenRes.matchByteIndex, lineIter.line);
             arrput(implNames, name);
         }
     }
@@ -130,28 +155,39 @@ test_fileformat(void) {
 }
 
 function void
-test_strFindIndex(void) {
-    prb_String strWith = "p1at4pattern1 pattern2 pattern3p2a.t";
+test_strFind(void) {
+    prb_StringFindSpec spec = {
+        .str = "p1at4pattern1 pattern2 pattern3p2a.t",
+        .strLen = -1,
+        .pattern = "pattern",
+        .patternLen = -1,
+        .mode = prb_StringFindMode_Exact,
+        .direction = prb_StringFindDirection_FromStart,
+    };
 
     {
-        i32 patIndex = prb_strFindByteIndex(strWith, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
-        prb_assert(patIndex == 5);
+        prb_StringFindResult res = prb_strFind(spec);
+        prb_assert(res.found && res.matchByteIndex == 5 && res.matchLen == 7);
     }
 
     {
-        i32 patIndex = prb_strFindByteIndex(strWith, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
-        prb_assert(patIndex == 23);
+        spec.direction = prb_StringFindDirection_FromEnd;
+        prb_StringFindResult res = prb_strFind(spec);
+        prb_assert(res.found && res.matchByteIndex == 23 && res.matchLen == 7);
+        spec.direction = prb_StringFindDirection_FromStart;
     }
 
-    prb_String strWithout = "p1at4pat1ern1 pat1ern2 pat1ern3p2a.p";
+    spec.str = "p1at4pat1ern1 pat1ern2 pat1ern3p2a.p";
     {
-        i32 patIndex = prb_strFindByteIndex(strWithout, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromStart);
-        prb_assert(patIndex == -1);
+        prb_StringFindResult res = prb_strFind(spec);
+        prb_assert(!res.found && res.matchByteIndex == 0 && res.matchLen == 0);
     }
 
     {
-        i32 patIndex = prb_strFindByteIndex(strWithout, -1, "pattern", prb_StringFindMode_Exact, prb_StringFindDir_FromEnd);
-        prb_assert(patIndex == -1);
+        spec.direction = prb_StringFindDirection_FromEnd;
+        prb_StringFindResult res = prb_strFind(spec);
+        prb_assert(!res.found && res.matchByteIndex == 0 && res.matchLen == 0);
+        spec.direction = prb_StringFindDirection_FromStart;
     }
 }
 
@@ -162,7 +198,7 @@ main() {
 
     test_getParentDir();
     test_fileformat();
-    test_strFindIndex();
+    test_strFind();
 
     test_printColor();
 
