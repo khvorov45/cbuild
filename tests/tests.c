@@ -238,6 +238,43 @@ test_strFind(void) {
 }
 
 function void
+test_pathsInDir(void) {
+    prb_String dirname = prb_pathJoin(prb_getParentDir(__FILE__), __FUNCTION__);
+    prb_clearDirectory(dirname);
+    prb_String  fileNames[] = {"file1.c", "file2.c", "file1.h", "file2.h"};
+    int32_t     fileCount = prb_arrayLength(fileNames);
+    prb_String* filePaths = 0;
+    arrsetcap(filePaths, fileCount);
+    for (int32_t fileIndex = 0; fileIndex < fileCount; fileIndex++) {
+        prb_String filename = fileNames[fileIndex];
+        prb_String filepath = prb_pathJoin(dirname, filename);
+        arrput(filePaths, filepath);
+        prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)filename, (int32_t)prb_strlen(filename)});
+    }
+
+    prb_String* allFiles = prb_listAllEntriesInDir(dirname);
+    prb_assert(arrlen(allFiles) == fileCount);
+    for (int32_t fileIndex = 0; fileIndex < fileCount; fileIndex++) {
+        prb_String filename = allFiles[fileIndex];
+        prb_assert(
+            prb_strEndsWith(filename, "file1.c")
+            || prb_strEndsWith(filename, "file2.c")
+            || prb_strEndsWith(filename, "file1.h")
+            || prb_strEndsWith(filename, "file2.h")
+        );
+    }
+
+    prb_String* cfiles = prb_findAllMatchingPaths(prb_pathJoin(dirname, "*c"));
+    prb_assert(arrlen(cfiles) == 2);
+    for (int32_t fileIndex = 0; fileIndex < 2; fileIndex++) {
+        prb_String filename = cfiles[fileIndex];
+        prb_assert(prb_strEndsWith(filename, "file1.c") || prb_strEndsWith(filename, "file2.c"));
+    }
+
+    prb_removeDirectoryIfExists(dirname);
+}
+
+function void
 test_lineIter(void) {
     prb_String       lines = "line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14";
     prb_LineIterator iter = prb_createLineIter(lines, -1);
@@ -328,6 +365,7 @@ main() {
     test_fileformat();
     test_strFind();
     test_lineIter();
+    test_pathsInDir();
 
     test_printColor();
 

@@ -24,10 +24,16 @@ everything else is using (memory freeing doesn't do anything).
 
 If a prb_* function ever returns an array (pointer to multiple elements) then it's
 an stb ds array, so get its length with arrlen()
+
+All prb_* iterators are meant to be used in loops like this
+for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
+    // pull stuff you need off iter
+}
 */
 
 // TODO(khvorov) Make sure utf8 paths work on windows
 // TODO(khvorov) File search by regex + recursive
+// TODO(khvorov) Directory iterator to compress all readdir usages
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -41,6 +47,7 @@ an stb ds array, so get its length with arrlen()
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <stdalign.h>
 
 #include <string.h>
 #include <regex.h>
@@ -81,12 +88,6 @@ an stb ds array, so get its length with arrlen()
 #define prb_MEGABYTE 1024 * prb_KILOBYTE
 #define prb_GIGABYTE 1024 * prb_MEGABYTE
 
-#if __cplusplus
-#define prb_alignof alignof
-#else
-#define prb_alignof _Alignof
-#endif
-
 #define prb_memcpy memcpy
 #define prb_memmove memmove
 #define prb_memset memset
@@ -98,8 +99,9 @@ an stb ds array, so get its length with arrlen()
 #define prb_min(a, b) (((a) < (b)) ? (a) : (b))
 #define prb_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
-#define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), prb_alignof(type))
-#define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), prb_alignof(type))
+#define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), alignof(type))
+#define prb_beginArray(type) (type*)prb_beginArray_(alignof(type))
+#define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), alignof(type))
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 
 #define prb_countLeading1sU32(x) __builtin_clz(~(x))
@@ -179,6 +181,7 @@ typedef struct prb_Arena {
     void*   base;
     int32_t size;
     int32_t used;
+    bool    locked;
 } prb_Arena;
 
 // Assume: null-terminated, permanently allocated, immutable, utf8
@@ -300,6 +303,8 @@ prb_PUBLICDEC void*   prb_allocAndZero(int32_t size, int32_t align);
 prb_PUBLICDEC void*   prb_realloc(void* ptr, int32_t size);
 prb_PUBLICDEC void*   prb_globalArenaCurrentFreePtr(void);
 prb_PUBLICDEC int32_t prb_globalArenaCurrentFreeSize(void);
+prb_PUBLICDEC void*   prb_beginArray_(int32_t align);
+prb_PUBLICDEC void    prb_endArray(int32_t bytes);
 
 // SECTION Filesystem
 prb_PUBLICDEC bool                 prb_isDirectory(prb_String path);
@@ -316,6 +321,7 @@ prb_PUBLICDEC prb_StringFindResult prb_findSepBeforeLastEntry(prb_String path);
 prb_PUBLICDEC prb_String           prb_getParentDir(prb_String path);
 prb_PUBLICDEC prb_String           prb_getLastEntryInPath(prb_String path);
 prb_PUBLICDEC prb_String           prb_replaceExt(prb_String path, prb_String newExt);
+prb_PUBLICDEC prb_String*          prb_listAllEntriesInDir(prb_String path);
 prb_PUBLICDEC prb_String*          prb_findAllMatchingPaths(prb_String pattern);
 prb_PUBLICDEC uint64_t             prb_getLatestLastModifiedFromPattern(prb_String pattern);
 prb_PUBLICDEC uint64_t             prb_getEarliestLastModifiedFromPattern(prb_String pattern);
@@ -797,6 +803,7 @@ stbds_shmode_func_wrapper(T*, size_t elemsize, int mode) {
 // SECTION Core (implementation)
 //
 
+// TODO(khvorov) Probably make available everywhere
 struct {
     prb_Arena arena;
 } prb_globalState;
@@ -807,6 +814,7 @@ prb_init(int32_t virtualMemoryBytesToUse) {
         .base = prb_vmemAllocate(virtualMemoryBytesToUse),
         .size = virtualMemoryBytesToUse,
         .used = 0,
+        .locked = false,
     };
 }
 
@@ -868,8 +876,9 @@ prb_getOffsetForAlignment(void* ptr, int32_t align) {
 
 prb_PUBLICDEF void*
 prb_allocAndZero(int32_t size, int32_t align) {
+    prb_assert(!prb_globalState.arena.locked);
     int32_t offset = prb_getOffsetForAlignment(prb_globalState.arena.base, align);
-    prb_assert(prb_globalState.arena.used + offset <= prb_globalState.arena.size);
+    prb_assert(prb_globalArenaCurrentFreeSize() >= offset);
     prb_globalState.arena.base = (uint8_t*)prb_globalState.arena.base + offset;
     prb_globalState.arena.used += offset;
     prb_assert(prb_globalArenaCurrentFreeSize() >= size);
@@ -897,6 +906,23 @@ prb_PUBLICDEF int32_t
 prb_globalArenaCurrentFreeSize(void) {
     int32_t result = prb_globalState.arena.size - prb_globalState.arena.used;
     return result;
+}
+
+prb_PUBLICDEF void*
+prb_beginArray_(int32_t align) {
+    int32_t offset = prb_getOffsetForAlignment(prb_globalArenaCurrentFreePtr(), align);
+    prb_assert(prb_globalArenaCurrentFreeSize() >= offset);
+    prb_globalState.arena.used += offset;
+    prb_globalState.arena.locked = true;
+    void* result = prb_globalArenaCurrentFreePtr();
+    return result;
+}
+
+prb_PUBLICDEF void
+prb_endArray(int32_t bytes) {
+    prb_assert(prb_globalArenaCurrentFreeSize() >= bytes);
+    prb_globalState.arena.used += bytes;
+    prb_globalState.arena.locked = false;
 }
 
 //
@@ -1077,6 +1103,7 @@ prb_removeDirectoryIfExists(prb_String path) {
         int32_t rmdirResult = rmdir(path);
         prb_assert(rmdirResult == 0);
     }
+    closedir(pathHandle);
 
 #else
 #error unimplemented
@@ -1186,6 +1213,36 @@ prb_replaceExt(prb_String path, prb_String newExt) {
 }
 
 prb_PUBLICDEF prb_String*
+prb_listAllEntriesInDir(prb_String path) {
+    prb_assert(prb_isDirectory(path));
+    prb_String* result = 0;
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    DIR* pathHandle = opendir(path);
+    prb_assert(pathHandle);
+    for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
+        bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
+        bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
+        if (!isDot && !isDoubleDot) {
+            prb_String fullpath = prb_pathJoin(path, entry->d_name);
+            arrput(result, fullpath);
+        }
+    }
+    closedir(pathHandle);
+
+#else
+#error unimplemented
+#endif
+
+    return result;
+}
+
+prb_PUBLICDEF prb_String*
 prb_findAllMatchingPaths(prb_String pattern) {
     prb_String* result = 0;
 
@@ -1198,7 +1255,7 @@ prb_findAllMatchingPaths(prb_String pattern) {
     glob_t globResult = {};
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         arrsetcap(result, globResult.gl_pathc);
-        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
+        for (size_t resultIndex = 0; resultIndex < globResult.gl_pathc; resultIndex++) {
             char*   path = globResult.gl_pathv[resultIndex];
             int32_t pathlen = prb_strlen(path);
             arrput(result, prb_stringCopy(path, 0, pathlen - 1));
@@ -1665,14 +1722,11 @@ prb_fmtNoNullTerminator(prb_String fmt, ...) {
 
 prb_PUBLICDEF prb_String
 prb_vfmt(prb_String fmt, va_list args) {
-    prb_String result = prb_vfmtCustomBuffer(
-        (uint8_t*)prb_globalState.arena.base + prb_globalState.arena.used,
-        prb_globalState.arena.size - prb_globalState.arena.used,
-        fmt,
-        args
-    );
+    prb_beginArray_(1);
+    prb_String result =
+        prb_vfmtCustomBuffer(prb_globalArenaCurrentFreePtr(), prb_globalArenaCurrentFreeSize(), fmt, args);
     int32_t resultLen = prb_strlen(result);
-    prb_globalState.arena.used += resultLen + 1;  // NOTE(khvorov) Null terminator
+    prb_endArray(resultLen + 1);  // NOTE(khvorov) Null terminator
     return result;
 }
 
