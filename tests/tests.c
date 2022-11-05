@@ -56,10 +56,10 @@ setdiff(prb_String* arr1, prb_String* arr2) {
 function void
 test_fileformat(void) {
     prb_Bytes        fileContents = prb_readEntireFile("programmable_build.h");
-    prb_LineIterator lineIter = prb_createLineIter(fileContents.data, fileContents.len);
+    prb_LineIterator lineIter = prb_createLineIter((prb_String)fileContents.data, fileContents.len);
 
     prb_String* headerNames = 0;
-    while (prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success) {
+    while (prb_lineIterNext(&lineIter) == prb_Success) {
         prb_assert(!prb_strStartsWith(lineIter.line, "prb_PUBLICDEF"));
 
         if (prb_strStartsWith(lineIter.line, "// SECTION")) {
@@ -94,7 +94,7 @@ test_fileformat(void) {
     }
 
     prb_String* implNames = 0;
-    while (prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success) {
+    while (prb_lineIterNext(&lineIter) == prb_Success) {
         prb_assert(!prb_strStartsWith(lineIter.line, "prb_PUBLICDEC"));
 
         if (prb_strStartsWith(lineIter.line, "// SECTION")) {
@@ -111,7 +111,7 @@ test_fileformat(void) {
             prb_String name = prb_fmt("%.*s", implementationRes.matchByteIndex, lineIter.line);
             arrput(implNames, name);
         } else if (prb_strStartsWith(lineIter.line, "prb_PUBLICDEF")) {
-            prb_assert(prb_lineIterNext(&lineIter) == prb_CompletionStatus_Success);
+            prb_assert(prb_lineIterNext(&lineIter) == prb_Success);
             prb_assert(prb_strStartsWith(lineIter.line, "prb_"));
             prb_StringFindResult nameLenRes = prb_strFind((prb_StringFindSpec) {
                 .str = lineIter.line,
@@ -211,6 +211,112 @@ test_strFind(void) {
         spec.direction = prb_StringDirection_FromStart;
         spec.mode = prb_StringFindMode_Exact;
     }
+
+    spec.str = "prb_PUBLICDEC prb_StringWindow prb_createStringWindow(void* ptr, int32_t len)";
+    spec.pattern = "prb_[^[:space:]]*\\(";
+    spec.mode = prb_StringFindMode_RegexPosix;
+    {
+        prb_StringFindResult res = prb_strFind(spec);
+        prb_assert(
+            res.found
+            && res.matchByteIndex == prb_strlen("prb_PUBLICDEC prb_StringWindow ")
+            && res.matchLen == prb_strlen("prb_createStringWindow(")
+        );
+    }
+
+    spec.str = "prb_one() prb_2()";
+    {
+        spec.direction = prb_StringDirection_FromEnd;
+        prb_StringFindResult res = prb_strFind(spec);
+        prb_assert(
+            res.found
+            && res.matchByteIndex == prb_strlen("prb_one() ")
+            && res.matchLen == prb_strlen("prb_2(")
+        );
+        spec.direction = prb_StringDirection_FromStart;
+    }
+}
+
+function void
+test_lineIter(void) {
+    prb_String       lines = "line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14";
+    prb_LineIterator iter = prb_createLineIter(lines, -1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.line, "line1"));
+    prb_assert(iter.lineLen == 5);
+    prb_assert(iter.lineEndLen == 2);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.line, "line2"));
+    prb_assert(iter.lineLen == 5);
+    prb_assert(iter.lineEndLen == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.line, "line3"));
+    prb_assert(iter.lineLen == 5);
+    prb_assert(iter.lineEndLen == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.line, "line4"));
+    prb_assert(iter.lineLen == 5);
+    prb_assert(iter.lineEndLen == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.lineLen == 0);
+    prb_assert(iter.lineEndLen == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.line, "line6"));
+    prb_assert(iter.lineLen == 5);
+    prb_assert(iter.lineEndLen == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.lineLen == 0);
+    prb_assert(iter.lineEndLen == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.line, "line8"));
+    prb_assert(iter.lineLen == 5);
+    prb_assert(iter.lineEndLen == 2);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.lineLen == 0);
+    prb_assert(iter.lineEndLen == 2);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.line, "line10"));
+    prb_assert(iter.lineLen == 6);
+    prb_assert(iter.lineEndLen == 2);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.lineLen == 0);
+    prb_assert(iter.lineEndLen == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.line, "line12"));
+    prb_assert(iter.lineLen == 6);
+    prb_assert(iter.lineEndLen == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.lineLen == 0);
+    prb_assert(iter.lineEndLen == 2);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.line, "line14"));
+    prb_assert(iter.lineLen == 6);
+    prb_assert(iter.lineEndLen == 0);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Failure);
+
+    lines = "\n";
+    iter = prb_createLineIter(lines, -1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.lineLen == 0);
+    prb_assert(iter.lineEndLen == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Failure);
 }
 
 int
@@ -221,6 +327,7 @@ main() {
     test_getParentDir();
     test_fileformat();
     test_strFind();
+    test_lineIter();
 
     test_printColor();
 

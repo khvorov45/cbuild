@@ -27,7 +27,6 @@ an stb ds array, so get its length with arrlen()
 */
 
 // TODO(khvorov) Make sure utf8 paths work on windows
-// TODO(khvorov) String regex ops
 // TODO(khvorov) File search by regex + recursive
 
 #ifdef __GNUC__
@@ -44,6 +43,7 @@ an stb ds array, so get its length with arrlen()
 #include <stdarg.h>
 
 #include <string.h>
+#include <regex.h>
 
 #if defined(WIN32) || defined(_WIN32)
 #define prb_PLATFORM_WINDOWS 1
@@ -184,10 +184,10 @@ typedef struct prb_Arena {
 // Assume: null-terminated, permanently allocated, immutable, utf8
 typedef const char* prb_String;
 
-typedef enum prb_CompletionStatus {
-    prb_CompletionStatus_Failure,
-    prb_CompletionStatus_Success,
-} prb_CompletionStatus;
+typedef enum prb_Status {
+    prb_Failure,
+    prb_Success,
+} prb_Status;
 
 typedef struct prb_TimeStart {
     bool     valid;
@@ -211,9 +211,9 @@ typedef struct prb_Bytes {
 } prb_Bytes;
 
 typedef struct prb_ProcessHandle {
-    bool                 valid;
-    bool                 completed;
-    prb_CompletionStatus completionStatus;
+    bool       valid;
+    bool       completed;
+    prb_Status completionStatus;
 
 #if prb_PLATFORM_WINDOWS
 #error unimplemented
@@ -234,6 +234,7 @@ typedef uint32_t prb_ProcessFlags;
 typedef enum prb_StringFindMode {
     prb_StringFindMode_Exact,
     prb_StringFindMode_AnyChar,
+    prb_StringFindMode_RegexPosix,
 } prb_StringFindMode;
 
 typedef enum prb_StringDirection {
@@ -267,6 +268,7 @@ typedef struct prb_LineIterator {
     // Segment of the original data, not necessarily null-terminated
     char*   line;
     int32_t lineLen;
+    int32_t lineEndLen;
 } prb_LineIterator;
 
 typedef struct prb_Utf8CharIterator {
@@ -349,16 +351,16 @@ prb_PUBLICDEC void                 prb_writeToStdout(prb_String str, int32_t len
 prb_PUBLICDEC void                 prb_setPrintColor(prb_ColorID color);
 prb_PUBLICDEC void                 prb_resetPrintColor(void);
 prb_PUBLICDEC prb_Utf8CharIterator prb_createUtf8CharIter(prb_String str, int32_t strLen, prb_StringDirection direction);
-prb_PUBLICDEC prb_CompletionStatus prb_utf8CharIterNext(prb_Utf8CharIterator* iter);
-prb_PUBLICDEC prb_LineIterator     prb_createLineIter(void* ptr, int32_t len);
-prb_PUBLICDEC prb_CompletionStatus prb_lineIterNext(prb_LineIterator* iter);
+prb_PUBLICDEC prb_Status           prb_utf8CharIterNext(prb_Utf8CharIterator* iter);
+prb_PUBLICDEC prb_LineIterator     prb_createLineIter(prb_String ptr, int32_t len);
+prb_PUBLICDEC prb_Status           prb_lineIterNext(prb_LineIterator* iter);
 prb_PUBLICDEC prb_StringWindow     prb_createStringWindow(void* ptr, int32_t len);
 prb_PUBLICDEC void                 prb_strWindowForward(prb_StringWindow* win, int32_t len);
 
 // SECTION Processes
-prb_PUBLICDEC prb_String*          prb_getArgArrayFromString(prb_String string);
-prb_PUBLICDEC prb_ProcessHandle    prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath);
-prb_PUBLICDEC prb_CompletionStatus prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
+prb_PUBLICDEC prb_String*       prb_getArgArrayFromString(prb_String string);
+prb_PUBLICDEC prb_ProcessHandle prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath);
+prb_PUBLICDEC prb_Status        prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
 
 // SECTION Timing
 prb_PUBLICDEC prb_TimeStart prb_timeStart(void);
@@ -1525,10 +1527,10 @@ prb_strFind(prb_StringFindSpec spec) {
 
             case prb_StringFindMode_AnyChar: {
                 for (prb_Utf8CharIterator iter = prb_createUtf8CharIter(spec.str, spec.strLen, spec.direction);
-                     prb_utf8CharIterNext(&iter) == prb_CompletionStatus_Success && !result.found;) {
+                     prb_utf8CharIterNext(&iter) == prb_Success && !result.found;) {
                     if (iter.curIsValid) {
                         for (prb_Utf8CharIterator patIter = prb_createUtf8CharIter(spec.pattern, patlen, prb_StringDirection_FromStart);
-                             prb_utf8CharIterNext(&patIter) == prb_CompletionStatus_Success && !result.found;) {
+                             prb_utf8CharIterNext(&patIter) == prb_Success && !result.found;) {
                             if (patIter.curIsValid) {
                                 if (iter.curUtf32Char == patIter.curUtf32Char) {
                                     result.found = true;
@@ -1540,7 +1542,30 @@ prb_strFind(prb_StringFindSpec spec) {
                         }
                     }
                 }
-            }
+            } break;
+
+            case prb_StringFindMode_RegexPosix: {
+                regex_t regexCompiled = {};
+                int     compResult = regcomp(&regexCompiled, spec.pattern, REG_EXTENDED);
+                prb_assert(compResult == 0);
+                regmatch_t pos = {};
+                int        execResult = regexec(&regexCompiled, spec.str, 1, &pos, 0);
+                if (execResult == 0) {
+                    result.found = true;
+                    result.matchByteIndex = pos.rm_so;
+                    result.matchLen = pos.rm_eo - pos.rm_so;
+
+                    // NOTE(khvorov) Match forward and report last result.
+                    // Janky, but I don't want to implement sane backwards regex matching myself.
+                    if (spec.direction == prb_StringDirection_FromEnd) {
+                        while (regexec(&regexCompiled, spec.str + result.matchByteIndex + result.matchLen, 1, &pos, 0) == 0) {
+                            result.matchByteIndex += result.matchLen + pos.rm_so;
+                            result.matchLen = pos.rm_eo - pos.rm_so;
+                        }
+                    }
+                }
+                regfree(&regexCompiled);
+            } break;
         }
     }
 
@@ -1779,9 +1804,9 @@ prb_createUtf8CharIter(prb_String str, int32_t strLen, prb_StringDirection direc
     return iter;
 }
 
-prb_PUBLICDEF prb_CompletionStatus
+prb_PUBLICDEF prb_Status
 prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
-    prb_CompletionStatus result = prb_CompletionStatus_Failure;
+    prb_Status result = prb_Failure;
 
     if (iter->curIsValid) {
         switch (iter->direction) {
@@ -1802,7 +1827,7 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
     }
 
     if (more) {
-        result = prb_CompletionStatus_Success;
+        result = prb_Success;
         iter->curIsValid = true;
 
         uint8_t firstByte = iter->str[iter->curByteOffset];
@@ -1883,31 +1908,28 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
 }
 
 prb_PUBLICDEF prb_LineIterator
-prb_createLineIter(void* ptr, int32_t len) {
-    prb_LineIterator iter = {.dataPtr = (uint8_t*)ptr, .dataLen = len, .offset = 0, .line = 0, .lineLen = 0};
+prb_createLineIter(prb_String ptr, int32_t len) {
+    prb_LineIterator iter = {
+        .dataPtr = (uint8_t*)ptr,
+        .dataLen = len,
+        .offset = 0,
+        .line = 0,
+        .lineLen = 0,
+        .lineEndLen = 0,
+    };
     return iter;
 }
 
-prb_PUBLICDEF prb_CompletionStatus
+prb_PUBLICDEF prb_Status
 prb_lineIterNext(prb_LineIterator* iter) {
-    prb_CompletionStatus result = prb_CompletionStatus_Failure;
+    prb_Status result = prb_Failure;
 
-    // NOTE(khvorov) Skip newlines if we are on one
-    if (iter->offset < iter->dataLen) {
-        for (;;) {
-            char ch = iter->dataPtr[iter->offset];
-            if (ch == '\n' || ch == '\r') {
-                iter->offset += 1;
-            } else {
-                break;
-            }
-            if (iter->offset == iter->dataLen) {
-                break;
-            }
-        }
-    }
+    iter->offset += iter->lineLen + iter->lineEndLen;
+    iter->line = 0;
+    iter->lineLen = 0;
+    iter->lineEndLen = 0;
 
-    if (iter->offset < iter->dataLen) {
+    if (iter->offset < iter->dataLen || iter->dataPtr[iter->offset] != '\0') {
         iter->line = (char*)(iter->dataPtr + iter->offset);
         prb_StringFindSpec spec = {
             .str = iter->line,
@@ -1920,11 +1942,18 @@ prb_lineIterNext(prb_LineIterator* iter) {
         prb_StringFindResult lineEndResult = prb_strFind(spec);
         if (lineEndResult.found) {
             iter->lineLen = lineEndResult.matchByteIndex;
+            iter->lineEndLen = 1;
+            if (iter->line[iter->lineLen] == '\r' && iter->line[iter->lineLen + 1] == '\n') {
+                iter->lineEndLen += 1;
+            }
         } else {
-            iter->lineLen = iter->dataLen - iter->offset;
+            if (iter->dataLen < 0) {
+                iter->lineLen = prb_strlen(iter->line);
+            } else {
+                iter->lineLen = iter->dataLen - iter->offset;
+            }
         }
-        iter->offset += iter->lineLen;
-        result = prb_CompletionStatus_Success;
+        result = prb_Success;
     }
 
     return result;
@@ -2005,7 +2034,7 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
         DWORD exitCode;
         if (GetExitCodeProcess(processInfo.hProcess, &exitCode)) {
             if (exitCode == 0) {
-                cmdStatus = prb_CompletionStatus_Success;
+                cmdStatus = prb_Success;
             }
         }
     }
@@ -2058,7 +2087,7 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
                 pid_t waitResult = waitpid(result.pid, &status, 0);
                 if (waitResult == result.pid && status == 0) {
                     result.completed = true;
-                    result.completionStatus = prb_CompletionStatus_Success;
+                    result.completionStatus = prb_Success;
                 }
             }
         }
@@ -2071,9 +2100,9 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
     return result;
 }
 
-prb_PUBLICDEF prb_CompletionStatus
+prb_PUBLICDEF prb_Status
 prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
-    prb_CompletionStatus result = prb_CompletionStatus_Success;
+    prb_Status result = prb_Success;
 
 #if prb_PLATFORM_WINDOWS
 
@@ -2089,14 +2118,14 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
                 pid_t   waitResult = waitpid(handle->pid, &status, 0);
                 handle->completed = true;
                 if (waitResult == handle->pid && status == 0) {
-                    handle->completionStatus = prb_CompletionStatus_Success;
+                    handle->completionStatus = prb_Success;
                 } else {
-                    handle->completionStatus = prb_CompletionStatus_Failure;
-                    result = prb_CompletionStatus_Failure;
+                    handle->completionStatus = prb_Failure;
+                    result = prb_Failure;
                 }
             }
         } else {
-            result = prb_CompletionStatus_Failure;
+            result = prb_Failure;
         }
     }
 

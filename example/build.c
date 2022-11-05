@@ -27,7 +27,7 @@ downloadRepo(prb_String rootDir, prb_String name, prb_String downloadUrl, prb_St
         prb_String        cmd = prb_fmtAndPrintln("git clone --depth 1 %s %s", downloadUrl, downloadDir);
         prb_ProcessHandle handle = prb_execCmd(cmd, 0, 0);
         prb_assert(handle.completed);
-        if (handle.completionStatus == prb_CompletionStatus_Success) {
+        if (handle.completionStatus == prb_Success) {
             downloadStatus = DownloadStatus_Downloaded;
         }
     } else {
@@ -135,9 +135,9 @@ compileStaticLib(
         prb_fmtAndPrintln("skip compile %s", name);
     }
 
-    StaticLib            result = {0};
-    prb_CompletionStatus compileStatus = prb_waitForProcesses(processes, processCount);
-    if (compileStatus == prb_CompletionStatus_Success) {
+    StaticLib  result = {0};
+    prb_Status compileStatus = prb_waitForProcesses(processes, processCount);
+    if (compileStatus == prb_Success) {
 #if prb_PLATFORM_WINDOWS
             prb_String staticLibFileExt = "lib");
 #elif prb_PLATFORM_LINUX
@@ -147,9 +147,9 @@ compileStaticLib(
 
             prb_String objsPathsString = prb_stringsJoin(allOutputFilepaths, allOutputFilepathsCount, " ");
 
-            uint64_t             sourceLastMod = prb_getLatestLastModifiedFromPatterns(allOutputFilepaths, allOutputFilepathsCount);
-            uint64_t             outputLastMod = prb_getEarliestLastModifiedFromPattern(libFile);
-            prb_CompletionStatus libStatus = prb_CompletionStatus_Success;
+            uint64_t   sourceLastMod = prb_getLatestLastModifiedFromPatterns(allOutputFilepaths, allOutputFilepathsCount);
+            uint64_t   outputLastMod = prb_getEarliestLastModifiedFromPattern(libFile);
+            prb_Status libStatus = prb_Success;
             if (sourceLastMod > outputLastMod) {
 #if prb_PLATFORM_WINDOWS
                 prb_String libCmd = prb_fmtAndPrintln("lib /nologo -out:%s %s", libFile, objsPattern);
@@ -164,7 +164,7 @@ compileStaticLib(
                 prb_fmtAndPrintln("skip lib %s", name);
             }
 
-            if (libStatus == prb_CompletionStatus_Success) {
+            if (libStatus == prb_Success) {
                 result = (StaticLib) {.success = true, .libFile = libFile};
             }
     }
@@ -186,14 +186,14 @@ compileAndRunBidiGenTab(prb_String src, prb_String compileCmdStart, prb_String r
         prb_String        cmd = prb_fmtAndPrintln("%s %s %s", compileCmdStart, compileCommandEnd, src);
         prb_ProcessHandle handle = prb_execCmd(cmd, 0, 0);
         prb_assert(handle.completed);
-        if (handle.completionStatus != prb_CompletionStatus_Success) {
+        if (handle.completionStatus != prb_Success) {
             prb_terminate(1);
         }
 
         prb_String        cmdRun = prb_fmtAndPrintln("%s %s", exeFilename, runArgs);
         prb_ProcessHandle handleRun = prb_execCmd(cmdRun, prb_ProcessFlag_RedirectStdout, outpath);
         prb_assert(handleRun.completed);
-        if (handleRun.completionStatus != prb_CompletionStatus_Success) {
+        if (handleRun.completionStatus != prb_Success) {
             prb_terminate(1);
         }
     }
@@ -201,7 +201,7 @@ compileAndRunBidiGenTab(prb_String src, prb_String compileCmdStart, prb_String r
 
 prb_PUBLICDEF void
 textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
-    prb_Bytes  content = prb_readEntireFile(path);
+    prb_Bytes          content = prb_readEntireFile(path);
     prb_StringFindSpec spec = {
         .str = (prb_String)content.data,
         .strLen = -1,
@@ -721,7 +721,7 @@ main() {
     prb_ProcessHandle mainHandle = prb_execCmd(mainCmd, 0, 0);
     prb_assert(mainHandle.completed);
 
-    if (mainHandle.completionStatus == prb_CompletionStatus_Success) {
+    if (mainHandle.completionStatus == prb_Success) {
         prb_fmtAndPrintln("total: %.2fms", prb_getMsFrom(scriptStartTime));
     } else {
         return 1;
