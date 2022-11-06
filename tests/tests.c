@@ -16,6 +16,8 @@ test_memeq(void) {
 
 function void
 test_alignment() {
+    prb_TempMemory temp = prb_beginTempMemory();
+
     prb_assert(prb_getOffsetForAlignment((void*)0, 1) == 0);
     prb_assert(prb_getOffsetForAlignment((void*)1, 1) == 0);
     prb_assert(prb_getOffsetForAlignment((void*)1, 2) == 1);
@@ -31,6 +33,8 @@ test_alignment() {
     prb_assert(prb_getOffsetForAlignment(prb_globalArenaCurrentFreePtr(), arbitraryAlignment) == arbitraryAlignment - 1);
     prb_globalArenaAlignFreePtr(arbitraryAlignment);
     prb_assert(prb_getOffsetForAlignment(prb_globalArenaCurrentFreePtr(), arbitraryAlignment) == 0);
+
+    prb_endTempMemory(temp);
 }
 
 function void
@@ -87,6 +91,7 @@ test_allocation() {
 
 function void
 test_printColor(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
     prb_fmtAndPrintln("color printing:");
     prb_fmtAndPrintlnColor(prb_ColorID_Blue, "blue");
     prb_fmtAndPrintlnColor(prb_ColorID_Cyan, "cyan");
@@ -96,21 +101,77 @@ test_printColor(void) {
     prb_fmtAndPrintlnColor(prb_ColorID_Green, "green");
     prb_fmtAndPrintlnColor(prb_ColorID_Black, "black");
     prb_fmtAndPrintlnColor(prb_ColorID_White, "white");
+    prb_endTempMemory(temp);
 }
 
 function void
 test_getParentDir(void) {
-    prb_String cwd = prb_getCurrentWorkingDir();
-
-    // NOTE(sen) Given a name with no parent - return current working dir
-    {
-        prb_String cases[] = {"test", "test/", "test\\"};
-        for (usize testIndex = 0; testIndex < prb_arrayLength(cases); testIndex++) {
-            prb_assert(prb_streq(prb_getParentDir(cases[testIndex]), cwd));
-        }
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_String     cwd = prb_getCurrentWorkingDir();
+    prb_String     cases[] = {"test", "test/", "test\\", "test/child", "test\\child", "test/child\\child2", "/home"};
+    prb_String     correct[] = {cwd, cwd, cwd, "test/", "test\\", "test/child\\", "/"};
+    prb_assert(prb_arrayLength(cases) == prb_arrayLength(correct));
+    for (usize testIndex = 0; testIndex < prb_arrayLength(cases); testIndex++) {
+        prb_String cs = cases[testIndex];
+        prb_String resp = prb_getParentDir(cs);
+        prb_String cr = correct[testIndex];
+        prb_assert(prb_streq(resp, cr));
     }
+    prb_endTempMemory(temp);
+}
 
-    // TODO(khvorov) More cases
+function void
+test_filesystem(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String cwd = prb_getCurrentWorkingDir();
+    prb_assert(prb_isDirectory(cwd));
+    prb_assert(!prb_isFile(cwd));
+    prb_assert(prb_isFile(__FILE__));
+    prb_assert(!prb_isDirectory(__FILE__));
+
+    prb_String dir = prb_pathJoin(prb_getParentDir(__FILE__), __FUNCTION__);
+    prb_clearDirectory(dir);
+    prb_assert(prb_directoryIsEmpty(dir));
+
+    prb_String file = prb_pathJoin(dir, "temp.txt");
+    prb_writeEntireFile(file, (prb_Bytes) {(u8*)"1", 1});
+    prb_assert(!prb_directoryIsEmpty(dir));
+    prb_assert(prb_isFile(file));
+    i32   usedBefore = prb_globalArena.used;
+    char* ptr = (char*)prb_globalArenaCurrentFreePtr();
+    ptr[0] = '2';
+    ptr[1] = '2';
+    prb_Bytes fileRead = prb_readEntireFile(file);
+    prb_assert(prb_globalArena.used = usedBefore + 2);
+    prb_assert(prb_streq((prb_String)fileRead.data, "1"));
+    prb_assert(fileRead.len == 1);
+    prb_removeFileIfExists(file);
+    prb_assert(!prb_isFile(file));
+    prb_assert(prb_directoryIsEmpty(dir));
+
+    prb_removeDirectoryIfExists(dir);
+    prb_assert(!prb_isDirectory(dir));
+    prb_assert(!prb_isFile(dir));
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_strings(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_StringLength str = prb_beginString();
+    prb_addStringSegment(&str, "%s", "one");
+    prb_addStringSegment(&str, "%s", " two");
+    prb_addStringSegment(&str, "%s", " three");
+    prb_endString(str);
+
+    prb_String target = "one two three";
+    prb_assert(prb_streq(str.str, target));
+    prb_assert(prb_globalArena.used == temp.usedAtBegin + prb_strlen(target) + 1);
+
+    prb_endTempMemory(temp);
 }
 
 function prb_String*
@@ -135,6 +196,8 @@ setdiff(prb_String* arr1, prb_String* arr2) {
 
 function void
 test_fileformat(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
     prb_Bytes        fileContents = prb_readEntireFile("programmable_build.h");
     prb_LineIterator lineIter = prb_createLineIter((prb_String)fileContents.data, fileContents.len);
 
@@ -232,10 +295,14 @@ test_fileformat(void) {
         prb_String implName = implNames[index];
         prb_assert(prb_streq(headerName, implName));
     }
+
+    prb_endTempMemory(temp);
 }
 
 function void
 test_strFind(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
     prb_StringFindSpec spec = {
         .str = "p1at4pattern1 pattern2 pattern3p2a.t",
         .strLen = -1,
@@ -315,6 +382,8 @@ test_strFind(void) {
         );
         spec.direction = prb_StringDirection_FromStart;
     }
+
+    prb_endTempMemory(temp);
 }
 
 function void
@@ -440,12 +509,15 @@ int
 main() {
     prb_TimeStart testStart = prb_timeStart();
     prb_init(1 * prb_GIGABYTE);
+    void* baseStart = prb_globalArena.base;
     prb_assert(prb_globalArena.tempCount == 0);
 
     test_memeq();
     test_alignment();
     test_allocation();
     test_getParentDir();
+    test_filesystem();
+    test_strings();
     test_fileformat();
     test_strFind();
     test_lineIter();
@@ -454,6 +526,8 @@ main() {
     test_printColor();
 
     prb_assert(prb_globalArena.tempCount == 0);
+    prb_assert(prb_globalArena.base == baseStart);
+
     prb_fmtAndPrintln("tests took %.2fms", prb_getMsFrom(testStart));
     prb_terminate(0);
     prb_assert(!"unreachable");

@@ -93,7 +93,7 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #define prb_memset memset
 #define prb_memcmp memcmp
 #define prb_strcmp strcmp
-#define prb_strlen strlen
+#define prb_strlen (int32_t) strlen
 
 #define prb_max(a, b) (((a) > (b)) ? (a) : (b))
 #define prb_min(a, b) (((a) < (b)) ? (a) : (b))
@@ -189,8 +189,13 @@ typedef struct prb_TempMemory {
     int32_t usedAtBegin;
 } prb_TempMemory;
 
-// Assume: null-terminated, permanently allocated, immutable, utf8
+// Assume: null-terminated, immutable, utf8
 typedef const char* prb_String;
+
+typedef struct prb_StringLength {
+    prb_String str;
+    int32_t    len;
+} prb_StringLength;
 
 typedef enum prb_Status {
     prb_Failure,
@@ -314,6 +319,8 @@ prb_PUBLICDEC void*          prb_realloc(void* ptr, int32_t size);
 prb_PUBLICDEC void*          prb_globalArenaCurrentFreePtr(void);
 prb_PUBLICDEC int32_t        prb_globalArenaCurrentFreeSize(void);
 prb_PUBLICDEC void           prb_globalArenaChangeUsed(int32_t byteDelta);
+prb_PUBLICDEC void           prb_globalArenaLock(void);
+prb_PUBLICDEC void           prb_globalArenaUnlock(void);
 prb_PUBLICDEC void*          prb_beginArray_(int32_t align);
 prb_PUBLICDEC void           prb_endArray(int32_t bytes);
 prb_PUBLICDEC prb_TempMemory prb_beginTempMemory(void);
@@ -353,10 +360,12 @@ prb_PUBLICDEC prb_String           prb_strReplace(prb_StringFindSpec spec, prb_S
 prb_PUBLICDEC prb_String           prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
 prb_PUBLICDEC prb_String           prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
 prb_PUBLICDEC prb_String*          prb_stringArrayJoin(prb_String* arr1, int32_t arr1len, prb_String* arr2, int32_t arr2len);
-prb_PUBLICDEC prb_String           prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
-prb_PUBLICDEC prb_String           prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args);
+prb_PUBLICDEC prb_StringLength     prb_beginString(void);
+prb_PUBLICDEC void                 prb_addStringSegment(prb_StringLength* str, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_PUBLICDEC void                 prb_endString(prb_StringLength str);
+prb_PUBLICDEC prb_StringLength     prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
+prb_PUBLICDEC prb_StringLength     prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args);
 prb_PUBLICDEC prb_String           prb_fmt(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
-prb_PUBLICDEC void                 prb_fmtNoNullTerminator(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
 prb_PUBLICDEC prb_String           prb_vfmt(prb_String fmt, va_list args);
 prb_PUBLICDEC prb_String           prb_fmtAndPrint(prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
 prb_PUBLICDEC prb_String           prb_fmtAndPrintColor(prb_ColorID color, prb_String fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
@@ -933,10 +942,22 @@ prb_globalArenaChangeUsed(int32_t byteDelta) {
     prb_assert(prb_globalArena.used >= 0);
 }
 
+prb_PUBLICDEF void
+prb_globalArenaLock(void) {
+    prb_assert(!prb_globalArena.locked);
+    prb_globalArena.locked = true;
+}
+
+prb_PUBLICDEF void
+prb_globalArenaUnlock(void) {
+    prb_assert(prb_globalArena.locked);
+    prb_globalArena.locked = false;
+}
+
 prb_PUBLICDEF void*
 prb_beginArray_(int32_t align) {
     prb_globalArenaAlignFreePtr(align);
-    prb_globalArena.locked = true;
+    prb_globalArenaLock();
     void* result = prb_globalArenaCurrentFreePtr();
     return result;
 }
@@ -945,7 +966,7 @@ prb_PUBLICDEF void
 prb_endArray(int32_t bytes) {
     prb_assert(bytes >= 0);
     prb_globalArenaChangeUsed(bytes);
-    prb_globalArena.locked = false;
+    prb_globalArenaUnlock();
 }
 
 prb_PUBLICDEF prb_TempMemory
@@ -1015,8 +1036,7 @@ prb_isFile(prb_String path) {
 
     struct stat statBuf = {};
     if (stat(path, &statBuf) == 0) {
-        prb_assert(!S_ISDIR(statBuf.st_mode));
-        result = true;
+        result = S_ISREG(statBuf.st_mode);
     }
 
 #else
@@ -1167,7 +1187,7 @@ prb_getCurrentWorkingDir(void) {
 #elif prb_PLATFORM_LINUX
 
     int32_t maxLen = PATH_MAX + 1;
-    char*   ptr = (char*)prb_allocAndZero(maxLen, 1);
+    char* ptr = (char*)prb_allocAndZero(maxLen, 1);
     prb_assert(getcwd(ptr, maxLen));
     return ptr;
 
@@ -1293,7 +1313,7 @@ prb_findAllMatchingPaths(prb_String pattern) {
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         arrsetcap(result, globResult.gl_pathc);
         for (size_t resultIndex = 0; resultIndex < globResult.gl_pathc; resultIndex++) {
-            char*   path = globResult.gl_pathv[resultIndex];
+            char* path = globResult.gl_pathv[resultIndex];
             int32_t pathlen = prb_strlen(path);
             arrput(result, prb_stringCopy(path, 0, pathlen - 1));
         }
@@ -1333,7 +1353,7 @@ prb_getLatestLastModifiedFromPattern(prb_String pattern) {
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         prb_assert(globResult.gl_pathc <= INT32_MAX);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char*       path = globResult.gl_pathv[resultIndex];
+            char* path = globResult.gl_pathv[resultIndex];
             struct stat statBuf = {};
             if (stat(path, &statBuf) == 0) {
                 uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
@@ -1378,7 +1398,7 @@ prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
     if (glob(pattern, GLOB_NOSORT, 0, &globResult) == 0) {
         prb_assert(globResult.gl_pathc <= INT32_MAX);
         for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char*       path = globResult.gl_pathv[resultIndex];
+            char* path = globResult.gl_pathv[resultIndex];
             struct stat statBuf = {};
             if (stat(path, &statBuf) == 0) {
                 uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
@@ -1428,7 +1448,7 @@ prb_readEntireFile(prb_String path) {
     struct stat statBuf = {};
     prb_assert(fstat(handle, &statBuf) == 0);
     uint8_t* buf = (uint8_t*)prb_allocAndZero(statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
-    int32_t  readResult = read(handle, buf, statBuf.st_size);
+    int32_t readResult = read(handle, buf, statBuf.st_size);
     prb_assert(readResult == statBuf.st_size);
     close(handle);
     prb_Bytes result = {buf, readResult};
@@ -1463,20 +1483,22 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
     prb_Bytes inContent = prb_readEntireFile(inPath);
     prb_assert(inContent.len > 0);
 
-    char* resultPtr = (char*)prb_globalArenaCurrentFreePtr();
-    prb_fmtNoNullTerminator("unsigned char %s[] = {", arrayName);
+    prb_TempMemory   temp = prb_beginTempMemory();
+    prb_StringLength arrayStr = prb_beginString();
+    prb_addStringSegment(&arrayStr, "unsigned char %s[] = {", arrayName);
 
     for (int32_t byteIndex = 0; byteIndex < inContent.len; byteIndex++) {
         uint8_t byte = inContent.data[byteIndex];
-        prb_fmtNoNullTerminator("0x%x", byte);
+        prb_addStringSegment(&arrayStr, "0x%x", byte);
         if (byteIndex != inContent.len - 1) {
-            prb_fmtNoNullTerminator(", ");
+            prb_addStringSegment(&arrayStr, ", ");
         }
     }
-    prb_fmtNoNullTerminator("};");
+    prb_addStringSegment(&arrayStr, "};");
+    prb_endString(arrayStr);
 
-    int32_t resultSize = (uint8_t*)prb_globalArenaCurrentFreePtr() - (uint8_t*)resultPtr;
-    prb_writeEntireFile(outPath, (prb_Bytes) {(uint8_t*)resultPtr, resultSize});
+    prb_writeEntireFile(outPath, (prb_Bytes) {(uint8_t*)arrayStr.str, arrayStr.len});
+    prb_endTempMemory(temp);
 }
 
 //
@@ -1698,16 +1720,16 @@ prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
 
 prb_PUBLICDEF prb_String
 prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
-    prb_String result = (prb_String)prb_globalArenaCurrentFreePtr();
+    prb_StringLength result = prb_beginString();
     for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
         prb_String str = strings[strIndex];
-        prb_fmtNoNullTerminator("%s", str);
+        prb_addStringSegment(&result, "%s", str);
         if (strIndex < stringsCount - 1) {
-            prb_fmtNoNullTerminator("%s", sep);
+            prb_addStringSegment(&result, "%s", sep);
         }
     }
-    prb_allocAndZero(1, 1);  // NOTE(khvorov) Null terminator
-    return result;
+    prb_endString(result);
+    return result.str;
 }
 
 prb_PUBLICDEF prb_String*
@@ -1724,19 +1746,49 @@ prb_stringArrayJoin(prb_String* arr1, int32_t arr1len, prb_String* arr2, int32_t
     return buf;
 }
 
-prb_PUBLICDEF prb_String
+prb_PUBLICDEF prb_StringLength
+prb_beginString(void) {
+    prb_globalArenaLock();
+    prb_StringLength result = {(prb_String)prb_globalArenaCurrentFreePtr(), 0};
+    return result;
+}
+
+prb_PUBLICDEF void
+prb_addStringSegment(prb_StringLength* str, prb_String fmt, ...) {
+    prb_assert(prb_globalArena.locked);
+    prb_assert(prb_globalArenaCurrentFreeSize() > str->len);
+    va_list args;
+    va_start(args, fmt);
+    prb_StringLength seg = prb_vfmtCustomBuffer(
+        (uint8_t*)prb_globalArenaCurrentFreePtr() + str->len,
+        prb_globalArenaCurrentFreeSize() - str->len,
+        fmt,
+        args
+    );
+    str->len += seg.len;
+    va_end(args);
+}
+
+prb_PUBLICDEF void
+prb_endString(prb_StringLength str) {
+    prb_globalArenaUnlock();
+    prb_globalArenaChangeUsed(str.len + 1);  // NOTE(khvorov) Null terminator
+}
+
+prb_PUBLICDEF prb_StringLength
 prb_fmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    prb_String result = prb_vfmtCustomBuffer(buf, bufSize, fmt, args);
+    prb_StringLength result = prb_vfmtCustomBuffer(buf, bufSize, fmt, args);
     va_end(args);
     return result;
 }
 
-prb_PUBLICDEF prb_String
+prb_PUBLICDEF prb_StringLength
 prb_vfmtCustomBuffer(void* buf, int32_t bufSize, prb_String fmt, va_list args) {
-    stbsp_vsnprintf((char*)buf, bufSize, fmt, args);
-    return (char*)buf;
+    int32_t          len = stbsp_vsnprintf((char*)buf, bufSize, fmt, args);
+    prb_StringLength result = {(prb_String)buf, len};
+    return result;
 }
 
 prb_PUBLICDEF prb_String
@@ -1748,23 +1800,13 @@ prb_fmt(prb_String fmt, ...) {
     return result;
 }
 
-prb_PUBLICDEF void
-prb_fmtNoNullTerminator(prb_String fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    prb_vfmt(fmt, args);
-    va_end(args);
-    prb_globalArenaChangeUsed(-1);
-}
-
 prb_PUBLICDEF prb_String
 prb_vfmt(prb_String fmt, va_list args) {
     prb_beginArray_(1);
-    prb_String result =
+    prb_StringLength result =
         prb_vfmtCustomBuffer(prb_globalArenaCurrentFreePtr(), prb_globalArenaCurrentFreeSize(), fmt, args);
-    int32_t resultLen = prb_strlen(result);
-    prb_endArray(resultLen + 1);  // NOTE(khvorov) Null terminator
-    return result;
+    prb_endArray(result.len + 1);  // NOTE(khvorov) Null terminator
+    return result.str;
 }
 
 prb_PUBLICDEF prb_String
@@ -2134,9 +2176,9 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
 
 #elif prb_PLATFORM_LINUX
 
-    bool                        fileActionsSucceeded = true;
+    bool fileActionsSucceeded = true;
     posix_spawn_file_actions_t* fileActionsPtr = 0;
-    posix_spawn_file_actions_t  fileActions = {};
+    posix_spawn_file_actions_t fileActions = {};
     if ((flags & prb_ProcessFlag_RedirectStdout) || (flags & prb_ProcessFlag_RedirectStderr)) {
         fileActionsPtr = &fileActions;
         int initResult = posix_spawn_file_actions_init(&fileActions);
@@ -2170,11 +2212,11 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
 
     if (fileActionsSucceeded) {
         prb_String* args = prb_getArgArrayFromString(cmd);
-        int         spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
+        int spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
         if (spawnResult == 0) {
             result.valid = true;
             if (!(flags & prb_ProcessFlag_DontWait)) {
-                int   status = 0;
+                int status = 0;
                 pid_t waitResult = waitpid(result.pid, &status, 0);
                 if (waitResult == result.pid && status == 0) {
                     result.completed = true;
@@ -2206,7 +2248,7 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
         if (handle->valid) {
             if (!handle->completed) {
                 int32_t status = 0;
-                pid_t   waitResult = waitpid(handle->pid, &status, 0);
+                pid_t waitResult = waitpid(handle->pid, &status, 0);
                 handle->completed = true;
                 if (waitResult == handle->pid && status == 0) {
                     handle->completionStatus = prb_Success;
