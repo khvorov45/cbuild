@@ -2,8 +2,88 @@
 
 #define function static
 
+typedef uint8_t u8;
 typedef int32_t i32;
 typedef size_t  usize;
+
+function void
+test_memeq(void) {
+    const char* p1 = "test1";
+    const char* p2 = "test12";
+    prb_assert(prb_memeq(p1, p2, prb_strlen(p1)));
+    prb_assert(!prb_memeq(p1, p2, prb_strlen(p2)));
+}
+
+function void
+test_alignment() {
+    prb_assert(prb_getOffsetForAlignment((void*)0, 1) == 0);
+    prb_assert(prb_getOffsetForAlignment((void*)1, 1) == 0);
+    prb_assert(prb_getOffsetForAlignment((void*)1, 2) == 1);
+    prb_assert(prb_getOffsetForAlignment((void*)1, 4) == 3);
+    prb_assert(prb_getOffsetForAlignment((void*)2, 4) == 2);
+    prb_assert(prb_getOffsetForAlignment((void*)3, 4) == 1);
+    prb_assert(prb_getOffsetForAlignment((void*)4, 4) == 0);
+
+    i32 arbitraryAlignment = 16;
+    prb_globalArenaAlignFreePtr(arbitraryAlignment);
+    prb_assert(prb_getOffsetForAlignment(prb_globalArenaCurrentFreePtr(), arbitraryAlignment) == 0);
+    prb_globalArenaChangeUsed(1);
+    prb_assert(prb_getOffsetForAlignment(prb_globalArenaCurrentFreePtr(), arbitraryAlignment) == arbitraryAlignment - 1);
+    prb_globalArenaAlignFreePtr(arbitraryAlignment);
+    prb_assert(prb_getOffsetForAlignment(prb_globalArenaCurrentFreePtr(), arbitraryAlignment) == 0);
+}
+
+function void
+test_allocation() {
+    prb_TempMemory temp1 = prb_beginTempMemory();
+
+    {
+        prb_TempMemory temp2 = prb_beginTempMemory();
+
+        i32 arbitrarySize = 100;
+        u8* ptr = (u8*)prb_allocAndZero(arbitrarySize, 1);
+        u8  arbitraryValue = 12;
+        ptr[0] = arbitraryValue;
+
+        prb_assert(prb_globalArena.used == temp2.usedAtBegin + arbitrarySize);
+        prb_endTempMemory(temp2);
+        prb_assert(prb_globalArena.used == temp2.usedAtBegin);
+
+        ptr = (u8*)prb_globalArenaCurrentFreePtr();
+        prb_assert(ptr[0] == arbitraryValue);
+        prb_assert(ptr == (u8*)prb_allocAndZero(1, 1));
+        prb_assert(ptr[0] == 0);
+    }
+
+    {
+        u8* arr = 0;
+        i32 arbitraryCapacity = 10;
+        arrsetcap(arr, arbitraryCapacity);
+        i32 targetLen = arbitraryCapacity * 2;
+        for (i32 index = 0; index < targetLen; index++) {
+            arrput(arr, index);
+        }
+        prb_assert(arrlen(arr) == targetLen);
+        for (i32 index = 0; index < targetLen; index++) {
+            prb_assert(arr[index] == index);
+        }
+    }
+
+    {
+        u8* arr = prb_beginArray(u8);
+        i32 bytes = 100;
+        for (i32 index = 0; index < bytes; index++) {
+            arr[index] = index;
+        }
+        prb_endArray(bytes);
+        prb_allocAndZero(bytes, 1);
+        for (i32 index = 0; index < bytes; index++) {
+            prb_assert(arr[index] == index);
+        }
+    }
+
+    prb_endTempMemory(temp1);
+}
 
 function void
 test_printColor(void) {
@@ -212,7 +292,7 @@ test_strFind(void) {
         spec.mode = prb_StringFindMode_Exact;
     }
 
-    spec.str = "prb_PUBLICDEC prb_StringWindow prb_createStringWindow(void* ptr, int32_t len)";
+    spec.str = "prb_PUBLICDEC prb_StringWindow prb_createStringWindow(void* ptr, i32 len)";
     spec.pattern = "prb_[^[:space:]]*\\(";
     spec.mode = prb_StringFindMode_RegexPosix;
     {
@@ -242,19 +322,19 @@ test_pathsInDir(void) {
     prb_String dirname = prb_pathJoin(prb_getParentDir(__FILE__), __FUNCTION__);
     prb_clearDirectory(dirname);
     prb_String  fileNames[] = {"file1.c", "file2.c", "file1.h", "file2.h"};
-    int32_t     fileCount = prb_arrayLength(fileNames);
+    i32         fileCount = prb_arrayLength(fileNames);
     prb_String* filePaths = 0;
     arrsetcap(filePaths, fileCount);
-    for (int32_t fileIndex = 0; fileIndex < fileCount; fileIndex++) {
+    for (i32 fileIndex = 0; fileIndex < fileCount; fileIndex++) {
         prb_String filename = fileNames[fileIndex];
         prb_String filepath = prb_pathJoin(dirname, filename);
         arrput(filePaths, filepath);
-        prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)filename, (int32_t)prb_strlen(filename)});
+        prb_writeEntireFile(filepath, (prb_Bytes) {(u8*)filename, (i32)prb_strlen(filename)});
     }
 
     prb_String* allFiles = prb_listAllEntriesInDir(dirname);
     prb_assert(arrlen(allFiles) == fileCount);
-    for (int32_t fileIndex = 0; fileIndex < fileCount; fileIndex++) {
+    for (i32 fileIndex = 0; fileIndex < fileCount; fileIndex++) {
         prb_String filename = allFiles[fileIndex];
         prb_assert(
             prb_strEndsWith(filename, "file1.c")
@@ -266,7 +346,7 @@ test_pathsInDir(void) {
 
     prb_String* cfiles = prb_findAllMatchingPaths(prb_pathJoin(dirname, "*c"));
     prb_assert(arrlen(cfiles) == 2);
-    for (int32_t fileIndex = 0; fileIndex < 2; fileIndex++) {
+    for (i32 fileIndex = 0; fileIndex < 2; fileIndex++) {
         prb_String filename = cfiles[fileIndex];
         prb_assert(prb_strEndsWith(filename, "file1.c") || prb_strEndsWith(filename, "file2.c"));
     }
@@ -360,7 +440,11 @@ int
 main() {
     prb_TimeStart testStart = prb_timeStart();
     prb_init(1 * prb_GIGABYTE);
+    prb_assert(prb_globalArena.tempCount == 0);
 
+    test_memeq();
+    test_alignment();
+    test_allocation();
     test_getParentDir();
     test_fileformat();
     test_strFind();
@@ -369,6 +453,7 @@ main() {
 
     test_printColor();
 
+    prb_assert(prb_globalArena.tempCount == 0);
     prb_fmtAndPrintln("tests took %.2fms", prb_getMsFrom(testStart));
     prb_terminate(0);
     prb_assert(!"unreachable");

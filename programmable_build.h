@@ -182,7 +182,12 @@ typedef struct prb_Arena {
     int32_t size;
     int32_t used;
     bool    locked;
+    int32_t tempCount;
 } prb_Arena;
+
+typedef struct prb_TempMemory {
+    int32_t usedAtBegin;
+} prb_TempMemory;
 
 // Assume: null-terminated, permanently allocated, immutable, utf8
 typedef const char* prb_String;
@@ -291,20 +296,28 @@ typedef struct prb_StringWindow {
     int32_t curLen;
 } prb_StringWindow;
 
+#ifndef prb_IMPLEMENTATION
+extern prb_Arena prb_globalArena;
+#endif
+
 // SECTION Core
 prb_PUBLICDEC void prb_init(int32_t virtualMemoryBytesToUse);
 prb_PUBLICDEC void prb_terminate(int32_t code);
 
 // SECTION Memory
-prb_PUBLICDEC bool    prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
-prb_PUBLICDEC void*   prb_vmemAllocate(int32_t size);
-prb_PUBLICDEC int32_t prb_getOffsetForAlignment(void* ptr, int32_t align);
-prb_PUBLICDEC void*   prb_allocAndZero(int32_t size, int32_t align);
-prb_PUBLICDEC void*   prb_realloc(void* ptr, int32_t size);
-prb_PUBLICDEC void*   prb_globalArenaCurrentFreePtr(void);
-prb_PUBLICDEC int32_t prb_globalArenaCurrentFreeSize(void);
-prb_PUBLICDEC void*   prb_beginArray_(int32_t align);
-prb_PUBLICDEC void    prb_endArray(int32_t bytes);
+prb_PUBLICDEC bool           prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
+prb_PUBLICDEC void*          prb_vmemAllocate(int32_t size);
+prb_PUBLICDEC int32_t        prb_getOffsetForAlignment(void* ptr, int32_t align);
+prb_PUBLICDEC void           prb_globalArenaAlignFreePtr(int32_t align);
+prb_PUBLICDEC void*          prb_allocAndZero(int32_t size, int32_t align);
+prb_PUBLICDEC void*          prb_realloc(void* ptr, int32_t size);
+prb_PUBLICDEC void*          prb_globalArenaCurrentFreePtr(void);
+prb_PUBLICDEC int32_t        prb_globalArenaCurrentFreeSize(void);
+prb_PUBLICDEC void           prb_globalArenaChangeUsed(int32_t byteDelta);
+prb_PUBLICDEC void*          prb_beginArray_(int32_t align);
+prb_PUBLICDEC void           prb_endArray(int32_t bytes);
+prb_PUBLICDEC prb_TempMemory prb_beginTempMemory(void);
+prb_PUBLICDEC void           prb_endTempMemory(prb_TempMemory temp);
 
 // SECTION Filesystem
 prb_PUBLICDEC bool                 prb_isDirectory(prb_String path);
@@ -799,22 +812,24 @@ stbds_shmode_func_wrapper(T*, size_t elemsize, int mode) {
 
 #ifdef prb_IMPLEMENTATION
 
+#ifdef prb_NOT_STATIC
+prb_Arena prb_globalArena;
+#else
+static prb_Arena prb_globalArena;
+#endif
+
 //
 // SECTION Core (implementation)
 //
 
-// TODO(khvorov) Probably make available everywhere
-struct {
-    prb_Arena arena;
-} prb_globalState;
-
 prb_PUBLICDEF void
 prb_init(int32_t virtualMemoryBytesToUse) {
-    prb_globalState.arena = (prb_Arena) {
+    prb_globalArena = (prb_Arena) {
         .base = prb_vmemAllocate(virtualMemoryBytesToUse),
         .size = virtualMemoryBytesToUse,
         .used = 0,
         .locked = false,
+        .tempCount = 0,
     };
 }
 
@@ -874,16 +889,19 @@ prb_getOffsetForAlignment(void* ptr, int32_t align) {
     return (int32_t)diff;
 }
 
+prb_PUBLICDEF void
+prb_globalArenaAlignFreePtr(int32_t align) {
+    int32_t offset = prb_getOffsetForAlignment(prb_globalArenaCurrentFreePtr(), align);
+    prb_globalArenaChangeUsed(offset);
+}
+
 prb_PUBLICDEF void*
 prb_allocAndZero(int32_t size, int32_t align) {
-    prb_assert(!prb_globalState.arena.locked);
-    int32_t offset = prb_getOffsetForAlignment(prb_globalState.arena.base, align);
-    prb_assert(prb_globalArenaCurrentFreeSize() >= offset);
-    prb_globalState.arena.base = (uint8_t*)prb_globalState.arena.base + offset;
-    prb_globalState.arena.used += offset;
-    prb_assert(prb_globalArenaCurrentFreeSize() >= size);
+    prb_assert(!prb_globalArena.locked);
+    prb_globalArenaAlignFreePtr(align);
     void* result = prb_globalArenaCurrentFreePtr();
-    prb_globalState.arena.used += size;
+    prb_globalArenaChangeUsed(size);
+    prb_memset(result, 0, size);
     return result;
 }
 
@@ -898,31 +916,50 @@ prb_realloc(void* ptr, int32_t size) {
 
 prb_PUBLICDEF void*
 prb_globalArenaCurrentFreePtr(void) {
-    void* result = (uint8_t*)prb_globalState.arena.base + prb_globalState.arena.used;
+    void* result = (uint8_t*)prb_globalArena.base + prb_globalArena.used;
     return result;
 }
 
 prb_PUBLICDEF int32_t
 prb_globalArenaCurrentFreeSize(void) {
-    int32_t result = prb_globalState.arena.size - prb_globalState.arena.used;
+    int32_t result = prb_globalArena.size - prb_globalArena.used;
     return result;
+}
+
+prb_PUBLICDEF void
+prb_globalArenaChangeUsed(int32_t byteDelta) {
+    prb_assert(prb_globalArenaCurrentFreeSize() >= byteDelta);
+    prb_globalArena.used += byteDelta;
+    prb_assert(prb_globalArena.used >= 0);
 }
 
 prb_PUBLICDEF void*
 prb_beginArray_(int32_t align) {
-    int32_t offset = prb_getOffsetForAlignment(prb_globalArenaCurrentFreePtr(), align);
-    prb_assert(prb_globalArenaCurrentFreeSize() >= offset);
-    prb_globalState.arena.used += offset;
-    prb_globalState.arena.locked = true;
+    prb_globalArenaAlignFreePtr(align);
+    prb_globalArena.locked = true;
     void* result = prb_globalArenaCurrentFreePtr();
     return result;
 }
 
 prb_PUBLICDEF void
 prb_endArray(int32_t bytes) {
-    prb_assert(prb_globalArenaCurrentFreeSize() >= bytes);
-    prb_globalState.arena.used += bytes;
-    prb_globalState.arena.locked = false;
+    prb_assert(bytes >= 0);
+    prb_globalArenaChangeUsed(bytes);
+    prb_globalArena.locked = false;
+}
+
+prb_PUBLICDEF prb_TempMemory
+prb_beginTempMemory(void) {
+    prb_TempMemory temp = {prb_globalArena.used};
+    prb_globalArena.tempCount += 1;
+    return temp;
+}
+
+prb_PUBLICDEF void
+prb_endTempMemory(prb_TempMemory temp) {
+    prb_assert(prb_globalArena.tempCount > 0);
+    prb_globalArena.used = temp.usedAtBegin;
+    prb_globalArena.tempCount -= 1;
 }
 
 //
@@ -1717,7 +1754,7 @@ prb_fmtNoNullTerminator(prb_String fmt, ...) {
     va_start(args, fmt);
     prb_vfmt(fmt, args);
     va_end(args);
-    prb_globalState.arena.used -= 1;
+    prb_globalArenaChangeUsed(-1);
 }
 
 prb_PUBLICDEF prb_String
