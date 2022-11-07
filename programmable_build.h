@@ -165,7 +165,8 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #endif
 
 #ifndef prb_assert
-#define prb_assert(condition) do { if (!(condition)) { prb_assertAction(); } } while (0)
+// NOTE(khvorov) Assign condition to a variable to catch prb_assert(x = y) instead of prb_assert(x == y)
+#define prb_assert(condition) do { bool assertbool = condition; if (!(assertbool)) { prb_assertAction(); } } while (0)
 #endif
 // clang-format on
 
