@@ -161,7 +161,7 @@ function void
 test_strings(void) {
     prb_TempMemory temp = prb_beginTempMemory();
 
-    prb_StringLength str = prb_beginString();
+    prb_StringSlice str = prb_beginString();
     prb_addStringSegment(&str, "%s", "one");
     prb_addStringSegment(&str, "%s", " two");
     prb_addStringSegment(&str, "%s", " three");
@@ -199,73 +199,65 @@ test_fileformat(void) {
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_Bytes        fileContents = prb_readEntireFile("programmable_build.h");
-    prb_LineIterator lineIter = prb_createLineIter((prb_String)fileContents.data, fileContents.len);
+    prb_LineIterator lineIter = prb_createLineIter((prb_StringSlice) {(prb_String)fileContents.data, fileContents.len});
 
     prb_String* headerNames = 0;
     while (prb_lineIterNext(&lineIter) == prb_Success) {
-        prb_assert(!prb_strStartsWith(lineIter.line, "prb_PUBLICDEF"));
+        prb_assert(!prb_strStartsWith(lineIter.curLine.str, "prb_PUBLICDEF", prb_StringFindMode_Exact));
 
-        if (prb_strStartsWith(lineIter.line, "// SECTION")) {
-            prb_String name = prb_fmt("%.*s", lineIter.lineLen, lineIter.line);
+        if (prb_strStartsWith(lineIter.curLine.str, "// SECTION", prb_StringFindMode_Exact)) {
+            prb_String name = prb_fmt("%.*s", lineIter.curLine.len, lineIter.curLine.str);
             arrput(headerNames, name);
-        } else if (prb_strStartsWith(lineIter.line, "prb_PUBLICDEC")) {
+        } else if (prb_strStartsWith(lineIter.curLine.str, "prb_PUBLICDEC", prb_StringFindMode_Exact)) {
             prb_StringFindResult onePastNameEndRes = prb_strFind((prb_StringFindSpec) {
-                .str = lineIter.line,
-                .strLen = lineIter.lineLen,
+                .str = lineIter.curLine,
                 .pattern = "(",
-                .patternLen = 1,
                 .mode = prb_StringFindMode_AnyChar,
                 .direction = prb_StringDirection_FromStart,
             });
             prb_assert(onePastNameEndRes.found);
-            prb_StringWindow     win = prb_createStringWindow(lineIter.line, onePastNameEndRes.matchByteIndex);
+            prb_StringSlice      win = {lineIter.curLine.str, onePastNameEndRes.matchByteIndex};
             prb_StringFindResult nameStartRes = prb_strFind((prb_StringFindSpec) {
-                .str = win.cur,
-                .strLen = win.curLen,
+                .str = win,
                 .pattern = " ",
-                .patternLen = 1,
                 .mode = prb_StringFindMode_AnyChar,
                 .direction = prb_StringDirection_FromEnd,
             });
             prb_assert(nameStartRes.found);
-            prb_strWindowForward(&win, nameStartRes.matchByteIndex + 1);
-            prb_String name = prb_fmt("%.*s", win.curLen, win.cur);
+            prb_strSliceForward(&win, nameStartRes.matchByteIndex + 1);
+            prb_String name = prb_fmt("%.*s", win.len, win.str);
             arrput(headerNames, name);
-        } else if (prb_strStartsWith(lineIter.line, "#ifdef prb_IMPLEMENTATION")) {
+        } else if (prb_strStartsWith(lineIter.curLine.str, "#ifdef prb_IMPLEMENTATION", prb_StringFindMode_Exact)) {
             break;
         }
     }
 
     prb_String* implNames = 0;
     while (prb_lineIterNext(&lineIter) == prb_Success) {
-        prb_assert(!prb_strStartsWith(lineIter.line, "prb_PUBLICDEC"));
+        prb_assert(!prb_strStartsWith(lineIter.curLine.str, "prb_PUBLICDEC", prb_StringFindMode_Exact));
 
-        if (prb_strStartsWith(lineIter.line, "// SECTION")) {
+        if (prb_strStartsWith(lineIter.curLine.str, "// SECTION", prb_StringFindMode_Exact)) {
             prb_StringFindResult implementationRes = prb_strFind((prb_StringFindSpec) {
-                .str = lineIter.line,
-                .strLen = lineIter.lineLen,
+                .str = lineIter.curLine,
                 .pattern = " (implementation)",
-                .patternLen = -1,
                 .mode = prb_StringFindMode_Exact,
                 .direction = prb_StringDirection_FromStart,
             }
             );
             prb_assert(implementationRes.found);
-            prb_String name = prb_fmt("%.*s", implementationRes.matchByteIndex, lineIter.line);
+            prb_String name = prb_fmt("%.*s", implementationRes.matchByteIndex, lineIter.curLine.str);
             arrput(implNames, name);
-        } else if (prb_strStartsWith(lineIter.line, "prb_PUBLICDEF")) {
+        } else if (prb_strStartsWith(lineIter.curLine.str, "prb_PUBLICDEF", prb_StringFindMode_Exact)) {
             prb_assert(prb_lineIterNext(&lineIter) == prb_Success);
-            prb_assert(prb_strStartsWith(lineIter.line, "prb_"));
+            prb_assert(prb_strStartsWith(lineIter.curLine.str, "prb_", prb_StringFindMode_Exact));
             prb_StringFindResult nameLenRes = prb_strFind((prb_StringFindSpec) {
-                .str = lineIter.line,
-                .strLen = lineIter.lineLen,
+                .str = lineIter.curLine,
                 .pattern = "(",
-                .patternLen = 1,
                 .mode = prb_StringFindMode_AnyChar,
                 .direction = prb_StringDirection_FromStart,
             });
             prb_assert(nameLenRes.found);
-            prb_String name = prb_fmt("%.*s", nameLenRes.matchByteIndex, lineIter.line);
+            prb_String name = prb_fmt("%.*s", nameLenRes.matchByteIndex, lineIter.curLine.str);
             arrput(implNames, name);
         }
     }
@@ -304,10 +296,8 @@ test_strFind(void) {
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_StringFindSpec spec = {
-        .str = "p1at4pattern1 pattern2 pattern3p2a.t",
-        .strLen = -1,
+        .str = (prb_StringSlice) {"p1at4pattern1 pattern2 pattern3p2a.t", -1},
         .pattern = "pattern",
-        .patternLen = -1,
         .mode = prb_StringFindMode_Exact,
         .direction = prb_StringDirection_FromStart,
     };
@@ -324,7 +314,7 @@ test_strFind(void) {
         spec.direction = prb_StringDirection_FromStart;
     }
 
-    spec.str = "p1at4pat1ern1 pat1ern2 pat1ern3p2a.p";
+    spec.str.str = "p1at4pat1ern1 pat1ern2 pat1ern3p2a.p";
     {
         prb_StringFindResult res = prb_strFind(spec);
         prb_assert(!res.found && res.matchByteIndex == 0 && res.matchLen == 0);
@@ -337,7 +327,7 @@ test_strFind(void) {
         spec.direction = prb_StringDirection_FromStart;
     }
 
-    spec.str = "中华人民共和国是目前世界上人口最多的国家";
+    spec.str.str = "中华人民共和国是目前世界上人口最多的国家";
     spec.pattern = "民共和国";
     {
         prb_StringFindResult res = prb_strFind(spec);
@@ -359,7 +349,7 @@ test_strFind(void) {
         spec.mode = prb_StringFindMode_Exact;
     }
 
-    spec.str = "prb_PUBLICDEC prb_StringWindow prb_createStringWindow(void* ptr, i32 len)";
+    spec.str.str = "prb_PUBLICDEC prb_StringWindow prb_createStringWindow(void* ptr, i32 len)";
     spec.pattern = "prb_[^[:space:]]*\\(";
     spec.mode = prb_StringFindMode_RegexPosix;
     {
@@ -371,7 +361,7 @@ test_strFind(void) {
         );
     }
 
-    spec.str = "prb_one() prb_2()";
+    spec.str.str = "prb_one() prb_2()";
     {
         spec.direction = prb_StringDirection_FromEnd;
         prb_StringFindResult res = prb_strFind(spec);
@@ -384,6 +374,14 @@ test_strFind(void) {
     }
 
     prb_endTempMemory(temp);
+}
+
+function void
+test_strStartsEnds(void) {
+    prb_assert(prb_strStartsWith("123abc", "123", prb_StringFindMode_Exact));
+    prb_assert(!prb_strStartsWith("123abc", "abc", prb_StringFindMode_Exact));
+    prb_assert(!prb_strEndsWith(prb_STR("123abc"), "123", prb_StringFindMode_Exact));
+    prb_assert(prb_strEndsWith(prb_STR("123abc"), "abc", prb_StringFindMode_Exact));
 }
 
 function void
@@ -404,20 +402,23 @@ test_pathsInDir(void) {
     prb_String* allFiles = prb_listAllEntriesInDir(dirname);
     prb_assert(arrlen(allFiles) == fileCount);
     for (i32 fileIndex = 0; fileIndex < fileCount; fileIndex++) {
-        prb_String filename = allFiles[fileIndex];
+        prb_StringSlice filename = prb_STR(allFiles[fileIndex]);
         prb_assert(
-            prb_strEndsWith(filename, "file1.c")
-            || prb_strEndsWith(filename, "file2.c")
-            || prb_strEndsWith(filename, "file1.h")
-            || prb_strEndsWith(filename, "file2.h")
+            prb_strEndsWith(filename, "file1.c", prb_StringFindMode_Exact)
+            || prb_strEndsWith(filename, "file2.c", prb_StringFindMode_Exact)
+            || prb_strEndsWith(filename, "file1.h", prb_StringFindMode_Exact)
+            || prb_strEndsWith(filename, "file2.h", prb_StringFindMode_Exact)
         );
     }
 
     prb_String* cfiles = prb_findAllMatchingPaths(prb_pathJoin(dirname, "*c"));
     prb_assert(arrlen(cfiles) == 2);
     for (i32 fileIndex = 0; fileIndex < 2; fileIndex++) {
-        prb_String filename = cfiles[fileIndex];
-        prb_assert(prb_strEndsWith(filename, "file1.c") || prb_strEndsWith(filename, "file2.c"));
+        prb_StringSlice filename = prb_STR(cfiles[fileIndex]);
+        prb_assert(
+            prb_strEndsWith(filename, "file1.c", prb_StringFindMode_Exact)
+            || prb_strEndsWith(filename, "file2.c", prb_StringFindMode_Exact)
+        );
     }
 
     prb_removeDirectoryIfExists(dirname);
@@ -425,82 +426,82 @@ test_pathsInDir(void) {
 
 function void
 test_lineIter(void) {
-    prb_String       lines = "line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14";
-    prb_LineIterator iter = prb_createLineIter(lines, -1);
+    prb_StringSlice  lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
+    prb_LineIterator iter = prb_createLineIter(lines);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.line, "line1"));
-    prb_assert(iter.lineLen == 5);
-    prb_assert(iter.lineEndLen == 2);
+    prb_assert(prb_strStartsWith(iter.curLine.str, "line1", prb_StringFindMode_Exact));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 2);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.line, "line2"));
-    prb_assert(iter.lineLen == 5);
-    prb_assert(iter.lineEndLen == 1);
+    prb_assert(prb_strStartsWith(iter.curLine.str, "line2", prb_StringFindMode_Exact));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.line, "line3"));
-    prb_assert(iter.lineLen == 5);
-    prb_assert(iter.lineEndLen == 1);
+    prb_assert(prb_strStartsWith(iter.curLine.str, "line3", prb_StringFindMode_Exact));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.line, "line4"));
-    prb_assert(iter.lineLen == 5);
-    prb_assert(iter.lineEndLen == 1);
+    prb_assert(prb_strStartsWith(iter.curLine.str, "line4", prb_StringFindMode_Exact));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.lineLen == 0);
-    prb_assert(iter.lineEndLen == 1);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.line, "line6"));
-    prb_assert(iter.lineLen == 5);
-    prb_assert(iter.lineEndLen == 1);
+    prb_assert(prb_strStartsWith(iter.curLine.str, "line6", prb_StringFindMode_Exact));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.lineLen == 0);
-    prb_assert(iter.lineEndLen == 1);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.line, "line8"));
-    prb_assert(iter.lineLen == 5);
-    prb_assert(iter.lineEndLen == 2);
+    prb_assert(prb_strStartsWith(iter.curLine.str, "line8", prb_StringFindMode_Exact));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 2);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.lineLen == 0);
-    prb_assert(iter.lineEndLen == 2);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 2);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.line, "line10"));
-    prb_assert(iter.lineLen == 6);
-    prb_assert(iter.lineEndLen == 2);
+    prb_assert(prb_strStartsWith(iter.curLine.str, "line10", prb_StringFindMode_Exact));
+    prb_assert(iter.curLine.len == 6);
+    prb_assert(iter.curLineEndLen == 2);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.lineLen == 0);
-    prb_assert(iter.lineEndLen == 1);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.line, "line12"));
-    prb_assert(iter.lineLen == 6);
-    prb_assert(iter.lineEndLen == 1);
+    prb_assert(prb_strStartsWith(iter.curLine.str, "line12", prb_StringFindMode_Exact));
+    prb_assert(iter.curLine.len == 6);
+    prb_assert(iter.curLineEndLen == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.lineLen == 0);
-    prb_assert(iter.lineEndLen == 2);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 2);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.line, "line14"));
-    prb_assert(iter.lineLen == 6);
-    prb_assert(iter.lineEndLen == 0);
+    prb_assert(prb_strStartsWith(iter.curLine.str, "line14", prb_StringFindMode_Exact));
+    prb_assert(iter.curLine.len == 6);
+    prb_assert(iter.curLineEndLen == 0);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Failure);
 
-    lines = "\n";
-    iter = prb_createLineIter(lines, -1);
+    lines = prb_STR("\n");
+    iter = prb_createLineIter(lines);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.lineLen == 0);
-    prb_assert(iter.lineEndLen == 1);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Failure);
 }
@@ -520,6 +521,7 @@ main() {
     test_strings();
     test_fileformat();
     test_strFind();
+    test_strStartsEnds();
     test_lineIter();
     test_pathsInDir();
 

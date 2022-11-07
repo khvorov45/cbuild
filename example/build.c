@@ -203,10 +203,8 @@ prb_PUBLICDEF void
 textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
     prb_Bytes          content = prb_readEntireFile(path);
     prb_StringFindSpec spec = {
-        .str = (prb_String)content.data,
-        .strLen = -1,
+        .str = (prb_StringSlice){(prb_String)content.data, content.len},
         .pattern = pattern,
-        .patternLen = -1,
         .mode = prb_StringFindMode_Exact,
         .direction = prb_StringDirection_FromStart,
     };
