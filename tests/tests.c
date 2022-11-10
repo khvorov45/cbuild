@@ -92,18 +92,108 @@ test_printColor(void) {
 }
 
 function void
-test_getParentDir(void) {
+test_pathManip(void) {
     prb_TempMemory temp = prb_beginTempMemory();
     prb_String     cwd = prb_getCurrentWorkingDir();
-    const char*    cases[] = {"test", "test/", "test\\", "test/child", "test\\child", "test/child\\child2", "/home"};
-    const char*    correct[] = {cwd.str, cwd.str, cwd.str, "test/", "test\\", "test/child\\", "/"};
-    prb_assert(prb_arrayLength(cases) == prb_arrayLength(correct));
+    const char*    cases[] = {
+           "test",
+           "test/",
+           "test/child",
+           "test/child/child2",
+#if prb_PLATFORM_WINDOWS
+        "test\\",
+        "test\\child",
+        "test/child\\child2",
+        "C:",
+        "C://",
+        "C:/",
+        "C:\\",
+        "C:\\\\",
+        "//network"
+#elif prb_PLATFORM_LINUX
+        "/home",
+        "/home/",
+        "/",
+#endif
+    };
+
+    const char* correctParent[] = {
+        cwd.str,
+        cwd.str,
+        "test/",
+        "test/child/",
+#if prb_PLATFORM_WINDOWS
+        cwd.str,
+        "test\\",
+        "test/child\\",
+        "C:",
+        "C://",
+        "C:/",
+        "C:\\",
+        "C:\\\\",
+        "//network"
+#elif prb_PLATFORM_LINUX
+        "/",
+        "/",
+        "/",
+#else
+#error unimplemented
+#endif
+    };
+
+    const char* correctLast[] = {
+        "test",
+        "test/",
+        "child",
+        "child2",
+#if prb_PLATFORM_WINDOWS
+        "test\\",
+        "child",
+        "child2",
+        "C:",
+        "C://",
+        "C:/",
+        "C:\\",
+        "C:\\\\",
+        "//network"
+#elif prb_PLATFORM_LINUX
+        "home",
+        "home/",
+        "/",
+#endif
+    };
+
+    prb_assert(prb_arrayLength(cases) == prb_arrayLength(correctParent));
     for (usize testIndex = 0; testIndex < prb_arrayLength(cases); testIndex++) {
         const char* cs = cases[testIndex];
         prb_String  resp = prb_getParentDir(prb_STR(cs));
-        const char* cr = correct[testIndex];
+        const char* cr = correctParent[testIndex];
         prb_assert(prb_streq(resp, prb_STR(cr)));
     }
+
+    prb_assert(prb_arrayLength(cases) == prb_arrayLength(correctLast));
+    for (usize testIndex = 0; testIndex < prb_arrayLength(cases); testIndex++) {
+        const char* cs = cases[testIndex];
+        prb_String  resp = prb_getLastEntryInPath(prb_STR(cs));
+        const char* cr = correctLast[testIndex];
+        prb_assert(prb_streq(resp, prb_STR(cr)));
+    }
+
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a"), prb_STR("b")), prb_STR("a/b")));
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a/"), prb_STR("b")), prb_STR("a/b")));
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a"), prb_STR("/b")), prb_STR("a/b")));
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a/"), prb_STR("/b")), prb_STR("a/b")));
+
+#if prb_PLATFORM_WINDOWS
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a\\"), prb_STR("b")), prb_STR("a/b")));
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a"), prb_STR("\\b")), prb_STR("a/b")));
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a\\"), prb_STR("\\b")), prb_STR("a/b")));
+#elif prb_PLATFORM_LINUX
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a\\"), prb_STR("b")), prb_STR("a\\/b")));
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a"), prb_STR("\\b")), prb_STR("a/\\b")));
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a\\"), prb_STR("\\b")), prb_STR("a\\/\\b")));
+#endif
+
     prb_endTempMemory(temp);
 }
 
@@ -505,7 +595,7 @@ main() {
     test_memeq();
     test_alignment();
     test_allocation();
-    test_getParentDir();
+    test_pathManip();
     test_filesystem();
     test_strings();
     test_fileformat();

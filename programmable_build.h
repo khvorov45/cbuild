@@ -321,6 +321,7 @@ prb_PUBLICDEC void                 prb_removeDirectoryIfExists(prb_String path);
 prb_PUBLICDEC void                 prb_clearDirectory(prb_String path);
 prb_PUBLICDEC prb_String           prb_getCurrentWorkingDir(void);
 prb_PUBLICDEC prb_String           prb_pathJoin(prb_String path1, prb_String path2);
+prb_PUBLICDEC bool                 prb_charIsSep(char ch);
 prb_PUBLICDEC prb_StringFindResult prb_findSepBeforeLastEntry(prb_String path);
 prb_PUBLICDEC prb_String           prb_getParentDir(prb_String path);
 prb_PUBLICDEC prb_String           prb_getLastEntryInPath(prb_String path);
@@ -343,7 +344,6 @@ prb_PUBLICDEC prb_StringFindResult prb_strFind(prb_StringFindSpec spec);
 prb_PUBLICDEC bool                 prb_strStartsWith(prb_String str, prb_String pattern, prb_StringFindMode mode);
 prb_PUBLICDEC bool                 prb_strEndsWith(prb_String str, prb_String pattern, prb_StringFindMode mode);
 prb_PUBLICDEC prb_String           prb_strReplace(prb_StringFindSpec spec, prb_String replacement);
-prb_PUBLICDEC prb_String           prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive);
 prb_PUBLICDEC prb_String           prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep);
 prb_PUBLICDEC prb_String*          prb_stringArrayJoin(prb_String* arr1, int32_t arr1len, prb_String* arr2, int32_t arr2len);
 prb_PUBLICDEC prb_String           prb_beginString(void);
@@ -967,7 +967,7 @@ prb_isDirectory(prb_String path) {
 
     prb_String pathNoTrailingSlash = path;
     char       lastChar = path.ptr[path.len - 1];
-    if (lastChar == '/' || lastChar == '\\') {
+    if (prb_charIsSep(lastChar)) {
         pathNoTrailingSlash = prb_stringCopy(path, 0, path.len - 2);
     }
     bool             result = false;
@@ -1177,12 +1177,10 @@ prb_getCurrentWorkingDir(void) {
 
 #elif prb_PLATFORM_LINUX
 
-    prb_globalArenaLock();
     char* ptr = (char*)prb_globalArenaCurrentFreePtr();
     prb_assert(getcwd(ptr, prb_globalArenaCurrentFreeSize()));
     prb_String result = prb_STR(ptr);
     prb_globalArenaChangeUsed(result.len + 1);  // NOTE(khvorov) Null terminator
-    prb_globalArenaUnlock();
     return result;
 
 #else
@@ -1194,17 +1192,34 @@ prb_PUBLICDEF prb_String
 prb_pathJoin(prb_String path1, prb_String path2) {
     prb_assert(path1.str && path2.str && path1.len > 0 && path2.len > 0);
     char path1LastChar = path1.str[path1.len - 1];
-    bool path1EndsOnSep = path1LastChar == '/' || path1LastChar == '\\';
+    bool path1EndsOnSep = prb_charIsSep(path1LastChar);
     if (path1EndsOnSep) {
         path1.len -= 1;
     }
     char path2FirstChar = path2.str[0];
-    bool path2StartsOnSep = path2FirstChar == '/' || path2FirstChar == '\\';
+    bool path2StartsOnSep = prb_charIsSep(path2FirstChar);
     if (path2StartsOnSep) {
         path2 = prb_strSliceForward(path2, 1);
     }
     prb_String result = prb_fmt("%.*s/%.*s", path1.len, path1.str, path2.len, path2.str);
     return result;
+}
+
+prb_PUBLICDEF bool                 
+prb_charIsSep(char ch) {
+#if prb_PLATFORM_WINDOWS
+
+    bool result = ch == '/' || ch == '\\';
+    return result;
+
+#elif prb_PLATFORM_LINUX
+
+    bool result = ch == '/';
+    return result;
+
+#else
+#error unimplemented
+#endif    
 }
 
 prb_PUBLICDEF prb_StringFindResult
@@ -1216,24 +1231,51 @@ prb_findSepBeforeLastEntry(prb_String path) {
         .direction = prb_StringDirection_FromEnd,
     };
     prb_StringFindResult result = prb_strFind(spec);
-    if (result.matchByteIndex == spec.str.len - 1 && spec.str.len > 1) {
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    // NOTE(khvorov) Ignore trailing slash except when its just the root path '/'
+    if (result.found && result.matchByteIndex == spec.str.len - 1 && spec.str.len > 1) {
         spec.str.len -= 1;
         result = prb_strFind(spec);
     }
+
+#else
+#error unimplemented
+#endif
+
     return result;
 }
 
 prb_PUBLICDEF prb_String
 prb_getParentDir(prb_String path) {
     prb_StringFindResult findResult = prb_findSepBeforeLastEntry(path);
-    prb_String           result = findResult.found ? prb_stringCopy(path, 0, findResult.matchByteIndex) : prb_getCurrentWorkingDir();
+    prb_String           result = findResult.found ? (prb_String) {path.str, findResult.matchByteIndex + 1} : prb_getCurrentWorkingDir();
     return result;
 }
 
 prb_PUBLICDEF prb_String
 prb_getLastEntryInPath(prb_String path) {
     prb_StringFindResult findResult = prb_findSepBeforeLastEntry(path);
-    prb_String           result = findResult.found ? prb_stringCopy(path, findResult.matchByteIndex + 1, path.len - 1) : path;
+    prb_String           result = path;
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    if (findResult.found && path.len > 1) {
+        result = prb_strSliceForward(path, findResult.matchByteIndex + 1);
+    }
+
+#else
+#error unimplemented
+#endif
     return result;
 }
 
@@ -1309,8 +1351,7 @@ prb_findAllMatchingPaths(prb_String pattern) {
         arrsetcap(result, globResult.gl_pathc);
         for (size_t resultIndex = 0; resultIndex < globResult.gl_pathc; resultIndex++) {
             char* path = globResult.gl_pathv[resultIndex];
-            int32_t pathlen = prb_strlen(path);
-            arrput(result, prb_stringCopy(prb_STR(path), 0, pathlen - 1));
+            arrput(result, prb_fmt("%s", path));
         }
     }
     globfree(&globResult);
@@ -1729,14 +1770,6 @@ prb_strReplace(prb_StringFindSpec spec, prb_String replacement) {
 }
 
 prb_PUBLICDEF prb_String
-prb_stringCopy(prb_String source, int32_t fromInclusive, int32_t toInclusive) {
-    prb_assert(fromInclusive >= 0 && toInclusive >= 0 && toInclusive >= fromInclusive);
-    const char* srcFrom = source.str + fromInclusive;
-    prb_String  result = prb_fmt("%.*s", toInclusive - fromInclusive + 1, srcFrom);
-    return result;
-}
-
-prb_PUBLICDEF prb_String
 prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
     prb_String result = prb_beginString();
     for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
@@ -2100,6 +2133,7 @@ prb_lineIterNext(prb_LineIterator* iter) {
 
 prb_PUBLICDEF const char**
 prb_getArgArrayFromString(prb_String string) {
+    // TODO(khvorov) Rework to use a string find iterator
     int32_t spacesCount = 0;
     for (int32_t strIndex = 0; strIndex < string.len; strIndex++) {
         char ch = string.str[strIndex];
