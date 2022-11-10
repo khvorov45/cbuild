@@ -185,7 +185,7 @@ typedef struct prb_Arena {
     void*   base;
     int32_t size;
     int32_t used;
-    bool    locked;
+    bool    lockedForString;
     int32_t tempCount;
 } prb_Arena;
 
@@ -305,8 +305,6 @@ prb_PUBLICDEC void*          prb_realloc(void* ptr, int32_t size);
 prb_PUBLICDEC void*          prb_globalArenaCurrentFreePtr(void);
 prb_PUBLICDEC int32_t        prb_globalArenaCurrentFreeSize(void);
 prb_PUBLICDEC void           prb_globalArenaChangeUsed(int32_t byteDelta);
-prb_PUBLICDEC void           prb_globalArenaLock(void);
-prb_PUBLICDEC void           prb_globalArenaUnlock(void);
 prb_PUBLICDEC prb_TempMemory prb_beginTempMemory(void);
 prb_PUBLICDEC void           prb_endTempMemory(prb_TempMemory temp);
 
@@ -821,7 +819,7 @@ prb_init(int32_t virtualMemoryBytesToUse) {
         .base = prb_vmemAllocate(virtualMemoryBytesToUse),
         .size = virtualMemoryBytesToUse,
         .used = 0,
-        .locked = false,
+        .lockedForString = false,
         .tempCount = 0,
     };
 }
@@ -890,7 +888,7 @@ prb_globalArenaAlignFreePtr(int32_t align) {
 
 prb_PUBLICDEF void*
 prb_allocAndZero(int32_t size, int32_t align) {
-    prb_assert(!prb_globalArena.locked);
+    prb_assert(!prb_globalArena.lockedForString);
     prb_globalArenaAlignFreePtr(align);
     void* result = prb_globalArenaCurrentFreePtr();
     prb_globalArenaChangeUsed(size);
@@ -924,18 +922,6 @@ prb_globalArenaChangeUsed(int32_t byteDelta) {
     prb_assert(prb_globalArenaCurrentFreeSize() >= byteDelta);
     prb_globalArena.used += byteDelta;
     prb_assert(prb_globalArena.used >= 0);
-}
-
-prb_PUBLICDEF void
-prb_globalArenaLock(void) {
-    prb_assert(!prb_globalArena.locked);
-    prb_globalArena.locked = true;
-}
-
-prb_PUBLICDEF void
-prb_globalArenaUnlock(void) {
-    prb_assert(prb_globalArena.locked);
-    prb_globalArena.locked = false;
 }
 
 prb_PUBLICDEF prb_TempMemory
@@ -1799,14 +1785,15 @@ prb_stringArrayJoin(prb_String* arr1, int32_t arr1len, prb_String* arr2, int32_t
 
 prb_PUBLICDEF prb_String
 prb_beginString(void) {
-    prb_globalArenaLock();
+    prb_assert(!prb_globalArena.lockedForString);
+    prb_globalArena.lockedForString = true;
     prb_String result = {(const char*)prb_globalArenaCurrentFreePtr(), 0};
     return result;
 }
 
 prb_PUBLICDEF void
 prb_addStringSegment(prb_String* str, const char* fmt, ...) {
-    prb_assert(prb_globalArena.locked);
+    prb_assert(prb_globalArena.lockedForString);
     va_list args;
     va_start(args, fmt);
     prb_String seg = prb_vfmtCustomBuffer(
@@ -1822,7 +1809,8 @@ prb_addStringSegment(prb_String* str, const char* fmt, ...) {
 
 prb_PUBLICDEF void
 prb_endString(void) {
-    prb_globalArenaUnlock();
+    prb_assert(prb_globalArena.lockedForString);
+    prb_globalArena.lockedForString = false;
     prb_allocAndZero(1, 1);  // NOTE(khvorov) Null terminator
 }
 
