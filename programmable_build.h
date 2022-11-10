@@ -100,7 +100,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #define prb_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
 #define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), alignof(type))
-#define prb_beginArray(type) (type*)prb_beginArray_(alignof(type))
 #define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), alignof(type))
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 
@@ -308,8 +307,6 @@ prb_PUBLICDEC int32_t        prb_globalArenaCurrentFreeSize(void);
 prb_PUBLICDEC void           prb_globalArenaChangeUsed(int32_t byteDelta);
 prb_PUBLICDEC void           prb_globalArenaLock(void);
 prb_PUBLICDEC void           prb_globalArenaUnlock(void);
-prb_PUBLICDEC void*          prb_beginArray_(int32_t align);
-prb_PUBLICDEC void           prb_endArray(int32_t bytes);
 prb_PUBLICDEC prb_TempMemory prb_beginTempMemory(void);
 prb_PUBLICDEC void           prb_endTempMemory(prb_TempMemory temp);
 
@@ -351,7 +348,7 @@ prb_PUBLICDEC prb_String           prb_stringsJoin(prb_String* strings, int32_t 
 prb_PUBLICDEC prb_String*          prb_stringArrayJoin(prb_String* arr1, int32_t arr1len, prb_String* arr2, int32_t arr2len);
 prb_PUBLICDEC prb_String           prb_beginString(void);
 prb_PUBLICDEC void                 prb_addStringSegment(prb_String* str, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC void                 prb_endString(prb_String str);
+prb_PUBLICDEC void                 prb_endString(void);
 prb_PUBLICDEC prb_String           prb_fmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
 prb_PUBLICDEC prb_String           prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args);
 prb_PUBLICDEC prb_String           prb_fmt(const char* fmt, ...) prb_ATTRIBUTE_FORMAT(1, 2);
@@ -941,21 +938,6 @@ prb_globalArenaUnlock(void) {
     prb_globalArena.locked = false;
 }
 
-prb_PUBLICDEF void*
-prb_beginArray_(int32_t align) {
-    prb_globalArenaAlignFreePtr(align);
-    prb_globalArenaLock();
-    void* result = prb_globalArenaCurrentFreePtr();
-    return result;
-}
-
-prb_PUBLICDEF void
-prb_endArray(int32_t bytes) {
-    prb_assert(bytes >= 0);
-    prb_globalArenaChangeUsed(bytes);
-    prb_globalArenaUnlock();
-}
-
 prb_PUBLICDEF prb_TempMemory
 prb_beginTempMemory(void) {
     prb_TempMemory temp = {.usedAtBegin = prb_globalArena.used, .tempCountAtBegin = prb_globalArena.tempCount};
@@ -1467,7 +1449,7 @@ prb_readEntireFile(prb_String path) {
 
     int32_t handle = open(pathNull, O_RDONLY, 0);
     prb_assert(handle != -1);
-    prb_endTempMemory(temp);    
+    prb_endTempMemory(temp);
 
     struct stat statBuf = {};
     prb_assert(fstat(handle, &statBuf) == 0);
@@ -1525,7 +1507,7 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
         }
     }
     prb_addStringSegment(&arrayStr, "};");
-    prb_endString(arrayStr);
+    prb_endString();
 
     prb_writeEntireFile(outPath, (prb_Bytes) {(uint8_t*)arrayStr.str, arrayStr.len});
     prb_endTempMemory(temp);
@@ -1764,7 +1746,7 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
             prb_addStringSegment(&result, "%.*s", sep.len, sep.str);
         }
     }
-    prb_endString(result);
+    prb_endString();
     return result;
 }
 
@@ -1792,23 +1774,23 @@ prb_beginString(void) {
 prb_PUBLICDEF void
 prb_addStringSegment(prb_String* str, const char* fmt, ...) {
     prb_assert(prb_globalArena.locked);
-    prb_assert(prb_globalArenaCurrentFreeSize() > str->len);
     va_list args;
     va_start(args, fmt);
     prb_String seg = prb_vfmtCustomBuffer(
-        (uint8_t*)prb_globalArenaCurrentFreePtr() + str->len,
-        prb_globalArenaCurrentFreeSize() - str->len,
+        (uint8_t*)prb_globalArenaCurrentFreePtr(),
+        prb_globalArenaCurrentFreeSize(),
         fmt,
         args
     );
+    prb_globalArenaChangeUsed(seg.len);
     str->len += seg.len;
     va_end(args);
 }
 
 prb_PUBLICDEF void
-prb_endString(prb_String str) {
+prb_endString(void) {
     prb_globalArenaUnlock();
-    prb_globalArenaChangeUsed(str.len + 1);  // NOTE(khvorov) Null terminator
+    prb_allocAndZero(1, 1);  // NOTE(khvorov) Null terminator
 }
 
 prb_PUBLICDEF prb_String
@@ -1838,10 +1820,9 @@ prb_fmt(const char* fmt, ...) {
 
 prb_PUBLICDEF prb_String
 prb_vfmt(const char* fmt, va_list args) {
-    prb_beginArray_(1);
     prb_String result =
         prb_vfmtCustomBuffer(prb_globalArenaCurrentFreePtr(), prb_globalArenaCurrentFreeSize(), fmt, args);
-    prb_endArray(result.len + 1);  // NOTE(khvorov) Null terminator
+    prb_globalArenaChangeUsed(result.len + 1);  // NOTE(khvorov) Null terminator
     return result;
 }
 

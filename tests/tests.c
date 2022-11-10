@@ -73,19 +73,6 @@ test_allocation() {
         }
     }
 
-    {
-        u8* arr = prb_beginArray(u8);
-        i32 bytes = 100;
-        for (i32 index = 0; index < bytes; index++) {
-            arr[index] = index;
-        }
-        prb_endArray(bytes);
-        prb_allocAndZero(bytes, 1);
-        for (i32 index = 0; index < bytes; index++) {
-            prb_assert(arr[index] == index);
-        }
-    }
-
     prb_endTempMemory(temp1);
 }
 
@@ -165,7 +152,7 @@ test_strings(void) {
     prb_addStringSegment(&str, "%s", "one");
     prb_addStringSegment(&str, "%s", " two");
     prb_addStringSegment(&str, "%s", " three");
-    prb_endString(str);
+    prb_endString();
 
     prb_String target = prb_STR("one two three");
     prb_assert(prb_streq(str, target));
