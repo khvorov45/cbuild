@@ -210,6 +210,8 @@ test_filesystem(void) {
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
     prb_clearDirectory(dir);
     prb_assert(prb_directoryIsEmpty(dir));
+    prb_String dirWithTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
+    prb_assert(prb_isDirectory(dirWithTrailingSlash));
 
     prb_String file = prb_pathJoin(dir, prb_STR("temp.txt"));
     prb_writeEntireFile(file, (prb_Bytes) {(u8*)"1", 1});

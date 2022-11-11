@@ -965,8 +965,6 @@ prb_isDirectory(prb_String path) {
 
 #elif prb_PLATFORM_LINUX
 
-    // TODO(khvorov) Test trailing slash
-
     struct stat statBuf = {};
     if (stat(pathNull, &statBuf) == 0) {
         result = S_ISDIR(statBuf.st_mode);
