@@ -280,6 +280,11 @@ test_strFindIter(void) {
         prb_assert(iter.curResult.found);
         prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
         prb_assert(iter.curResult.matchLen == 1);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Failure);
+        prb_assert(!iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == 0);
+        prb_assert(iter.curResult.matchLen == 0);
     }
 
     {
@@ -300,6 +305,11 @@ test_strFindIter(void) {
         prb_assert(iter.curResult.found);
         prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
         prb_assert(iter.curResult.matchLen == 1);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Failure);
+        prb_assert(!iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == 0);
+        prb_assert(iter.curResult.matchLen == 0);
 
         spec.direction = prb_StringDirection_FromStart;
     }
