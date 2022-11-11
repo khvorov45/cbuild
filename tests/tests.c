@@ -253,6 +253,58 @@ test_strings(void) {
     prb_endTempMemory(temp);
 }
 
+function void
+test_strFindIter(void) {
+    prb_String         str = prb_STR("prog arg1:val1 arg2:val2 arg3:val3");
+    prb_StringFindSpec spec = {
+        .str = str,
+        .pattern = prb_STR(":"),
+        .mode = prb_StringFindMode_Exact,
+        .direction = prb_StringDirection_FromStart,
+    };
+
+    {
+        prb_StrFindIterator iter = prb_createStrFindIter(spec);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
+        prb_assert(iter.curResult.matchLen == 1);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2"));
+        prb_assert(iter.curResult.matchLen == 1);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
+        prb_assert(iter.curResult.matchLen == 1);
+    }
+
+    {
+        spec.direction = prb_StringDirection_FromEnd;
+        prb_StrFindIterator iter = prb_createStrFindIter(spec);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
+        prb_assert(iter.curResult.matchLen == 1);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2"));
+        prb_assert(iter.curResult.matchLen == 1);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
+        prb_assert(iter.curResult.matchLen == 1);
+
+        spec.direction = prb_StringDirection_FromStart;
+    }
+}
+
 function prb_String*
 setdiff(prb_String* arr1, prb_String* arr2) {
     prb_String* result = 0;
@@ -602,6 +654,7 @@ main() {
     test_strings();
     test_fileformat();
     test_strFind();
+    test_strFindIter();
     test_strStartsEnds();
     test_lineIter();
     test_pathsInDir();

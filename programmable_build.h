@@ -287,6 +287,11 @@ typedef struct prb_Utf8CharIterator {
     bool                curIsValid;
 } prb_Utf8CharIterator;
 
+typedef struct prb_StrFindIterator {
+    prb_StringFindSpec   spec;
+    prb_StringFindResult curResult;
+} prb_StrFindIterator;
+
 #ifndef prb_IMPLEMENTATION
 extern prb_Arena prb_globalArena;
 #endif
@@ -339,6 +344,8 @@ prb_PUBLICDEC bool                 prb_streq(prb_String str1, prb_String str2);
 prb_PUBLICDEC prb_String           prb_strSliceForward(prb_String str, int32_t bytes);
 prb_PUBLICDEC const char*          prb_strGetNullTerminated(prb_String str);
 prb_PUBLICDEC prb_StringFindResult prb_strFind(prb_StringFindSpec spec);
+prb_PUBLICDEC prb_StrFindIterator  prb_createStrFindIter(prb_StringFindSpec spec);
+prb_PUBLICDEC prb_Status           prb_strFindIterNext(prb_StrFindIterator* iter);
 prb_PUBLICDEC bool                 prb_strStartsWith(prb_String str, prb_String pattern, prb_StringFindMode mode);
 prb_PUBLICDEC bool                 prb_strEndsWith(prb_String str, prb_String pattern, prb_StringFindMode mode);
 prb_PUBLICDEC prb_String           prb_strReplace(prb_StringFindSpec spec, prb_String replacement);
@@ -1189,7 +1196,7 @@ prb_pathJoin(prb_String path1, prb_String path2) {
     return result;
 }
 
-prb_PUBLICDEF bool                 
+prb_PUBLICDEF bool
 prb_charIsSep(char ch) {
 #if prb_PLATFORM_WINDOWS
 
@@ -1203,7 +1210,7 @@ prb_charIsSep(char ch) {
 
 #else
 #error unimplemented
-#endif    
+#endif
 }
 
 prb_PUBLICDEF prb_StringFindResult
@@ -1712,6 +1719,39 @@ prb_strFind(prb_StringFindSpec spec) {
     return result;
 }
 
+prb_PUBLICDEF prb_StrFindIterator
+prb_createStrFindIter(prb_StringFindSpec spec) {
+    prb_StrFindIterator iter = {.spec = spec, .curResult = (prb_StringFindResult) {}};
+    return iter;
+}
+
+prb_PUBLICDEF prb_Status
+prb_strFindIterNext(prb_StrFindIterator* iter) {
+    prb_StringFindSpec spec = iter->spec;
+    int32_t            strOffset = 0;
+    if (iter->curResult.found) {
+        switch (spec.direction) {
+            case prb_StringDirection_FromStart:
+                strOffset = iter->curResult.matchByteIndex + iter->curResult.matchLen;
+                spec.str = prb_strSliceForward(spec.str, strOffset);
+                break;
+            case prb_StringDirection_FromEnd:
+                spec.str.len = iter->curResult.matchByteIndex;
+        }
+    }
+
+    iter->curResult = prb_strFind(spec);
+    prb_Status result = prb_Failure;
+    if (iter->curResult.found) {
+        result = prb_Success;
+        if (spec.direction == prb_StringDirection_FromStart) {
+            iter->curResult.matchByteIndex += strOffset;
+        }
+    }
+
+    return result;
+}
+
 prb_PUBLICDEF bool
 prb_strStartsWith(prb_String str, prb_String pattern, prb_StringFindMode mode) {
     str.len = prb_min(str.len, pattern.len);
@@ -1989,8 +2029,11 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
     }
 
     if (more) {
+        bool     chValid = false;
+        uint32_t ch = 0;
+        int32_t  chBytes = 0;
+
         result = prb_Success;
-        iter->curIsValid = true;
 
         uint8_t firstByte = iter->str.str[iter->curByteOffset];
         int32_t leading1s = prb_countLeading1sU8(firstByte);
@@ -2006,34 +2049,38 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
         }
 
         if (firstByteValid) {
-            uint8_t firstByteMask[] = {
-                0b01111111,
-                0b00011111,
-                0b00001111,
-                0b00000111,
-            };
+            if (leading1s == 0) {
+                chValid = true;
+                ch = firstByte;
+                chBytes = 1;
+            } else {
+                uint8_t firstByteMask[] = {
+                    0b01111111,
+                    0b00011111,
+                    0b00001111,
+                    0b00000111,
+                };
 
-            uint32_t ch = 0;
-            switch (iter->direction) {
-                case prb_StringDirection_FromStart: {
-                    int32_t charBytes = leading1s == 0 ? 1 : leading1s;
-                    iter->curUtf8Bytes = charBytes;
-                    ch = firstByte & firstByteMask[charBytes - 1];
-                    for (int32_t byteIndex = 1; byteIndex < charBytes; byteIndex++) {
-                        uint8_t byte = iter->str.str[iter->curByteOffset + byteIndex];
-                        if (prb_countLeading1sU8(byte) == 1) {
-                            ch = (ch << 6) | (byte & 0b00111111);
-                        } else {
-                            iter->curByteOffset += byteIndex;
-                            iter->curUtf8Bytes = 0;
-                            iter->curIsValid = false;
-                            break;
+                switch (iter->direction) {
+                    case prb_StringDirection_FromStart: {
+                        chValid = true;
+                        chBytes = leading1s;
+                        prb_assert(chBytes == 2 || chBytes == 3 || chBytes == 4);
+                        ch = firstByte & firstByteMask[chBytes - 1];
+                        for (int32_t byteIndex = 1; byteIndex < chBytes; byteIndex++) {
+                            uint8_t byte = iter->str.str[iter->curByteOffset + byteIndex];
+                            if (prb_countLeading1sU8(byte) == 1) {
+                                ch = (ch << 6) | (byte & 0b00111111);
+                            } else {
+                                iter->curByteOffset += byteIndex;
+                                chValid = false;
+                                break;
+                            }
                         }
-                    }
-                } break;
+                    } break;
 
-                case prb_StringDirection_FromEnd: {
-                    if (leading1s != 0) {
+                    case prb_StringDirection_FromEnd: {
+                        prb_assert(leading1s == 1);
                         ch = firstByte & 0b00111111;
                         int32_t maxExtraBytes = prb_min(3, iter->curByteOffset);
                         for (int32_t byteIndex = 0; byteIndex < maxExtraBytes; byteIndex++) {
@@ -2043,26 +2090,25 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
                             if (byteLeading1s == 1) {
                                 ch = ((byte & 0b00111111) << chBytesTaken) | ch;
                             } else if (byteLeading1s == byteIndex + 2) {
-                                iter->curUtf8Bytes = byteLeading1s;
+                                chValid = true;
+                                chBytes = byteLeading1s;
                                 ch = ((byte & firstByteMask[byteLeading1s - 1]) << chBytesTaken) | ch;
                                 break;
                             } else {
-                                iter->curIsValid = false;
                                 break;
                             }
                         }
-                    } else {
-                        ch = firstByte;
-                    }
-                } break;
-            }
-
-            if (iter->curIsValid) {
-                iter->curUtf32Char = ch;
+                    } break;
+                }
             }
         } else {
             iter->curByteOffset += iter->direction == prb_StringDirection_FromStart ? 1 : -1;
-            iter->curIsValid = false;
+        }
+
+        if (chValid) {
+            iter->curIsValid = true;
+            iter->curUtf32Char = ch;
+            iter->curUtf8Bytes = chBytes;
         }
     }
 
