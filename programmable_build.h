@@ -1264,7 +1264,8 @@ prb_getLastEntryInPath(prb_String path) {
 
 #elif prb_PLATFORM_LINUX
 
-    if (findResult.found && path.len > 1) {
+    if (findResult.found) {
+        prb_assert(path.len > 1);
         result = prb_strSliceForward(path, findResult.matchByteIndex + 1);
     }
 
