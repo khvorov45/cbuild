@@ -302,7 +302,6 @@ prb_PUBLICDEC void prb_terminate(int32_t code);
 
 // SECTION Memory
 prb_PUBLICDEC bool           prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
-prb_PUBLICDEC void*          prb_vmemAllocate(int32_t size);
 prb_PUBLICDEC int32_t        prb_getOffsetForAlignment(void* ptr, int32_t align);
 prb_PUBLICDEC void           prb_globalArenaAlignFreePtr(int32_t align);
 prb_PUBLICDEC void*          prb_allocAndZero(int32_t size, int32_t align);
@@ -822,8 +821,22 @@ static prb_Arena prb_globalArena;
 
 prb_PUBLICDEF void
 prb_init(int32_t virtualMemoryBytesToUse) {
+#if prb_PLATFORM_WINDOWS
+
+    void* ptr = VirtualAlloc(0, virtualMemoryBytesToUse, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    prb_assert(ptr);
+
+#elif prb_PLATFORM_LINUX
+
+    void* ptr = mmap(0, virtualMemoryBytesToUse, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    prb_assert(ptr != MAP_FAILED);
+
+#else
+#error unimplemented
+#endif
+
     prb_globalArena = (prb_Arena) {
-        .base = prb_vmemAllocate(virtualMemoryBytesToUse),
+        .base = ptr,
         .size = virtualMemoryBytesToUse,
         .used = 0,
         .lockedForString = false,
@@ -856,25 +869,6 @@ prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes) {
     int  memcmpResult = prb_memcmp(ptr1, ptr2, bytes);
     bool result = memcmpResult == 0;
     return result;
-}
-
-prb_PUBLICDEF void*
-prb_vmemAllocate(int32_t size) {
-#if prb_PLATFORM_WINDOWS
-
-    void* ptr = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    prb_assert(ptr);
-    return ptr;
-
-#elif prb_PLATFORM_LINUX
-
-    void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    prb_assert(ptr != MAP_FAILED);
-    return ptr;
-
-#else
-#error unimplemented
-#endif
 }
 
 prb_PUBLICDEF int32_t
@@ -1192,7 +1186,7 @@ prb_pathJoin(prb_String path1, prb_String path2) {
     if (path2StartsOnSep) {
         path2 = prb_strSliceForward(path2, 1);
     }
-    prb_String result = prb_fmt("%.*s/%.*s", path1.len, path1.str, path2.len, path2.str);
+    prb_String result = prb_fmt("%.*s/%.*s", prb_LIT(path1), prb_LIT(path2));
     return result;
 }
 
@@ -1229,8 +1223,8 @@ prb_findSepBeforeLastEntry(prb_String path) {
 
 #elif prb_PLATFORM_LINUX
 
-    // NOTE(khvorov) Ignore trailing slash except when its just the root path '/'
-    if (result.found && result.matchByteIndex == spec.str.len - 1 && spec.str.len > 1) {
+    // NOTE(khvorov) Ignore trailing slash. Root path '/' does not have a separator before it
+    if (result.found && result.matchByteIndex == spec.str.len - 1) {
         spec.str.len -= 1;
         result = prb_strFind(spec);
     }
@@ -1244,6 +1238,16 @@ prb_findSepBeforeLastEntry(prb_String path) {
 
 prb_PUBLICDEF prb_String
 prb_getParentDir(prb_String path) {
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    prb_assert(!prb_streq(path, prb_STR("/")));
+
+#endif
+
     prb_StringFindResult findResult = prb_findSepBeforeLastEntry(path);
     prb_String           result = findResult.found ? (prb_String) {path.str, findResult.matchByteIndex + 1} : prb_getCurrentWorkingDir();
     return result;

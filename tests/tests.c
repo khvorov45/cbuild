@@ -6,6 +6,10 @@ typedef uint8_t u8;
 typedef int32_t i32;
 typedef size_t  usize;
 
+//
+// SECTION Memory
+//
+
 function void
 test_memeq(void) {
     const char* p1 = "test1";
@@ -15,7 +19,7 @@ test_memeq(void) {
 }
 
 function void
-test_alignment() {
+test_getOffsetForAlignment(void) {
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_assert(prb_getOffsetForAlignment((void*)0, 1) == 0);
@@ -25,6 +29,13 @@ test_alignment() {
     prb_assert(prb_getOffsetForAlignment((void*)2, 4) == 2);
     prb_assert(prb_getOffsetForAlignment((void*)3, 4) == 1);
     prb_assert(prb_getOffsetForAlignment((void*)4, 4) == 0);
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_globalArenaAlignFreePtr(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
 
     i32 arbitraryAlignment = 16;
     prb_globalArenaAlignFreePtr(arbitraryAlignment);
@@ -38,151 +49,419 @@ test_alignment() {
 }
 
 function void
-test_allocation() {
-    prb_TempMemory temp1 = prb_beginTempMemory();
-
-    {
-        prb_TempMemory temp2 = prb_beginTempMemory();
-
-        i32 arbitrarySize = 100;
-        u8* ptr = (u8*)prb_allocAndZero(arbitrarySize, 1);
-        u8  arbitraryValue = 12;
-        ptr[0] = arbitraryValue;
-
-        prb_assert(prb_globalArena.used == temp2.usedAtBegin + arbitrarySize);
-        prb_endTempMemory(temp2);
-        prb_assert(prb_globalArena.used == temp2.usedAtBegin);
-
-        ptr = (u8*)prb_globalArenaCurrentFreePtr();
-        prb_assert(ptr[0] == arbitraryValue);
-        prb_assert(ptr == (u8*)prb_allocAndZero(1, 1));
-        prb_assert(ptr[0] == 0);
-    }
-
-    {
-        u8* arr = 0;
-        i32 arbitraryCapacity = 10;
-        arrsetcap(arr, arbitraryCapacity);
-        i32 targetLen = arbitraryCapacity * 2;
-        for (i32 index = 0; index < targetLen; index++) {
-            arrput(arr, index);
-        }
-        prb_assert(arrlen(arr) == targetLen);
-        for (i32 index = 0; index < targetLen; index++) {
-            prb_assert(arr[index] == index);
-        }
-    }
-
-    prb_endTempMemory(temp1);
-}
-
-function void
-test_printColor(void) {
+test_allocAndZero(void) {
     prb_TempMemory temp = prb_beginTempMemory();
-    prb_fmtAndPrintln("color printing:");
-    prb_fmtAndPrintlnColor(prb_ColorID_Blue, "blue");
-    prb_fmtAndPrintlnColor(prb_ColorID_Cyan, "cyan");
-    prb_fmtAndPrintlnColor(prb_ColorID_Magenta, "magenta");
-    prb_fmtAndPrintlnColor(prb_ColorID_Yellow, "yellow");
-    prb_fmtAndPrintlnColor(prb_ColorID_Red, "red");
-    prb_fmtAndPrintlnColor(prb_ColorID_Green, "green");
-    prb_fmtAndPrintlnColor(prb_ColorID_Black, "black");
-    prb_fmtAndPrintlnColor(prb_ColorID_White, "white");
+
+    i32 arbitrarySize = 100;
+    u8* ptr = (u8*)prb_allocAndZero(arbitrarySize, 1);
+    u8  arbitraryValue = 12;
+    ptr[0] = arbitraryValue;
+
+    prb_endTempMemory(temp);
+    temp = prb_beginTempMemory();
+
+    prb_assert(ptr[0] == arbitraryValue);
+    prb_assert(ptr == (u8*)prb_allocAndZero(1, 1));
+    prb_assert(ptr[0] == 0);
+
     prb_endTempMemory(temp);
 }
 
 function void
-test_pathManip(void) {
+test_realloc(void) {
     prb_TempMemory temp = prb_beginTempMemory();
-    prb_String     cwd = prb_getCurrentWorkingDir();
-    const char*    cases[] = {
-           "test",
-           "test/",
-           "test/child",
-           "test/child/child2",
-#if prb_PLATFORM_WINDOWS
-        "test\\",
-        "test\\child",
-        "test/child\\child2",
-        "C:",
-        "C://",
-        "C:/",
-        "C:\\",
-        "C:\\\\",
-        "//network"
-#elif prb_PLATFORM_LINUX
-        "/home",
-        "/home/",
-        "/",
-#endif
-    };
 
-    const char* correctParent[] = {
-        cwd.str,
-        cwd.str,
-        "test/",
-        "test/child/",
-#if prb_PLATFORM_WINDOWS
-        cwd.str,
-        "test\\",
-        "test/child\\",
-        "C:",
-        "C://",
-        "C:/",
-        "C:\\",
-        "C:\\\\",
-        "//network"
-#elif prb_PLATFORM_LINUX
-        "/",
-        "/",
-        "/",
-#else
-#error unimplemented
-#endif
-    };
-
-    const char* correctLast[] = {
-        "test",
-        "test/",
-        "child",
-        "child2",
-#if prb_PLATFORM_WINDOWS
-        "test\\",
-        "child",
-        "child2",
-        "C:",
-        "C://",
-        "C:/",
-        "C:\\",
-        "C:\\\\",
-        "//network"
-#elif prb_PLATFORM_LINUX
-        "home",
-        "home/",
-        "/",
-#endif
-    };
-
-    prb_assert(prb_arrayLength(cases) == prb_arrayLength(correctParent));
-    for (usize testIndex = 0; testIndex < prb_arrayLength(cases); testIndex++) {
-        const char* cs = cases[testIndex];
-        prb_String  resp = prb_getParentDir(prb_STR(cs));
-        const char* cr = correctParent[testIndex];
-        prb_assert(prb_streq(resp, prb_STR(cr)));
+    i32  initLen = 10;
+    i32* arr = prb_allocArray(i32, initLen);
+    for (i32 index = 0; index < initLen; index++) {
+        arr[index] = index;
     }
 
-    prb_assert(prb_arrayLength(cases) == prb_arrayLength(correctLast));
-    for (usize testIndex = 0; testIndex < prb_arrayLength(cases); testIndex++) {
-        const char* cs = cases[testIndex];
-        prb_String  resp = prb_getLastEntryInPath(prb_STR(cs));
-        const char* cr = correctLast[testIndex];
-        prb_assert(prb_streq(resp, prb_STR(cr)));
+    i32 finalLen = 100;
+    arr = (i32*)prb_realloc(arr, finalLen * sizeof(*arr));
+    for (i32 index = 0; index < initLen; index++) {
+        prb_assert(arr[index] == index);
     }
+    for (i32 index = initLen; index < finalLen; index++) {
+        prb_assert(arr[index] == 0);
+    }
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_globalArenaCurrentFreePtr(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    uint8_t* ptrInit = (uint8_t*)prb_globalArenaCurrentFreePtr();
+    i32      size = 1;
+    prb_allocAndZero(size, 1);
+    prb_assert(prb_globalArenaCurrentFreePtr() == ptrInit + size);
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_globalArenaCurrentFreeSize(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    i32 sizeInit = prb_globalArenaCurrentFreeSize();
+    i32 size = 1;
+    prb_allocAndZero(size, 1);
+    prb_assert(prb_globalArenaCurrentFreeSize() == sizeInit - size);
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_globalArenaChangeUsed(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    i32 init = prb_globalArena.used;
+    i32 delta = 100;
+    prb_globalArenaChangeUsed(delta);
+    prb_assert(prb_globalArena.used == init + delta);
+    delta *= -1;
+    prb_globalArenaChangeUsed(delta);
+    prb_assert(prb_globalArena.used == init);
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_beginTempMemory(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_assert(temp.usedAtBegin == prb_globalArena.used);
+    prb_assert(temp.tempCountAtBegin == prb_globalArena.tempCount - 1);
+    prb_endTempMemory(temp);
+}
+
+function void
+test_endTempMemory(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_allocAndZero(100, 1);
+    prb_endTempMemory(temp);
+    prb_assert(prb_globalArena.used == temp.usedAtBegin);
+    prb_assert(prb_globalArena.tempCount == temp.tempCountAtBegin);
+}
+
+//
+// SECTION Filesystem
+//
+
+function void
+test_isDirectory(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_removeDirectoryIfExists(dir);
+    prb_assert(!prb_isDirectory(dir));
+    prb_createDirIfNotExists(dir);
+    prb_assert(prb_isDirectory(dir));
+    prb_removeDirectoryIfExists(dir);
+    prb_assert(!prb_isDirectory(dir));
+
+    prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
+    prb_removeDirectoryIfExists(dirTrailingSlash);
+    prb_assert(!prb_isDirectory(dirTrailingSlash));
+    prb_assert(!prb_isDirectory(dir));
+    prb_createDirIfNotExists(dirTrailingSlash);
+    prb_assert(prb_isDirectory(dirTrailingSlash));
+    prb_assert(prb_isDirectory(dir));
+    prb_removeDirectoryIfExists(dirTrailingSlash);
+    prb_assert(!prb_isDirectory(dirTrailingSlash));
+    prb_assert(!prb_isDirectory(dir));
+
+    prb_String dirNotNull = prb_fmt("%.*sabc", prb_LIT(dir));
+    dirNotNull.len = dir.len;
+    prb_removeDirectoryIfExists(dirNotNull);
+    prb_assert(!prb_isDirectory(dirNotNull));
+    prb_assert(!prb_isDirectory(dir));
+    prb_createDirIfNotExists(dirNotNull);
+    prb_assert(prb_isDirectory(dirNotNull));
+    prb_assert(prb_isDirectory(dir));
+    prb_removeDirectoryIfExists(dirNotNull);
+    prb_assert(!prb_isDirectory(dirNotNull));
+    prb_assert(!prb_isDirectory(dir));
+
+    prb_assert(!prb_isDirectory(prb_STR(__FILE__)));
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_isFile(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String filepath = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_String filepathNotNull = prb_fmt("%.*sabc", prb_LIT(filepath));
+    filepathNotNull.len = filepath.len;
+
+    prb_removeFileIfExists(filepath);
+    prb_assert(!prb_isFile(filepath));
+    prb_assert(!prb_isFile(filepathNotNull));
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(prb_isFile(filepath));
+    prb_assert(prb_isFile(filepathNotNull));
+    prb_removeFileIfExists(filepath);
+    prb_assert(!prb_isFile(filepath));
+    prb_assert(!prb_isFile(filepathNotNull));
+
+    prb_removeFileIfExists(filepathNotNull);
+    prb_assert(!prb_isFile(filepathNotNull));
+    prb_assert(!prb_isFile(filepath));
+    prb_writeEntireFile(filepathNotNull, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(prb_isFile(filepathNotNull));
+    prb_assert(prb_isFile(filepath));
+    prb_removeFileIfExists(filepathNotNull);
+    prb_assert(!prb_isFile(filepathNotNull));
+    prb_assert(!prb_isFile(filepath));
+
+    prb_assert(prb_isFile(prb_STR(__FILE__)));
+    prb_assert(!prb_isFile(prb_getParentDir(prb_STR(__FILE__))));
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_directoryIsEmpty(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_clearDirectory(dir);
+    prb_assert(prb_directoryIsEmpty(dir));
+    prb_String filepath = prb_pathJoin(dir, prb_STR("file.txt"));
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(!prb_directoryIsEmpty(dir));
+    prb_removeFileIfExists(filepath);
+    prb_assert(prb_directoryIsEmpty(dir));
+
+    prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
+    prb_assert(prb_directoryIsEmpty(dirTrailingSlash));
+    prb_assert(prb_directoryIsEmpty(dir));
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(!prb_directoryIsEmpty(dirTrailingSlash));
+    prb_assert(!prb_directoryIsEmpty(dir));
+    prb_removeFileIfExists(filepath);
+    prb_assert(prb_directoryIsEmpty(dirTrailingSlash));
+    prb_assert(prb_directoryIsEmpty(dir));
+
+    prb_String dirNotNull = prb_fmt("%.*sabc", prb_LIT(dir));
+    dirNotNull.len = dir.len;
+    prb_assert(prb_directoryIsEmpty(dirNotNull));
+    prb_assert(prb_directoryIsEmpty(dir));
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(!prb_directoryIsEmpty(dirNotNull));
+    prb_assert(!prb_directoryIsEmpty(dir));
+    prb_removeFileIfExists(filepath);
+    prb_assert(prb_directoryIsEmpty(dirNotNull));
+    prb_assert(prb_directoryIsEmpty(dir));
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_createDirIfNotExists(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_removeDirectoryIfExists(dir);
+    prb_assert(!prb_isDirectory(dir));
+    prb_createDirIfNotExists(dir);
+    prb_assert(prb_isDirectory(dir));
+    prb_createDirIfNotExists(dir);
+    prb_assert(prb_isDirectory(dir));
+    prb_removeDirectoryIfExists(dir);
+
+    prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
+    prb_createDirIfNotExists(dirTrailingSlash);
+    prb_assert(prb_isDirectory(dirTrailingSlash));
+    prb_assert(prb_isDirectory(dir));
+    prb_removeFileOrDirectoryIfExists(dirTrailingSlash);
+    prb_assert(!prb_isDirectory(dirTrailingSlash));
+    prb_assert(!prb_isDirectory(dir));
+
+    prb_String dirNotNull = prb_fmt("%.*sabc", prb_LIT(dir));
+    dirNotNull.len = dir.len;
+    prb_createDirIfNotExists(dirNotNull);
+    prb_assert(prb_isDirectory(dirNotNull));
+    prb_assert(prb_isDirectory(dir));
+    prb_removeFileOrDirectoryIfExists(dirNotNull);
+    prb_assert(!prb_isDirectory(dirNotNull));
+    prb_assert(!prb_isDirectory(dir));
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_removeFileOrDirectoryIfExists(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_createDirIfNotExists(dir);
+
+    prb_String filepath = prb_pathJoin(dir, prb_STR("file.txt"));
+    prb_String filepathNotNull = prb_fmt("%.*sabc", prb_LIT(filepath));
+    filepathNotNull.len = filepath.len;
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+
+    prb_assert(prb_isDirectory(dir));
+    prb_assert(prb_isFile(filepath));
+
+    prb_removeFileOrDirectoryIfExists(filepath);
+    prb_assert(prb_isDirectory(dir));
+    prb_assert(!prb_isFile(filepath));
+
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+
+    prb_removeFileOrDirectoryIfExists(filepathNotNull);
+    prb_assert(prb_isDirectory(dir));
+    prb_assert(!prb_isFile(filepath));
+
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+
+    prb_removeFileOrDirectoryIfExists(dir);
+    prb_assert(!prb_isDirectory(dir));
+    prb_assert(!prb_isFile(filepath));
+
+    prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
+    prb_createDirIfNotExists(dirTrailingSlash);
+    prb_assert(prb_isDirectory(dirTrailingSlash));
+    prb_assert(prb_isDirectory(dir));
+    prb_removeFileOrDirectoryIfExists(dirTrailingSlash);
+    prb_assert(!prb_isDirectory(dirTrailingSlash));
+    prb_assert(!prb_isDirectory(dir));
+
+    prb_String dirNotNull = prb_fmt("%.*sabc", prb_LIT(dir));
+    dirNotNull.len = dir.len;
+    prb_createDirIfNotExists(dirNotNull);
+    prb_assert(prb_isDirectory(dirNotNull));
+    prb_assert(prb_isDirectory(dir));
+    prb_removeFileOrDirectoryIfExists(dirNotNull);
+    prb_assert(!prb_isDirectory(dirNotNull));
+    prb_assert(!prb_isDirectory(dir));
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_removeFileIfExists(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_clearDirectory(dir);
+
+    prb_String filepath = prb_pathJoin(dir, prb_STR("file.txt"));
+    prb_String filepathNotNull = prb_fmt("%.*sabc", prb_LIT(filepath));
+    filepathNotNull.len = filepath.len;
+
+    prb_assert(!prb_isFile(filepath));
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(prb_isFile(filepath));
+    prb_removeFileIfExists(filepath);
+    prb_assert(!prb_isFile(filepath));
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(prb_isFile(filepath));
+    prb_removeFileIfExists(filepathNotNull);
+    prb_assert(!prb_isFile(filepath));
+
+    prb_removeDirectoryIfExists(dir);
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_removeDirectoryIfExists(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_createDirIfNotExists(dir);
+    prb_assert(prb_isDirectory(dir));
+    prb_removeDirectoryIfExists(dir);
+    prb_assert(!prb_isDirectory(dir));
+
+    prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
+    prb_createDirIfNotExists(dirTrailingSlash);
+    prb_assert(prb_isDirectory(dirTrailingSlash));
+    prb_assert(prb_isDirectory(dir));
+    prb_removeDirectoryIfExists(dirTrailingSlash);
+    prb_assert(!prb_isDirectory(dirTrailingSlash));
+    prb_assert(!prb_isDirectory(dir));
+
+    prb_String dirNotNull = prb_fmt("%.*sabc", prb_LIT(dir));
+    dirNotNull.len = dir.len;
+    prb_createDirIfNotExists(dirNotNull);
+    prb_assert(prb_isDirectory(dirNotNull));
+    prb_assert(prb_isDirectory(dir));
+    prb_removeDirectoryIfExists(dirNotNull);
+    prb_assert(!prb_isDirectory(dirNotNull));
+    prb_assert(!prb_isDirectory(dir));
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_clearDirectory(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_clearDirectory(dir);
+    prb_assert(prb_directoryIsEmpty(dir));
+
+    prb_String filepath = prb_pathJoin(dir, prb_STR("file.txt"));
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+
+    prb_assert(!prb_directoryIsEmpty(dir));
+    prb_clearDirectory(dir);
+    prb_assert(prb_directoryIsEmpty(dir));
+
+    prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(!prb_directoryIsEmpty(dir));
+    prb_assert(!prb_directoryIsEmpty(dirTrailingSlash));
+    prb_clearDirectory(dirTrailingSlash);
+    prb_assert(prb_directoryIsEmpty(dirTrailingSlash));
+    prb_assert(prb_directoryIsEmpty(dir));
+
+    prb_String dirNotNull = prb_fmt("%.*sabs", prb_LIT(dir));
+    dirNotNull.len = dir.len;
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(!prb_directoryIsEmpty(dir));
+    prb_assert(!prb_directoryIsEmpty(dirNotNull));
+    prb_clearDirectory(dirNotNull);
+    prb_assert(prb_directoryIsEmpty(dirNotNull));
+    prb_assert(prb_directoryIsEmpty(dir));
+
+    prb_removeDirectoryIfExists(dir);
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_getCurrentWorkingDir(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String cwd = prb_getCurrentWorkingDir();
+    prb_assert(prb_isDirectory(cwd));
+    prb_String filename = prb_STR(__FUNCTION__);
+    prb_writeEntireFile(filename, (prb_Bytes) {(uint8_t*)filename.str, filename.len});
+    prb_Bytes fileContent = prb_readEntireFile(prb_pathJoin(cwd, filename));
+    prb_assert(prb_streq((prb_String) {(const char*)fileContent.data, fileContent.len}, filename));
+    prb_removeFileIfExists(filename);
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_pathJoin(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
 
     prb_assert(prb_streq(prb_pathJoin(prb_STR("a"), prb_STR("b")), prb_STR("a/b")));
     prb_assert(prb_streq(prb_pathJoin(prb_STR("a/"), prb_STR("b")), prb_STR("a/b")));
     prb_assert(prb_streq(prb_pathJoin(prb_STR("a"), prb_STR("/b")), prb_STR("a/b")));
     prb_assert(prb_streq(prb_pathJoin(prb_STR("a/"), prb_STR("/b")), prb_STR("a/b")));
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("a/"), prb_STR("/b/")), prb_STR("a/b/")));
+    prb_assert(prb_streq(prb_pathJoin(prb_STR("/a/"), prb_STR("/b/")), prb_STR("/a/b/")));
 
 #if prb_PLATFORM_WINDOWS
     prb_assert(prb_streq(prb_pathJoin(prb_STR("a\\"), prb_STR("b")), prb_STR("a/b")));
@@ -198,41 +477,161 @@ test_pathManip(void) {
 }
 
 function void
-test_filesystem(void) {
+test_charIsSep(void) {
+    prb_assert(prb_charIsSep('/'));
+
+#if prb_PLATFORM_WINDOWS
+    prb_assert(prb_charIsSep('\\'));
+#elif prb_PLATFORM_LINUX
+    prb_assert(!prb_charIsSep('\\'));
+#endif
+}
+
+function void
+test_findSepBeforeLastEntry(void) {
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path"));
+        prb_assert(res.found);
+        prb_assert(res.matchByteIndex == prb_strlen("test"));
+        prb_assert(res.matchLen == 1);
+    }
+
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path/"));
+        prb_assert(res.found);
+        prb_assert(res.matchByteIndex == prb_strlen("test"));
+        prb_assert(res.matchLen == 1);
+    }
+
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path2/path"));
+        prb_assert(res.found);
+        prb_assert(res.matchByteIndex == prb_strlen("test/path2"));
+        prb_assert(res.matchLen == 1);
+    }
+
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test"));
+        prb_assert(!res.found);
+    }
+
+#if prb_PLATFORM_WINDOWS
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\"));
+        prb_assert(!res.found);
+    }
+
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\test"));
+        prb_assert(res.found);
+        prb_assert(res.matchByteIndex == 3);
+        prb_assert(res.matchLen == 1);
+    }
+
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\test/"));
+        prb_assert(res.found);
+        prb_assert(res.matchByteIndex == 3);
+        prb_assert(res.matchLen == 1);
+    }
+
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("//network"));
+        prb_assert(!res.found);
+    }
+#elif prb_PLATFORM_LINUX
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("/"));
+        prb_assert(!res.found);
+    }
+
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("/test"));
+        prb_assert(res.found);
+        prb_assert(res.matchByteIndex == 0);
+        prb_assert(res.matchLen == 1);
+    }
+
+    {
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("/test/"));
+        prb_assert(res.found);
+        prb_assert(res.matchByteIndex == 0);
+        prb_assert(res.matchLen == 1);
+    }
+#endif
+}
+
+function void
+test_getParentDir(void) {
     prb_TempMemory temp = prb_beginTempMemory();
 
-    prb_String cwd = prb_getCurrentWorkingDir();
-    prb_assert(prb_isDirectory(cwd));
-    prb_assert(!prb_isFile(cwd));
-    prb_assert(prb_isFile(prb_STR(__FILE__)));
-    prb_assert(!prb_isDirectory(prb_STR(__FILE__)));
+    prb_assert(prb_streq(prb_getParentDir(prb_STR("test/path")), prb_STR("test/")));
+    prb_assert(prb_streq(prb_getParentDir(prb_STR("test/path/")), prb_STR("test/")));
+    prb_assert(prb_streq(prb_getParentDir(prb_STR("test/path2/path")), prb_STR("test/path2/")));
 
-    prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
-    prb_clearDirectory(dir);
-    prb_assert(prb_directoryIsEmpty(dir));
-    prb_String dirWithTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
-    prb_assert(prb_isDirectory(dirWithTrailingSlash));
+    prb_assert(prb_streq(prb_getParentDir(prb_STR("test")), prb_getCurrentWorkingDir()));
 
-    prb_String file = prb_pathJoin(dir, prb_STR("temp.txt"));
-    prb_writeEntireFile(file, (prb_Bytes) {(u8*)"1", 1});
-    prb_assert(!prb_directoryIsEmpty(dir));
-    prb_assert(prb_isFile(file));
-    i32   usedBefore = prb_globalArena.used;
-    char* ptr = (char*)prb_globalArenaCurrentFreePtr();
-    ptr[0] = '2';
-    ptr[1] = '2';
-    prb_Bytes fileRead = prb_readEntireFile(file);
-    prb_assert(prb_globalArena.used == usedBefore + 2);
-    prb_assert(prb_streq((prb_String) {(const char*)fileRead.data, fileRead.len}, prb_STR("1")));
-    prb_assert(fileRead.len == 1);
-    prb_removeFileIfExists(file);
-    prb_assert(!prb_isFile(file));
-    prb_assert(prb_directoryIsEmpty(dir));
+#if prb_PLATFORM_WINDOWS
+    prb_assert(prb_streq(prb_getParentDir(prb_STR("C:\\\\test")), prb_STR("C:\\\\")));
+    prb_assert(prb_streq(prb_getParentDir(prb_STR("C:\\\\test/")), prb_STR("C:\\\\")));
+#elif prb_PLATFORM_LINUX
+    prb_assert(prb_streq(prb_getParentDir(prb_STR("/test")), prb_STR("/")));
+    prb_assert(prb_streq(prb_getParentDir(prb_STR("/test/")), prb_STR("/")));
+#endif
 
-    prb_removeDirectoryIfExists(dir);
-    prb_assert(!prb_isDirectory(dir));
-    prb_assert(!prb_isFile(dir));
+    prb_endTempMemory(temp);
+}
 
+function void
+test_getLastEntryInPath(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path")), prb_STR("path")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path/")), prb_STR("path/")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path2/path")), prb_STR("path")));
+
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test")), prb_STR("test")));
+
+#if prb_PLATFORM_WINDOWS
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("C:\\\\test")), prb_STR("C:\\\\")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("C:\\\\test/")), prb_STR("C:\\\\")));
+#elif prb_PLATFORM_LINUX
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/test")), prb_STR("test")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/test/")), prb_STR("test/")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/")), prb_STR("/")));
+#endif
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_replaceExt(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_assert(prb_streq(prb_replaceExt(prb_STR("test"), prb_STR("txt")), prb_STR("test.txt")));
+    prb_assert(prb_streq(prb_replaceExt(prb_STR("test.md"), prb_STR("txt")), prb_STR("test.txt")));
+    prb_assert(prb_streq(prb_replaceExt(prb_STR("path/test.md"), prb_STR("txt")), prb_STR("path/test.txt")));
+    prb_assert(prb_streq(prb_replaceExt(prb_STR("path/test.txt.md"), prb_STR("txt")), prb_STR("path/test.txt.txt")));
+
+    prb_endTempMemory(temp);
+}
+
+//
+//
+//
+
+function void
+test_printColor(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_fmtAndPrintln("color printing:");
+    prb_fmtAndPrintlnColor(prb_ColorID_Blue, "blue");
+    prb_fmtAndPrintlnColor(prb_ColorID_Cyan, "cyan");
+    prb_fmtAndPrintlnColor(prb_ColorID_Magenta, "magenta");
+    prb_fmtAndPrintlnColor(prb_ColorID_Yellow, "yellow");
+    prb_fmtAndPrintlnColor(prb_ColorID_Red, "red");
+    prb_fmtAndPrintlnColor(prb_ColorID_Green, "green");
+    prb_fmtAndPrintlnColor(prb_ColorID_Black, "black");
+    prb_fmtAndPrintlnColor(prb_ColorID_White, "white");
     prb_endTempMemory(temp);
 }
 
@@ -657,10 +1056,32 @@ main() {
     prb_assert(prb_globalArena.tempCount == 0);
 
     test_memeq();
-    test_alignment();
-    test_allocation();
-    test_pathManip();
-    test_filesystem();
+    test_getOffsetForAlignment();
+    test_globalArenaAlignFreePtr();
+    test_allocAndZero();
+    test_realloc();
+    test_globalArenaCurrentFreePtr();
+    test_globalArenaCurrentFreeSize();
+    test_globalArenaChangeUsed();
+    test_beginTempMemory();
+    test_endTempMemory();
+
+    test_isDirectory();
+    test_isFile();
+    test_directoryIsEmpty();
+    test_createDirIfNotExists();
+    test_removeFileOrDirectoryIfExists();
+    test_removeFileIfExists();
+    test_removeDirectoryIfExists();
+    test_clearDirectory();
+    test_getCurrentWorkingDir();
+    test_pathJoin();
+    test_charIsSep();
+    test_findSepBeforeLastEntry();
+    test_getParentDir();
+    test_getLastEntryInPath();
+    test_replaceExt();
+
     test_strings();
     test_fileformat();
     test_strFind();
