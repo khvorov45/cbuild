@@ -325,6 +325,7 @@ prb_PUBLICDEC prb_TempMemory prb_beginTempMemory(void);
 prb_PUBLICDEC void           prb_endTempMemory(prb_TempMemory temp);
 
 // SECTION Filesystem
+prb_PUBLICDEC bool                 prb_pathExists(prb_String path);
 prb_PUBLICDEC bool                 prb_isDirectory(prb_String path);
 prb_PUBLICDEC bool                 prb_isFile(prb_String path);
 prb_PUBLICDEC bool                 prb_directoryIsEmpty(prb_String path);
@@ -957,12 +958,62 @@ prb_endTempMemory(prb_TempMemory temp) {
 // SECTION Filesystem (implementation)
 //
 
-prb_PUBLICDEF bool
-prb_isDirectory(prb_String path) {
+#if prb_PLATFORM_LINUX
+
+typedef struct prb_linux_GetFileStatResult {
+    bool        success;
+    struct stat stat;
+} prb_linux_GetFileStatResult;
+
+static prb_linux_GetFileStatResult
+prb_linux_getFileStat(prb_String path) {
     prb_assert(path.str && path.len > 0);
-    bool           result = false;
+    prb_TempMemory              temp = prb_beginTempMemory();
+    prb_linux_GetFileStatResult result = {};
+    const char*                 pathNull = prb_strGetNullTerminated(path);
+    struct stat                 statBuf = {};
+    if (stat(pathNull, &statBuf) == 0) {
+        result = (prb_linux_GetFileStatResult) {.success = true, .stat = statBuf};
+    }
+    prb_endTempMemory(temp);
+    return result;
+}
+
+static int
+prb_linux_open(prb_String path, int oflags, mode_t mode) {
     prb_TempMemory temp = prb_beginTempMemory();
     const char*    pathNull = prb_strGetNullTerminated(path);
+    int32_t        handle = open(pathNull, oflags, mode);
+    prb_assert(handle != -1);
+    prb_endTempMemory(temp);
+    return handle;
+}
+
+#endif
+
+prb_PUBLICDEF bool
+prb_pathExists(prb_String path) {
+    bool result = false;
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    prb_linux_GetFileStatResult stat = prb_linux_getFileStat(path);
+    result = stat.success;
+
+#else
+#error unimplemented
+#endif
+
+    return result;
+}
+
+prb_PUBLICDEF bool
+prb_isDirectory(prb_String path) {
+    bool result = false;
 
 #if prb_PLATFORM_WINDOWS
 
@@ -980,25 +1031,21 @@ prb_isDirectory(prb_String path) {
 
 #elif prb_PLATFORM_LINUX
 
-    struct stat statBuf = {};
-    if (stat(pathNull, &statBuf) == 0) {
-        result = S_ISDIR(statBuf.st_mode);
+    prb_linux_GetFileStatResult stat = prb_linux_getFileStat(path);
+    if (stat.success) {
+        result = S_ISDIR(stat.stat.st_mode);
     }
 
 #else
 #error unimplemented
 #endif
 
-    prb_endTempMemory(temp);
     return result;
 }
 
 prb_PUBLICDEF bool
 prb_isFile(prb_String path) {
-    prb_assert(path.str && path.len > 0);
-    bool           result = false;
-    prb_TempMemory temp = prb_beginTempMemory();
-    const char*    pathNull = prb_strGetNullTerminated(path);
+    bool result = false;
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1006,60 +1053,24 @@ prb_isFile(prb_String path) {
 
 #elif prb_PLATFORM_LINUX
 
-    struct stat statBuf = {};
-    if (stat(pathNull, &statBuf) == 0) {
-        result = S_ISREG(statBuf.st_mode);
+    prb_linux_GetFileStatResult stat = prb_linux_getFileStat(path);
+    if (stat.success) {
+        result = S_ISREG(stat.stat.st_mode);
     }
 
 #else
 #error unimplemented
 #endif
 
-    prb_endTempMemory(temp);
     return result;
 }
 
 prb_PUBLICDEF bool
 prb_directoryIsEmpty(prb_String path) {
-    prb_assert(prb_isDirectory(path));
-    bool           result = true;
-    prb_TempMemory temp = prb_beginTempMemory();
-    const char*    pathNull = prb_strGetNullTerminated(path);
-
-#if prb_PLATFORM_WINDOWS
-
-    prb_String       search = prb_pathJoin2(path, prb_STR("*"));
-    WIN32_FIND_DATAA findData;
-    HANDLE           firstHandle = FindFirstFileA(search.ptr, &findData);
-    bool             result = true;
-    if (findData.cFileName[0] == '.' && findData.cFileName[1] == '\0') {
-        while (FindNextFileA(firstHandle, &findData)) {
-            if (findData.cFileName[0] == '.' && findData.cFileName[1] == '.' && findData.cFileName[2] == '\0') {
-                continue;
-            }
-            result = false;
-            break;
-        }
-    }
-
-#elif prb_PLATFORM_LINUX
-
-    DIR* pathHandle = opendir(pathNull);
-    prb_assert(pathHandle);
-    for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
-        bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
-        bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
-        if (!isDot && !isDoubleDot) {
-            result = false;
-            break;
-        }
-    }
-    closedir(pathHandle);
-
-#else
-#error unimplemented
-#endif
-
+    prb_TempMemory       temp = prb_beginTempMemory();
+    prb_DirEntryIterator iter = prb_createDirEntryIter(path);
+    bool                 result = prb_dirEntryIterNext(&iter) == prb_Failure;
+    prb_destroyDirEntryIter(&iter);
     prb_endTempMemory(temp);
     return result;
 }
@@ -1120,10 +1131,10 @@ prb_removeFileIfExists(prb_String path) {
 prb_PUBLICDEF void
 prb_removeDirectoryIfExists(prb_String path) {
     prb_TempMemory temp = prb_beginTempMemory();
-    const char*    pathNull = prb_strGetNullTerminated(path);
 
 #if prb_PLATFORM_WINDOWS
 
+    const char*       pathNull = prb_strGetNullTerminated(path);
     prb_StringBuilder doubleNullBuilder = prb_createStringBuilder(path.len + 2);
     prb_stringBuilderWrite(&doubleNullBuilder, path);
     SHFileOperationA(&(SHFILEOPSTRUCTA) {
@@ -1134,21 +1145,17 @@ prb_removeDirectoryIfExists(prb_String path) {
 
 #elif prb_PLATFORM_LINUX
 
-    DIR* pathHandle = opendir(pathNull);
-    if (pathHandle) {
-        for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
-            bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
-            bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
-            if (!isDot && !isDoubleDot) {
-                prb_String fullpath = prb_pathJoin(path, prb_STR(entry->d_name));
-                prb_removeFileOrDirectoryIfExists(fullpath);
-            }
+    if (prb_pathExists(path)) {
+        prb_DirEntryIterator iter = prb_createDirEntryIter(path);
+        while (prb_dirEntryIterNext(&iter)) {
+            prb_removeFileOrDirectoryIfExists(iter.curEntryPath);
         }
+        prb_destroyDirEntryIter(&iter);
         prb_assert(prb_directoryIsEmpty(path));
+        const char* pathNull = prb_strGetNullTerminated(path);
         int32_t rmdirResult = rmdir(pathNull);
         prb_assert(rmdirResult == 0);
     }
-    closedir(pathHandle);
 
 #else
 #error unimplemented
@@ -1309,8 +1316,9 @@ prb_replaceExt(prb_String path, prb_String newExt) {
 
 prb_PUBLICDEF prb_DirEntryIterator
 prb_createDirEntryIter(prb_String dir) {
-    prb_TempMemory temp = prb_beginTempMemory();
-    const char*    pathNull = prb_strGetNullTerminated(dir);
+    prb_TempMemory       temp = prb_beginTempMemory();
+    prb_DirEntryIterator iter = {};
+    const char*          pathNull = prb_strGetNullTerminated(dir);
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1320,20 +1328,20 @@ prb_createDirEntryIter(prb_String dir) {
 
     DIR* handle = opendir(pathNull);
     prb_assert(handle);
-    prb_endTempMemory(temp);
-
-    prb_DirEntryIterator iter = {.dir = dir, .curEntryPath = (prb_String){}, .handle = handle};
-    return iter;
+    iter = (prb_DirEntryIterator) {.dir = dir, .curEntryPath = (prb_String) {}, .handle = handle};
 
 #else
 #error unimplemented
 #endif
+
+    prb_endTempMemory(temp);
+    return iter;
 }
 
 prb_PUBLICDEF prb_Status
 prb_dirEntryIterNext(prb_DirEntryIterator* iter) {
     prb_Status result = prb_Failure;
-    iter->curEntryPath = (prb_String){};
+    iter->curEntryPath = (prb_String) {};
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1522,19 +1530,13 @@ prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCo
 
 prb_PUBLICDEF prb_Bytes
 prb_readEntireFile(prb_String path) {
-    prb_TempMemory temp = prb_beginTempMemory();
-    const char*    pathNull = prb_strGetNullTerminated(path);
-
 #if prb_PLATFORM_WINDOWS
 
 #error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
-    int32_t handle = open(pathNull, O_RDONLY, 0);
-    prb_assert(handle != -1);
-    prb_endTempMemory(temp);
-
+    int handle = prb_linux_open(path, O_RDONLY, 0);
     struct stat statBuf = {};
     prb_assert(fstat(handle, &statBuf) == 0);
     uint8_t* buf = (uint8_t*)prb_allocAndZero(statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
@@ -1552,16 +1554,13 @@ prb_readEntireFile(prb_String path) {
 
 prb_PUBLICDEF void
 prb_writeEntireFile(prb_String path, prb_Bytes content) {
-    prb_TempMemory temp = prb_beginTempMemory();
-    const char*    pathNull = prb_strGetNullTerminated(path);
-
 #if prb_PLATFORM_WINDOWS
 
 #error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
-    int32_t handle = open(pathNull, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
+    int handle = prb_linux_open(path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
     prb_assert(handle != -1);
     int32_t writeResult = write(handle, content.data, content.len);
     prb_assert(writeResult == content.len);
@@ -1570,8 +1569,6 @@ prb_writeEntireFile(prb_String path, prb_Bytes content) {
 #else
 #error unimplemented
 #endif
-
-    prb_endTempMemory(temp);
 }
 
 prb_PUBLICDEF void

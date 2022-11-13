@@ -150,6 +150,70 @@ test_endTempMemory(void) {
 //
 
 function void
+test_pathExists(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_removeDirectoryIfExists(dir);
+    prb_assert(!prb_pathExists(dir));
+    prb_createDirIfNotExists(dir);
+    prb_assert(prb_pathExists(dir));
+    prb_removeDirectoryIfExists(dir);
+    prb_assert(!prb_pathExists(dir));
+
+    prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
+    prb_removeDirectoryIfExists(dirTrailingSlash);
+    prb_assert(!prb_pathExists(dirTrailingSlash));
+    prb_assert(!prb_pathExists(dir));
+    prb_createDirIfNotExists(dirTrailingSlash);
+    prb_assert(prb_pathExists(dirTrailingSlash));
+    prb_assert(prb_pathExists(dir));
+    prb_removeDirectoryIfExists(dirTrailingSlash);
+    prb_assert(!prb_pathExists(dirTrailingSlash));
+    prb_assert(!prb_pathExists(dir));
+
+    prb_String dirNotNull = prb_fmt("%.*sabc", prb_LIT(dir));
+    dirNotNull.len = dir.len;
+    prb_removeDirectoryIfExists(dirNotNull);
+    prb_assert(!prb_pathExists(dirNotNull));
+    prb_assert(!prb_pathExists(dir));
+    prb_createDirIfNotExists(dirNotNull);
+    prb_assert(prb_pathExists(dirNotNull));
+    prb_assert(prb_pathExists(dir));
+    prb_removeDirectoryIfExists(dirNotNull);
+    prb_assert(!prb_pathExists(dirNotNull));
+    prb_assert(!prb_pathExists(dir));
+
+    prb_String filepath = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_String filepathNotNull = prb_fmt("%.*sabc", prb_LIT(filepath));
+    filepathNotNull.len = filepath.len;
+
+    prb_removeFileIfExists(filepath);
+    prb_assert(!prb_pathExists(filepath));
+    prb_assert(!prb_pathExists(filepathNotNull));
+    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(prb_pathExists(filepath));
+    prb_assert(prb_pathExists(filepathNotNull));
+    prb_removeFileIfExists(filepath);
+    prb_assert(!prb_pathExists(filepath));
+    prb_assert(!prb_pathExists(filepathNotNull));
+
+    prb_removeFileIfExists(filepathNotNull);
+    prb_assert(!prb_pathExists(filepathNotNull));
+    prb_assert(!prb_pathExists(filepath));
+    prb_writeEntireFile(filepathNotNull, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_assert(prb_pathExists(filepathNotNull));
+    prb_assert(prb_pathExists(filepath));
+    prb_removeFileIfExists(filepathNotNull);
+    prb_assert(!prb_pathExists(filepathNotNull));
+    prb_assert(!prb_pathExists(filepath));
+
+    prb_assert(prb_pathExists(prb_STR(__FILE__)));
+
+    prb_endTempMemory(temp);
+}
+
+function void
 test_isDirectory(void) {
     prb_TempMemory temp = prb_beginTempMemory();
 
@@ -621,6 +685,8 @@ test_dirEntryIter(void) {
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_String dirNotNull = prb_fmt("%.*sabc", prb_LIT(dir));
+    dirNotNull.len = dir.len;
     prb_clearDirectory(dir);
 
     prb_String files[] = {
@@ -636,6 +702,7 @@ test_dirEntryIter(void) {
     }
 
     prb_DirEntryIterator iter = prb_createDirEntryIter(dir);
+    prb_DirEntryIterator iterNotNull = prb_createDirEntryIter(dirNotNull);
     i32                  filesFound[] = {0, 0, 0, 0};
     i32 totalEntries = 0;
     prb_assert(prb_arrayLength(filesFound) == prb_arrayLength(files));
@@ -650,6 +717,8 @@ test_dirEntryIter(void) {
         }
         prb_assert(found);
         totalEntries += 1;
+        prb_assert(prb_dirEntryIterNext(&iterNotNull) == prb_Success);
+        prb_assert(prb_streq(iter.curEntryPath, iterNotNull.curEntryPath));
     }
 
     prb_assert(totalEntries == prb_arrayLength(files));
@@ -657,9 +726,17 @@ test_dirEntryIter(void) {
         prb_assert(filesFound[fileIndex] == 1);
     }
 
+    prb_assert(prb_dirEntryIterNext(&iter) == prb_Failure);
+    prb_assert(prb_dirEntryIterNext(&iterNotNull) == prb_Failure);
+
     prb_destroyDirEntryIter(&iter);
     prb_DirEntryIterator empty = {};
     prb_assert(prb_memeq(&iter, &empty, sizeof(prb_DirEntryIterator)));
+    prb_destroyDirEntryIter(&iterNotNull);
+
+    prb_clearDirectory(dir);
+    iter = prb_createDirEntryIter(dir);
+    prb_assert(prb_dirEntryIterNext(&iter) == prb_Failure);
 
     prb_removeDirectoryIfExists(dir);
     prb_endTempMemory(temp);
@@ -1075,6 +1152,7 @@ main() {
     test_beginTempMemory();
     test_endTempMemory();
 
+    test_pathExists();
     test_isDirectory();
     test_isFile();
     test_directoryIsEmpty();
