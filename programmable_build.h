@@ -292,6 +292,18 @@ typedef struct prb_StrFindIterator {
     prb_StringFindResult curResult;
 } prb_StrFindIterator;
 
+typedef struct prb_DirEntryIterator {
+    prb_String dir;
+    prb_String curEntryPath;
+#if prb_PLATFORM_WINDOWS
+#error unimplemented
+#elif prb_PLATFORM_LINUX
+    DIR*  handle;
+#else
+#error unimplemented
+#endif
+} prb_DirEntryIterator;
+
 #ifndef prb_IMPLEMENTATION
 extern prb_Arena prb_globalArena;
 #endif
@@ -328,7 +340,9 @@ prb_PUBLICDEC prb_StringFindResult prb_findSepBeforeLastEntry(prb_String path);
 prb_PUBLICDEC prb_String           prb_getParentDir(prb_String path);
 prb_PUBLICDEC prb_String           prb_getLastEntryInPath(prb_String path);
 prb_PUBLICDEC prb_String           prb_replaceExt(prb_String path, prb_String newExt);
-prb_PUBLICDEC prb_String*          prb_listAllEntriesInDir(prb_String path);
+prb_PUBLICDEC prb_DirEntryIterator prb_createDirEntryIter(prb_String dir);
+prb_PUBLICDEC prb_Status           prb_dirEntryIterNext(prb_DirEntryIterator* iter);
+prb_PUBLICDEC void                 prb_destroyDirEntryIter(prb_DirEntryIterator* iter);
 prb_PUBLICDEC prb_String*          prb_findAllMatchingPaths(prb_String pattern);
 prb_PUBLICDEC uint64_t             prb_getLatestLastModifiedFromPattern(prb_String pattern);
 prb_PUBLICDEC uint64_t             prb_getEarliestLastModifiedFromPattern(prb_String pattern);
@@ -1293,12 +1307,10 @@ prb_replaceExt(prb_String path, prb_String newExt) {
     return result;
 }
 
-prb_PUBLICDEF prb_String*
-prb_listAllEntriesInDir(prb_String path) {
-    prb_assert(prb_isDirectory(path));
-    prb_String*    result = 0;
+prb_PUBLICDEF prb_DirEntryIterator
+prb_createDirEntryIter(prb_String dir) {
     prb_TempMemory temp = prb_beginTempMemory();
-    const char*    pathNull = prb_strGetNullTerminated(path);
+    const char*    pathNull = prb_strGetNullTerminated(dir);
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1306,25 +1318,60 @@ prb_listAllEntriesInDir(prb_String path) {
 
 #elif prb_PLATFORM_LINUX
 
-    DIR* pathHandle = opendir(pathNull);
-    prb_assert(pathHandle);
+    DIR* handle = opendir(pathNull);
+    prb_assert(handle);
     prb_endTempMemory(temp);
 
-    for (struct dirent* entry = readdir(pathHandle); entry; entry = readdir(pathHandle)) {
+    prb_DirEntryIterator iter = {.dir = dir, .curEntryPath = (prb_String){}, .handle = handle};
+    return iter;
+
+#else
+#error unimplemented
+#endif
+}
+
+prb_PUBLICDEF prb_Status
+prb_dirEntryIterNext(prb_DirEntryIterator* iter) {
+    prb_Status result = prb_Failure;
+    iter->curEntryPath = (prb_String){};
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    for (struct dirent* entry = readdir(iter->handle); entry; entry = readdir(iter->handle)) {
         bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
         bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
         if (!isDot && !isDoubleDot) {
-            prb_String fullpath = prb_pathJoin(path, prb_STR(entry->d_name));
-            arrput(result, fullpath);
+            result = prb_Success;
+            iter->curEntryPath = prb_pathJoin(iter->dir, prb_STR(entry->d_name));
+            break;
         }
     }
-    closedir(pathHandle);
 
 #else
 #error unimplemented
 #endif
 
     return result;
+}
+
+prb_PUBLICDEF void
+prb_destroyDirEntryIter(prb_DirEntryIterator* iter) {
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    closedir(iter->handle);
+    *iter = (prb_DirEntryIterator) {};
+
+#else
+#error unimplemented
+#endif
 }
 
 prb_PUBLICDEF prb_String*

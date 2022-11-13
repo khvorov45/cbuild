@@ -616,6 +616,55 @@ test_replaceExt(void) {
     prb_endTempMemory(temp);
 }
 
+function void
+test_dirEntryIter(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_clearDirectory(dir);
+
+    prb_String files[] = {
+        prb_pathJoin(dir, prb_STR("f1")),
+        prb_pathJoin(dir, prb_STR("f2")),
+        prb_pathJoin(dir, prb_STR("f3")),
+        prb_pathJoin(dir, prb_STR("f4")),
+    };
+
+    for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
+        prb_String file = files[fileIndex];
+        prb_writeEntireFile(file, (prb_Bytes) {(u8*)file.str, file.len});
+    }
+
+    prb_DirEntryIterator iter = prb_createDirEntryIter(dir);
+    i32                  filesFound[] = {0, 0, 0, 0};
+    i32 totalEntries = 0;
+    prb_assert(prb_arrayLength(filesFound) == prb_arrayLength(files));
+    while (prb_dirEntryIterNext(&iter) == prb_Success) {
+        bool found = false;
+        for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
+            prb_String file = files[fileIndex];
+            found = prb_streq(file, iter.curEntryPath);
+            if (found) {
+                filesFound[fileIndex] += 1;
+            }
+        }
+        prb_assert(found);
+        totalEntries += 1;
+    }
+
+    prb_assert(totalEntries == prb_arrayLength(files));
+    for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
+        prb_assert(filesFound[fileIndex] == 1);
+    }
+
+    prb_destroyDirEntryIter(&iter);
+    prb_DirEntryIterator empty = {};
+    prb_assert(prb_memeq(&iter, &empty, sizeof(prb_DirEntryIterator)));
+
+    prb_removeDirectoryIfExists(dir);
+    prb_endTempMemory(temp);
+}
+
 //
 //
 //
@@ -927,46 +976,6 @@ test_strStartsEnds(void) {
 }
 
 function void
-test_pathsInDir(void) {
-    prb_String dirname = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
-    prb_clearDirectory(dirname);
-    const char* fileNames[] = {"file1.c", "file2.c", "file1.h", "file2.h"};
-    i32         fileCount = prb_arrayLength(fileNames);
-    prb_String* filePaths = 0;
-    arrsetcap(filePaths, fileCount);
-    for (i32 fileIndex = 0; fileIndex < fileCount; fileIndex++) {
-        prb_String filename = prb_STR(fileNames[fileIndex]);
-        prb_String filepath = prb_pathJoin(dirname, filename);
-        arrput(filePaths, filepath);
-        prb_writeEntireFile(filepath, (prb_Bytes) {(u8*)filename.str, filename.len});
-    }
-
-    prb_String* allFiles = prb_listAllEntriesInDir(dirname);
-    prb_assert(arrlen(allFiles) == fileCount);
-    for (i32 fileIndex = 0; fileIndex < fileCount; fileIndex++) {
-        prb_String filename = allFiles[fileIndex];
-        prb_assert(
-            prb_strEndsWith(filename, prb_STR("file1.c"), prb_StringFindMode_Exact)
-            || prb_strEndsWith(filename, prb_STR("file2.c"), prb_StringFindMode_Exact)
-            || prb_strEndsWith(filename, prb_STR("file1.h"), prb_StringFindMode_Exact)
-            || prb_strEndsWith(filename, prb_STR("file2.h"), prb_StringFindMode_Exact)
-        );
-    }
-
-    prb_String* cfiles = prb_findAllMatchingPaths(prb_pathJoin(dirname, prb_STR("*c")));
-    prb_assert(arrlen(cfiles) == 2);
-    for (i32 fileIndex = 0; fileIndex < 2; fileIndex++) {
-        prb_String filename = cfiles[fileIndex];
-        prb_assert(
-            prb_strEndsWith(filename, prb_STR("file1.c"), prb_StringFindMode_Exact)
-            || prb_strEndsWith(filename, prb_STR("file2.c"), prb_StringFindMode_Exact)
-        );
-    }
-
-    prb_removeDirectoryIfExists(dirname);
-}
-
-function void
 test_lineIter(void) {
     prb_String       lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
     prb_LineIterator iter = prb_createLineIter(lines);
@@ -1081,6 +1090,7 @@ main() {
     test_getParentDir();
     test_getLastEntryInPath();
     test_replaceExt();
+    test_dirEntryIter();
 
     test_strings();
     test_fileformat();
@@ -1088,7 +1098,6 @@ main() {
     test_strFindIter();
     test_strStartsEnds();
     test_lineIter();
-    test_pathsInDir();
 
     test_printColor();
 
