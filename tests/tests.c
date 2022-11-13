@@ -681,19 +681,23 @@ test_replaceExt(void) {
 }
 
 function void
-test_dirEntryIter(void) {
+test_pathFindIter(void) {
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
     prb_String dirNotNull = prb_fmt("%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
+    prb_String pattern = prb_fmt("%.*s/*.h", prb_LIT(dir));
+    prb_String patternNotNull = prb_fmt("%.*sabc", prb_LIT(pattern));
+    patternNotNull.len = pattern.len;
+
     prb_clearDirectory(dir);
 
     prb_String files[] = {
-        prb_pathJoin(dir, prb_STR("f1")),
-        prb_pathJoin(dir, prb_STR("f2")),
-        prb_pathJoin(dir, prb_STR("f3")),
-        prb_pathJoin(dir, prb_STR("f4")),
+        prb_pathJoin(dir, prb_STR("f1.c")),
+        prb_pathJoin(dir, prb_STR("f2.h")),
+        prb_pathJoin(dir, prb_STR("f3.c")),
+        prb_pathJoin(dir, prb_STR("f4.h")),
     };
 
     for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
@@ -701,24 +705,25 @@ test_dirEntryIter(void) {
         prb_writeEntireFile(file, (prb_Bytes) {(u8*)file.str, file.len});
     }
 
-    prb_DirEntryIterator iter = prb_createDirEntryIter(dir);
-    prb_DirEntryIterator iterNotNull = prb_createDirEntryIter(dirNotNull);
+    prb_PathFindIterator iter = prb_createPathFindIter(dir, prb_PathFindMode_AllFilesInDir);
+    prb_PathFindIterator iterNotNull = prb_createPathFindIter(dirNotNull, prb_PathFindMode_AllFilesInDir);
+
     i32                  filesFound[] = {0, 0, 0, 0};
-    i32 totalEntries = 0;
+    i32                  totalEntries = 0;
     prb_assert(prb_arrayLength(filesFound) == prb_arrayLength(files));
-    while (prb_dirEntryIterNext(&iter) == prb_Success) {
+    while (prb_pathFindIterNext(&iter) == prb_Success) {
         bool found = false;
         for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
             prb_String file = files[fileIndex];
-            found = prb_streq(file, iter.curEntryPath);
+            found = prb_streq(file, iter.curPath);
             if (found) {
                 filesFound[fileIndex] += 1;
             }
         }
         prb_assert(found);
         totalEntries += 1;
-        prb_assert(prb_dirEntryIterNext(&iterNotNull) == prb_Success);
-        prb_assert(prb_streq(iter.curEntryPath, iterNotNull.curEntryPath));
+        prb_assert(prb_pathFindIterNext(&iterNotNull) == prb_Success);
+        prb_assert(prb_streq(iter.curPath, iterNotNull.curPath));
     }
 
     prb_assert(totalEntries == prb_arrayLength(files));
@@ -726,17 +731,49 @@ test_dirEntryIter(void) {
         prb_assert(filesFound[fileIndex] == 1);
     }
 
-    prb_assert(prb_dirEntryIterNext(&iter) == prb_Failure);
-    prb_assert(prb_dirEntryIterNext(&iterNotNull) == prb_Failure);
+    prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
+    prb_assert(prb_pathFindIterNext(&iterNotNull) == prb_Failure);
 
-    prb_destroyDirEntryIter(&iter);
-    prb_DirEntryIterator empty = {};
-    prb_assert(prb_memeq(&iter, &empty, sizeof(prb_DirEntryIterator)));
-    prb_destroyDirEntryIter(&iterNotNull);
+    prb_destroyPathFindIter(&iter);
+    prb_PathFindIterator empty = {};
+    prb_assert(prb_memeq(&iter, &empty, sizeof(prb_PathFindIterator)));
+    prb_destroyPathFindIter(&iterNotNull);
+
+    prb_PathFindIterator iterPattern = prb_createPathFindIter(pattern, prb_PathFindMode_Glob);
+    prb_PathFindIterator iterPatternNotNull = prb_createPathFindIter(patternNotNull, prb_PathFindMode_Glob);
+    i32 totalEntriesPattern = 0;
+    while (prb_pathFindIterNext(&iterPattern) == prb_Success) {
+        bool found = false;
+        for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
+            prb_String file = files[fileIndex];
+            found = prb_streq(file, iterPattern.curPath);
+            if (found) {
+                filesFound[fileIndex] += 1;
+            }
+        }
+        totalEntriesPattern += 1;
+        prb_assert(prb_pathFindIterNext(&iterPatternNotNull) == prb_Success);
+        prb_assert(prb_streq(iterPattern.curPath, iterPatternNotNull.curPath));
+    }
+
+    prb_assert(totalEntriesPattern == 2);
+    prb_assert(filesFound[0] == 1);
+    prb_assert(filesFound[1] == 2);
+    prb_assert(filesFound[2] == 1);
+    prb_assert(filesFound[3] == 2);
+
+    prb_assert(prb_pathFindIterNext(&iterPattern) == prb_Failure);
+    prb_assert(prb_pathFindIterNext(&iterPatternNotNull) == prb_Failure);
+
+    prb_destroyPathFindIter(&iterPattern);
+    prb_assert(prb_memeq(&iterPattern, &empty, sizeof(prb_PathFindIterator)));
+    prb_destroyPathFindIter(&iterPatternNotNull);
 
     prb_clearDirectory(dir);
-    iter = prb_createDirEntryIter(dir);
-    prb_assert(prb_dirEntryIterNext(&iter) == prb_Failure);
+    iter = prb_createPathFindIter(dir, prb_PathFindMode_AllFilesInDir);
+    prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
+    iter = prb_createPathFindIter(pattern, prb_PathFindMode_Glob);
+    prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
 
     prb_removeDirectoryIfExists(dir);
     prb_endTempMemory(temp);
@@ -1168,7 +1205,7 @@ main() {
     test_getParentDir();
     test_getLastEntryInPath();
     test_replaceExt();
-    test_dirEntryIter();
+    test_pathFindIter();
 
     test_strings();
     test_fileformat();

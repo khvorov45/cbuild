@@ -29,11 +29,13 @@ All prb_* iterators are meant to be used in loops like this
 for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
     // pull stuff you need off iter
 }
+prb_destroyIter() functions don't destroy actual entries, only system resources (e.g. directory handles).
 */
 
 // TODO(khvorov) Make sure utf8 paths work on windows
 // TODO(khvorov) File search by regex + recursive
 // TODO(khvorov) Directory iterator to compress all readdir usages
+// TODO(khvorov) Get rid of static array allocations and just stick to stb ds dynamic arrays?
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -292,17 +294,32 @@ typedef struct prb_StrFindIterator {
     prb_StringFindResult curResult;
 } prb_StrFindIterator;
 
-typedef struct prb_DirEntryIterator {
-    prb_String dir;
-    prb_String curEntryPath;
+typedef enum prb_PathFindMode {
+    prb_PathFindMode_AllFilesInDir,
+    prb_PathFindMode_Glob,
+} prb_PathFindMode;
+
+typedef struct prb_PathFindIterator {
+    prb_String       pattern;
+    prb_PathFindMode mode;
+    prb_String       curPath;
 #if prb_PLATFORM_WINDOWS
 #error unimplemented
 #elif prb_PLATFORM_LINUX
-    DIR*  handle;
+    union {
+        struct {
+            DIR* handle;
+        } allFilesInDir;
+        struct {
+            int     returnVal;
+            int32_t currentIndex;
+            glob_t  result;
+        } glob;
+    };
 #else
 #error unimplemented
 #endif
-} prb_DirEntryIterator;
+} prb_PathFindIterator;
 
 #ifndef prb_IMPLEMENTATION
 extern prb_Arena prb_globalArena;
@@ -341,10 +358,9 @@ prb_PUBLICDEC prb_StringFindResult prb_findSepBeforeLastEntry(prb_String path);
 prb_PUBLICDEC prb_String           prb_getParentDir(prb_String path);
 prb_PUBLICDEC prb_String           prb_getLastEntryInPath(prb_String path);
 prb_PUBLICDEC prb_String           prb_replaceExt(prb_String path, prb_String newExt);
-prb_PUBLICDEC prb_DirEntryIterator prb_createDirEntryIter(prb_String dir);
-prb_PUBLICDEC prb_Status           prb_dirEntryIterNext(prb_DirEntryIterator* iter);
-prb_PUBLICDEC void                 prb_destroyDirEntryIter(prb_DirEntryIterator* iter);
-prb_PUBLICDEC prb_String*          prb_findAllMatchingPaths(prb_String pattern);
+prb_PUBLICDEC prb_PathFindIterator prb_createPathFindIter(prb_String pattern, prb_PathFindMode mode);
+prb_PUBLICDEC prb_Status           prb_pathFindIterNext(prb_PathFindIterator* iter);
+prb_PUBLICDEC void                 prb_destroyPathFindIter(prb_PathFindIterator* iter);
 prb_PUBLICDEC uint64_t             prb_getLatestLastModifiedFromPattern(prb_String pattern);
 prb_PUBLICDEC uint64_t             prb_getEarliestLastModifiedFromPattern(prb_String pattern);
 prb_PUBLICDEC uint64_t             prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
@@ -1068,9 +1084,9 @@ prb_isFile(prb_String path) {
 prb_PUBLICDEF bool
 prb_directoryIsEmpty(prb_String path) {
     prb_TempMemory       temp = prb_beginTempMemory();
-    prb_DirEntryIterator iter = prb_createDirEntryIter(path);
-    bool                 result = prb_dirEntryIterNext(&iter) == prb_Failure;
-    prb_destroyDirEntryIter(&iter);
+    prb_PathFindIterator iter = prb_createPathFindIter(path, prb_PathFindMode_AllFilesInDir);
+    bool                 result = prb_pathFindIterNext(&iter) == prb_Failure;
+    prb_destroyPathFindIter(&iter);
     prb_endTempMemory(temp);
     return result;
 }
@@ -1146,11 +1162,11 @@ prb_removeDirectoryIfExists(prb_String path) {
 #elif prb_PLATFORM_LINUX
 
     if (prb_pathExists(path)) {
-        prb_DirEntryIterator iter = prb_createDirEntryIter(path);
-        while (prb_dirEntryIterNext(&iter)) {
-            prb_removeFileOrDirectoryIfExists(iter.curEntryPath);
+        prb_PathFindIterator iter = prb_createPathFindIter(path, prb_PathFindMode_AllFilesInDir);
+        while (prb_pathFindIterNext(&iter)) {
+            prb_removeFileOrDirectoryIfExists(iter.curPath);
         }
-        prb_destroyDirEntryIter(&iter);
+        prb_destroyPathFindIter(&iter);
         prb_assert(prb_directoryIsEmpty(path));
         const char* pathNull = prb_strGetNullTerminated(path);
         int32_t rmdirResult = rmdir(pathNull);
@@ -1314,11 +1330,14 @@ prb_replaceExt(prb_String path, prb_String newExt) {
     return result;
 }
 
-prb_PUBLICDEF prb_DirEntryIterator
-prb_createDirEntryIter(prb_String dir) {
+prb_PUBLICDEF prb_PathFindIterator
+prb_createPathFindIter(prb_String pattern, prb_PathFindMode mode) {
     prb_TempMemory       temp = prb_beginTempMemory();
-    prb_DirEntryIterator iter = {};
-    const char*          pathNull = prb_strGetNullTerminated(dir);
+    prb_PathFindIterator iter = {};
+    iter.pattern = pattern;
+    iter.mode = mode;
+    iter.curPath = (prb_String) {};
+    const char* patternNull = prb_strGetNullTerminated(pattern);
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1326,9 +1345,17 @@ prb_createDirEntryIter(prb_String dir) {
 
 #elif prb_PLATFORM_LINUX
 
-    DIR* handle = opendir(pathNull);
-    prb_assert(handle);
-    iter = (prb_DirEntryIterator) {.dir = dir, .curEntryPath = (prb_String) {}, .handle = handle};
+    switch (mode) {
+        case prb_PathFindMode_AllFilesInDir: {
+            iter.allFilesInDir.handle = opendir(patternNull);
+            prb_assert(iter.allFilesInDir.handle);
+        } break;
+
+        case prb_PathFindMode_Glob: {
+            iter.glob.currentIndex = -1;
+            iter.glob.returnVal = glob(patternNull, GLOB_NOSORT, 0, &iter.glob.result);
+        } break;
+    }
 
 #else
 #error unimplemented
@@ -1339,9 +1366,9 @@ prb_createDirEntryIter(prb_String dir) {
 }
 
 prb_PUBLICDEF prb_Status
-prb_dirEntryIterNext(prb_DirEntryIterator* iter) {
+prb_pathFindIterNext(prb_PathFindIterator* iter) {
     prb_Status result = prb_Failure;
-    iter->curEntryPath = (prb_String) {};
+    iter->curPath = (prb_String) {};
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1349,14 +1376,27 @@ prb_dirEntryIterNext(prb_DirEntryIterator* iter) {
 
 #elif prb_PLATFORM_LINUX
 
-    for (struct dirent* entry = readdir(iter->handle); entry; entry = readdir(iter->handle)) {
-        bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
-        bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
-        if (!isDot && !isDoubleDot) {
-            result = prb_Success;
-            iter->curEntryPath = prb_pathJoin(iter->dir, prb_STR(entry->d_name));
-            break;
-        }
+    switch (iter->mode) {
+        case prb_PathFindMode_AllFilesInDir: {
+            for (struct dirent* entry = readdir(iter->allFilesInDir.handle); entry; entry = readdir(iter->allFilesInDir.handle)) {
+                bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
+                bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
+                if (!isDot && !isDoubleDot) {
+                    result = prb_Success;
+                    iter->curPath = prb_pathJoin(iter->pattern, prb_STR(entry->d_name));
+                    break;
+                }
+            }
+        } break;
+
+        case prb_PathFindMode_Glob: {
+            iter->glob.currentIndex += 1;
+            if (iter->glob.returnVal == 0 && (size_t)iter->glob.currentIndex < iter->glob.result.gl_pathc) {
+                result = prb_Success;
+                // NOTE(khvorov) Make a copy so that this is still usable after destoying the iterator
+                iter->curPath = prb_fmt("%s", iter->glob.result.gl_pathv[iter->glob.currentIndex]);
+            }
+        } break;
     }
 
 #else
@@ -1367,51 +1407,23 @@ prb_dirEntryIterNext(prb_DirEntryIterator* iter) {
 }
 
 prb_PUBLICDEF void
-prb_destroyDirEntryIter(prb_DirEntryIterator* iter) {
+prb_destroyPathFindIter(prb_PathFindIterator* iter) {
 #if prb_PLATFORM_WINDOWS
 
 #error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
-    closedir(iter->handle);
-    *iter = (prb_DirEntryIterator) {};
-
-#else
-#error unimplemented
-#endif
-}
-
-prb_PUBLICDEF prb_String*
-prb_findAllMatchingPaths(prb_String pattern) {
-    prb_String*    result = 0;
-    prb_TempMemory temp = prb_beginTempMemory();
-    const char*    patNull = prb_strGetNullTerminated(pattern);
-
-#if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
-#elif prb_PLATFORM_LINUX
-
-    glob_t globResult = {};
-    int globReturn = glob(patNull, GLOB_NOSORT, 0, &globResult);
-    prb_endTempMemory(temp);
-
-    if (globReturn == 0) {
-        arrsetcap(result, globResult.gl_pathc);
-        for (size_t resultIndex = 0; resultIndex < globResult.gl_pathc; resultIndex++) {
-            char* path = globResult.gl_pathv[resultIndex];
-            arrput(result, prb_fmt("%s", path));
-        }
+    switch (iter->mode) {
+        case prb_PathFindMode_AllFilesInDir: closedir(iter->allFilesInDir.handle); break;
+        case prb_PathFindMode_Glob: globfree(&iter->glob.result); break;
     }
-    globfree(&globResult);
 
 #else
 #error unimplemented
 #endif
 
-    return result;
+    *iter = (prb_PathFindIterator) {};
 }
 
 prb_PUBLICDEF uint64_t
