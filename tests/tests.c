@@ -685,6 +685,7 @@ test_pathFindIter(void) {
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
     prb_String dirNotNull = prb_fmt("%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
     prb_String pattern = prb_fmt("%.*s/*.h", prb_LIT(dir));
@@ -706,10 +707,11 @@ test_pathFindIter(void) {
     }
 
     prb_PathFindIterator iter = prb_createPathFindIter(dir, prb_PathFindMode_AllFilesInDir);
+    prb_PathFindIterator iterTrailingSlash = prb_createPathFindIter(dirTrailingSlash, prb_PathFindMode_AllFilesInDir);
     prb_PathFindIterator iterNotNull = prb_createPathFindIter(dirNotNull, prb_PathFindMode_AllFilesInDir);
 
-    i32                  filesFound[] = {0, 0, 0, 0};
-    i32                  totalEntries = 0;
+    i32 filesFound[] = {0, 0, 0, 0};
+    i32 totalEntries = 0;
     prb_assert(prb_arrayLength(filesFound) == prb_arrayLength(files));
     while (prb_pathFindIterNext(&iter) == prb_Success) {
         bool found = false;
@@ -724,6 +726,8 @@ test_pathFindIter(void) {
         totalEntries += 1;
         prb_assert(prb_pathFindIterNext(&iterNotNull) == prb_Success);
         prb_assert(prb_streq(iter.curPath, iterNotNull.curPath));
+        prb_assert(prb_pathFindIterNext(&iterTrailingSlash) == prb_Success);
+        prb_assert(prb_streq(iter.curPath, iterTrailingSlash.curPath));
     }
 
     prb_assert(totalEntries == prb_arrayLength(files));
@@ -738,10 +742,11 @@ test_pathFindIter(void) {
     prb_PathFindIterator empty = {};
     prb_assert(prb_memeq(&iter, &empty, sizeof(prb_PathFindIterator)));
     prb_destroyPathFindIter(&iterNotNull);
+    prb_destroyPathFindIter(&iterTrailingSlash);
 
     prb_PathFindIterator iterPattern = prb_createPathFindIter(pattern, prb_PathFindMode_Glob);
     prb_PathFindIterator iterPatternNotNull = prb_createPathFindIter(patternNotNull, prb_PathFindMode_Glob);
-    i32 totalEntriesPattern = 0;
+    i32                  totalEntriesPattern = 0;
     while (prb_pathFindIterNext(&iterPattern) == prb_Success) {
         bool found = false;
         for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
