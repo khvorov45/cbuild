@@ -2,9 +2,10 @@
 
 #define function static
 
-typedef uint8_t u8;
-typedef int32_t i32;
-typedef size_t  usize;
+typedef uint8_t  u8;
+typedef int32_t  i32;
+typedef uint32_t u32;
+typedef size_t   usize;
 
 //
 // SECTION Memory
@@ -713,7 +714,7 @@ test_pathFindIter(void) {
     i32 filesFound[] = {0, 0, 0, 0};
     i32 totalEntries = 0;
     prb_assert(prb_arrayLength(filesFound) == prb_arrayLength(files));
-    while (prb_pathFindIterNext(&iter) == prb_Success) {
+    for (; prb_pathFindIterNext(&iter) == prb_Success; totalEntries++) {
         bool found = false;
         for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
             prb_String file = files[fileIndex];
@@ -723,14 +724,15 @@ test_pathFindIter(void) {
             }
         }
         prb_assert(found);
-        totalEntries += 1;
         prb_assert(prb_pathFindIterNext(&iterNotNull) == prb_Success);
         prb_assert(prb_streq(iter.curPath, iterNotNull.curPath));
         prb_assert(prb_pathFindIterNext(&iterTrailingSlash) == prb_Success);
         prb_assert(prb_streq(iter.curPath, iterTrailingSlash.curPath));
+        prb_assert(iter.curMatchCount == totalEntries + 1);
     }
 
     prb_assert(totalEntries == prb_arrayLength(files));
+    prb_assert(iter.curMatchCount == prb_arrayLength(files));
     for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
         prb_assert(filesFound[fileIndex] == 1);
     }
@@ -747,7 +749,7 @@ test_pathFindIter(void) {
     prb_PathFindIterator iterPattern = prb_createPathFindIter(pattern, prb_PathFindMode_Glob);
     prb_PathFindIterator iterPatternNotNull = prb_createPathFindIter(patternNotNull, prb_PathFindMode_Glob);
     i32                  totalEntriesPattern = 0;
-    while (prb_pathFindIterNext(&iterPattern) == prb_Success) {
+    for (; prb_pathFindIterNext(&iterPattern) == prb_Success; totalEntriesPattern++) {
         bool found = false;
         for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
             prb_String file = files[fileIndex];
@@ -756,12 +758,13 @@ test_pathFindIter(void) {
                 filesFound[fileIndex] += 1;
             }
         }
-        totalEntriesPattern += 1;
         prb_assert(prb_pathFindIterNext(&iterPatternNotNull) == prb_Success);
         prb_assert(prb_streq(iterPattern.curPath, iterPatternNotNull.curPath));
+        prb_assert(iterPattern.curMatchCount == totalEntriesPattern + 1);
     }
 
     prb_assert(totalEntriesPattern == 2);
+    prb_assert(iterPattern.curMatchCount == 2);
     prb_assert(filesFound[0] == 1);
     prb_assert(filesFound[1] == 2);
     prb_assert(filesFound[2] == 1);
@@ -832,51 +835,61 @@ test_strFindIter(void) {
 
     {
         prb_StrFindIterator iter = prb_createStrFindIter(spec);
+        prb_assert(iter.curMatchCount == 0);
 
         prb_assert(prb_strFindIterNext(&iter) == prb_Success);
         prb_assert(iter.curResult.found);
         prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
         prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 1);
 
         prb_assert(prb_strFindIterNext(&iter) == prb_Success);
         prb_assert(iter.curResult.found);
         prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2"));
         prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 2);
 
         prb_assert(prb_strFindIterNext(&iter) == prb_Success);
         prb_assert(iter.curResult.found);
         prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
         prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 3);
 
         prb_assert(prb_strFindIterNext(&iter) == prb_Failure);
         prb_assert(!iter.curResult.found);
         prb_assert(iter.curResult.matchByteIndex == 0);
         prb_assert(iter.curResult.matchLen == 0);
+        prb_assert(iter.curMatchCount == 3);
     }
 
     {
         spec.direction = prb_StringDirection_FromEnd;
         prb_StrFindIterator iter = prb_createStrFindIter(spec);
+        prb_assert(iter.curMatchCount == 0);
 
         prb_assert(prb_strFindIterNext(&iter) == prb_Success);
         prb_assert(iter.curResult.found);
         prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
         prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 1);
 
         prb_assert(prb_strFindIterNext(&iter) == prb_Success);
         prb_assert(iter.curResult.found);
         prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2"));
         prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 2);
 
         prb_assert(prb_strFindIterNext(&iter) == prb_Success);
         prb_assert(iter.curResult.found);
         prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
         prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 3);
 
         prb_assert(prb_strFindIterNext(&iter) == prb_Failure);
         prb_assert(!iter.curResult.found);
         prb_assert(iter.curResult.matchByteIndex == 0);
         prb_assert(iter.curResult.matchLen == 0);
+        prb_assert(iter.curMatchCount == 3);
 
         spec.direction = prb_StringDirection_FromStart;
     }
@@ -1099,72 +1112,88 @@ test_lineIter(void) {
     prb_String       lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
     prb_LineIterator iter = prb_createLineIter(lines);
 
+    prb_assert(iter.curLineCount == 0);
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line1"), prb_StringFindMode_Exact));
     prb_assert(iter.curLine.len == 5);
     prb_assert(iter.curLineEndLen == 2);
+    prb_assert(iter.curLineCount == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line2"), prb_StringFindMode_Exact));
     prb_assert(iter.curLine.len == 5);
     prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 2);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line3"), prb_StringFindMode_Exact));
     prb_assert(iter.curLine.len == 5);
     prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 3);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line4"), prb_StringFindMode_Exact));
     prb_assert(iter.curLine.len == 5);
     prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 4);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(iter.curLine.len == 0);
     prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 5);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line6"), prb_StringFindMode_Exact));
     prb_assert(iter.curLine.len == 5);
     prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 6);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(iter.curLine.len == 0);
     prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 7);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line8"), prb_StringFindMode_Exact));
     prb_assert(iter.curLine.len == 5);
     prb_assert(iter.curLineEndLen == 2);
+    prb_assert(iter.curLineCount == 8);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(iter.curLine.len == 0);
     prb_assert(iter.curLineEndLen == 2);
+    prb_assert(iter.curLineCount == 9);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line10"), prb_StringFindMode_Exact));
     prb_assert(iter.curLine.len == 6);
     prb_assert(iter.curLineEndLen == 2);
+    prb_assert(iter.curLineCount == 10);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(iter.curLine.len == 0);
     prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 11);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line12"), prb_StringFindMode_Exact));
     prb_assert(iter.curLine.len == 6);
     prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 12);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(iter.curLine.len == 0);
     prb_assert(iter.curLineEndLen == 2);
+    prb_assert(iter.curLineCount == 13);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
     prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line14"), prb_StringFindMode_Exact));
     prb_assert(iter.curLine.len == 6);
     prb_assert(iter.curLineEndLen == 0);
+    prb_assert(iter.curLineCount == 14);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Failure);
+    prb_assert(iter.curLineCount == 14);
 
     lines = prb_STR("\n");
     iter = prb_createLineIter(lines);
@@ -1174,6 +1203,31 @@ test_lineIter(void) {
     prb_assert(iter.curLineEndLen == 1);
 
     prb_assert(prb_lineIterNext(&iter) == prb_Failure);
+}
+
+function void
+test_utf8CharIter(void) {
+    prb_String str = prb_STR("abcדזון是太متشاтипуκαι");
+    u32        charsUtf32[] = {97, 98, 99, 1491, 1494, 1493, 1503, 26159, 22826, 1605, 1578, 1588, 1575, 1090, 1080, 1087, 1091, 954, 945, 953};
+    i32        utf8Bytes[] = {1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
+    prb_assert(prb_arrayLength(charsUtf32) == prb_arrayLength(utf8Bytes));
+
+    prb_Utf8CharIterator iter = prb_createUtf8CharIter(str, prb_StringDirection_FromStart);
+    prb_assert(iter.curCharCount == 0);
+    i32 curTotalUtf8Bytes = 0;
+    for (i32 charIndex = 0; charIndex < prb_arrayLength(charsUtf32); charIndex++) {
+        i32 charUtf8Bytes = utf8Bytes[charIndex];
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == charIndex + 1);
+        prb_assert(iter.curByteOffset == curTotalUtf8Bytes);
+        prb_assert(iter.curUtf32Char == charsUtf32[charIndex]);
+        prb_assert(iter.curUtf8Bytes == charUtf8Bytes);
+        prb_assert(iter.curIsValid);
+        curTotalUtf8Bytes += charUtf8Bytes;
+    }
+
+    prb_assert(prb_utf8CharIterNext(&iter) == prb_Failure);
+    prb_assert(iter.curCharCount == prb_arrayLength(charsUtf32));
 }
 
 int
@@ -1218,6 +1272,7 @@ main() {
     test_strFindIter();
     test_strStartsEnds();
     test_lineIter();
+    test_utf8CharIter();
 
     test_printColor();
 

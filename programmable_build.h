@@ -100,7 +100,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #define prb_max(a, b) (((a) > (b)) ? (a) : (b))
 #define prb_min(a, b) (((a) < (b)) ? (a) : (b))
 #define prb_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
-#define prb_arrayLength(arr) (sizeof(arr) / sizeof(arr[0]))
+#define prb_arrayLength(arr) (int32_t)(sizeof(arr) / sizeof(arr[0]))
 #define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), alignof(type))
 #define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), alignof(type))
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
@@ -275,6 +275,7 @@ typedef struct prb_StringFindResult {
 
 typedef struct prb_LineIterator {
     prb_String ogstr;
+    int32_t    curLineCount;
     int32_t    curByteOffset;
     prb_String curLine;
     int32_t    curLineEndLen;
@@ -283,6 +284,7 @@ typedef struct prb_LineIterator {
 typedef struct prb_Utf8CharIterator {
     prb_String          str;
     prb_StringDirection direction;
+    int32_t             curCharCount;
     int32_t             curByteOffset;
     uint32_t            curUtf32Char;
     int32_t             curUtf8Bytes;
@@ -292,6 +294,7 @@ typedef struct prb_Utf8CharIterator {
 typedef struct prb_StrFindIterator {
     prb_StringFindSpec   spec;
     prb_StringFindResult curResult;
+    int32_t              curMatchCount;
 } prb_StrFindIterator;
 
 typedef enum prb_PathFindMode {
@@ -303,6 +306,7 @@ typedef struct prb_PathFindIterator {
     prb_String       pattern;
     prb_PathFindMode mode;
     prb_String       curPath;
+    int32_t          curMatchCount;
 #if prb_PLATFORM_WINDOWS
 #error unimplemented
 #elif prb_PLATFORM_LINUX
@@ -1384,6 +1388,7 @@ prb_pathFindIterNext(prb_PathFindIterator* iter) {
                 if (!isDot && !isDoubleDot) {
                     result = prb_Success;
                     iter->curPath = prb_pathJoin(iter->pattern, prb_STR(entry->d_name));
+                    iter->curMatchCount += 1;
                     break;
                 }
             }
@@ -1395,6 +1400,7 @@ prb_pathFindIterNext(prb_PathFindIterator* iter) {
                 result = prb_Success;
                 // NOTE(khvorov) Make a copy so that this is still usable after destoying the iterator
                 iter->curPath = prb_fmt("%s", iter->glob.result.gl_pathv[iter->glob.currentIndex]);
+                iter->curMatchCount += 1;
             }
         } break;
     }
@@ -1782,7 +1788,7 @@ prb_strFind(prb_StringFindSpec spec) {
 
 prb_PUBLICDEF prb_StrFindIterator
 prb_createStrFindIter(prb_StringFindSpec spec) {
-    prb_StrFindIterator iter = {.spec = spec, .curResult = (prb_StringFindResult) {}};
+    prb_StrFindIterator iter = {.spec = spec, .curResult = (prb_StringFindResult) {}, .curMatchCount = 0};
     return iter;
 }
 
@@ -1808,6 +1814,7 @@ prb_strFindIterNext(prb_StrFindIterator* iter) {
         if (spec.direction == prb_StringDirection_FromStart) {
             iter->curResult.matchByteIndex += strOffset;
         }
+        iter->curMatchCount += 1;
     }
 
     return result;
@@ -2061,6 +2068,7 @@ prb_createUtf8CharIter(prb_String str, prb_StringDirection direction) {
     prb_Utf8CharIterator iter = {
         .str = str,
         .direction = direction,
+        .curCharCount = 0,
         .curByteOffset = curByteOffset,
         .curUtf32Char = 0,
         .curUtf8Bytes = 0,
@@ -2170,6 +2178,7 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
             iter->curIsValid = true;
             iter->curUtf32Char = ch;
             iter->curUtf8Bytes = chBytes;
+            iter->curCharCount += 1;
         }
     }
 
@@ -2181,6 +2190,7 @@ prb_createLineIter(prb_String str) {
     prb_assert(str.str && str.len >= 0);
     prb_LineIterator iter = {
         .ogstr = str,
+        .curLineCount = 0,
         .curByteOffset = 0,
         .curLine = (prb_String) {},
         .curLineEndLen = 0,
@@ -2214,6 +2224,7 @@ prb_lineIterNext(prb_LineIterator* iter) {
                 iter->curLineEndLen += 1;
             }
         }
+        iter->curLineCount += 1;
         result = prb_Success;
     }
 
