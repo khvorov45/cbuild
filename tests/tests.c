@@ -707,9 +707,9 @@ test_pathFindIter(void) {
         prb_writeEntireFile(file, (prb_Bytes) {(u8*)file.str, file.len});
     }
 
-    prb_PathFindIterator iter = prb_createPathFindIter(dir, prb_PathFindMode_AllFilesInDir);
-    prb_PathFindIterator iterTrailingSlash = prb_createPathFindIter(dirTrailingSlash, prb_PathFindMode_AllFilesInDir);
-    prb_PathFindIterator iterNotNull = prb_createPathFindIter(dirNotNull, prb_PathFindMode_AllFilesInDir);
+    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllFilesInDir});
+    prb_PathFindIterator iterTrailingSlash = prb_createPathFindIter((prb_PathFindSpec) {dirTrailingSlash, prb_PathFindMode_AllFilesInDir});
+    prb_PathFindIterator iterNotNull = prb_createPathFindIter((prb_PathFindSpec) {dirNotNull, prb_PathFindMode_AllFilesInDir});
 
     i32 filesFound[] = {0, 0, 0, 0};
     i32 totalEntries = 0;
@@ -746,8 +746,8 @@ test_pathFindIter(void) {
     prb_destroyPathFindIter(&iterNotNull);
     prb_destroyPathFindIter(&iterTrailingSlash);
 
-    prb_PathFindIterator iterPattern = prb_createPathFindIter(pattern, prb_PathFindMode_Glob);
-    prb_PathFindIterator iterPatternNotNull = prb_createPathFindIter(patternNotNull, prb_PathFindMode_Glob);
+    prb_PathFindIterator iterPattern = prb_createPathFindIter((prb_PathFindSpec) {pattern, prb_PathFindMode_Glob});
+    prb_PathFindIterator iterPatternNotNull = prb_createPathFindIter((prb_PathFindSpec) {patternNotNull, prb_PathFindMode_Glob});
     i32                  totalEntriesPattern = 0;
     for (; prb_pathFindIterNext(&iterPattern) == prb_Success; totalEntriesPattern++) {
         bool found = false;
@@ -778,9 +778,9 @@ test_pathFindIter(void) {
     prb_destroyPathFindIter(&iterPatternNotNull);
 
     prb_clearDirectory(dir);
-    iter = prb_createPathFindIter(dir, prb_PathFindMode_AllFilesInDir);
+    iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllFilesInDir});
     prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
-    iter = prb_createPathFindIter(pattern, prb_PathFindMode_Glob);
+    iter = prb_createPathFindIter((prb_PathFindSpec) {pattern, prb_PathFindMode_Glob});
     prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
 
     prb_removeDirectoryIfExists(dir);

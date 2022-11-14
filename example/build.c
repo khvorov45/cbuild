@@ -92,9 +92,9 @@ compileStaticLib(
     arrsetcap(allInputMatches, allInputMatchesCount);
     int32_t allInputFilepathsCount = 0;
     for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesCount; inputPatternIndex++) {
-        prb_String  inputPattern = compileSources[inputPatternIndex];
-        prb_PathFindIterator iter = prb_createPathFindIter(inputPattern, prb_PathFindMode_Glob);
-        prb_String* inputMatches = 0;
+        prb_String           inputPattern = compileSources[inputPatternIndex];
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {inputPattern, prb_PathFindMode_Glob});
+        prb_String*          inputMatches = 0;
         while (prb_pathFindIterNext(&iter)) {
             arrput(inputMatches, iter.curPath);
         }
@@ -149,7 +149,7 @@ compileStaticLib(
                     inputFilepath.str
                 );
 #endif
-                processes[processCount++] = prb_execCmd(cmd, prb_ProcessFlag_DontWait, (prb_String){});
+                processes[processCount++] = prb_execCmd(cmd, prb_ProcessFlag_DontWait, (prb_String) {});
             }
         }
     }
@@ -162,34 +162,34 @@ compileStaticLib(
     prb_Status compileStatus = prb_waitForProcesses(processes, processCount);
     if (compileStatus == prb_Success) {
 #if prb_PLATFORM_WINDOWS
-            prb_String staticLibFileExt = prb_STR("lib");
+        prb_String staticLibFileExt = prb_STR("lib");
 #elif prb_PLATFORM_LINUX
         prb_String staticLibFileExt = prb_STR("a");
 #endif
-            prb_String libFile = prb_pathJoin(compileOutDir, prb_fmt("%.*s.%.*s", prb_LIT(name), prb_LIT(staticLibFileExt)));
+        prb_String libFile = prb_pathJoin(compileOutDir, prb_fmt("%.*s.%.*s", prb_LIT(name), prb_LIT(staticLibFileExt)));
 
-            prb_String objsPathsString = prb_stringsJoin(allOutputFilepaths, allOutputFilepathsCount, prb_STR(" "));
+        prb_String objsPathsString = prb_stringsJoin(allOutputFilepaths, allOutputFilepathsCount, prb_STR(" "));
 
-            uint64_t   sourceLastMod = prb_getLatestLastModifiedFromPatterns(allOutputFilepaths, allOutputFilepathsCount);
-            uint64_t   outputLastMod = prb_getEarliestLastModifiedFromPattern(libFile);
-            prb_Status libStatus = prb_Success;
-            if (sourceLastMod > outputLastMod) {
+        uint64_t   sourceLastMod = prb_getLatestLastModifiedFromPatterns(allOutputFilepaths, allOutputFilepathsCount);
+        uint64_t   outputLastMod = prb_getEarliestLastModifiedFromPattern(libFile);
+        prb_Status libStatus = prb_Success;
+        if (sourceLastMod > outputLastMod) {
 #if prb_PLATFORM_WINDOWS
-                prb_String libCmd = prb_fmtAndPrintln("lib /nologo -out:%.*s %.*s", libFile, objsPattern);
+            prb_String libCmd = prb_fmtAndPrintln("lib /nologo -out:%.*s %.*s", libFile, objsPattern);
 #elif prb_PLATFORM_LINUX
             prb_String libCmd = prb_fmtAndPrintln("ar rcs %.*s %.*s", prb_LIT(libFile), prb_LIT(objsPathsString));
 #endif
-                prb_removeFileIfExists(libFile);
-                prb_ProcessHandle libHandle = prb_execCmd(libCmd, 0, (prb_String){});
-                prb_assert(libHandle.completed);
-                libStatus = libHandle.completionStatus;
-            } else {
-                prb_fmtAndPrintln("skip lib %.*s", prb_LIT(name));
-            }
+            prb_removeFileIfExists(libFile);
+            prb_ProcessHandle libHandle = prb_execCmd(libCmd, 0, (prb_String) {});
+            prb_assert(libHandle.completed);
+            libStatus = libHandle.completionStatus;
+        } else {
+            prb_fmtAndPrintln("skip lib %.*s", prb_LIT(name));
+        }
 
-            if (libStatus == prb_Success) {
-                result = (StaticLib) {.success = true, .libFile = libFile};
-            }
+        if (libStatus == prb_Success) {
+            result = (StaticLib) {.success = true, .libFile = libFile};
+        }
     }
 
     return result;
@@ -207,7 +207,7 @@ compileAndRunBidiGenTab(prb_String src, prb_String compileCmdStart, prb_String r
 #endif
 
         prb_String        cmd = prb_fmtAndPrintln("%.*s %.*s %.*s", prb_LIT(compileCmdStart), prb_LIT(compileCommandEnd), prb_LIT(src));
-        prb_ProcessHandle handle = prb_execCmd(cmd, 0, (prb_String){});
+        prb_ProcessHandle handle = prb_execCmd(cmd, 0, (prb_String) {});
         prb_assert(handle.completed);
         if (handle.completionStatus != prb_Success) {
             prb_terminate(1);
@@ -728,7 +728,7 @@ main() {
 #if prb_PLATFORM_WINDOWS
     prb_String mainLinkFlags =
         prb_STR(" -link -incremental:no -subsystem:windows ")
-        prb_STR("User32.lib ");
+            prb_STR("User32.lib ");
 #elif prb_PLATFORM_LINUX
     // TODO(khvorov) Get rid of -lm and -ldl
     prb_String mainLinkFlags = prb_STR("-lX11 -lm -lstdc++ -ldl -lfontconfig");
@@ -744,7 +744,7 @@ main() {
         prb_LIT(mainLinkFlags)
     );
 
-    prb_ProcessHandle mainHandle = prb_execCmd(mainCmd, 0, (prb_String){});
+    prb_ProcessHandle mainHandle = prb_execCmd(mainCmd, 0, (prb_String) {});
     prb_assert(mainHandle.completed);
 
     if (mainHandle.completionStatus == prb_Success) {
