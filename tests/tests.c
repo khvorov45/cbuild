@@ -689,7 +689,7 @@ test_pathFindIter(void) {
     prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
     prb_String dirNotNull = prb_fmt("%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
-    prb_String pattern = prb_fmt("%.*s/*.h", prb_LIT(dir));
+    prb_String pattern = prb_STR("*.h");
     prb_String patternNotNull = prb_fmt("%.*sabc", prb_LIT(pattern));
     patternNotNull.len = pattern.len;
 
@@ -707,9 +707,9 @@ test_pathFindIter(void) {
         prb_writeEntireFile(file, file.str, file.len);
     }
 
-    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllFilesInDir, .recursive = false});
-    prb_PathFindIterator iterTrailingSlash = prb_createPathFindIter((prb_PathFindSpec) {dirTrailingSlash, prb_PathFindMode_AllFilesInDir, .recursive = false});
-    prb_PathFindIterator iterNotNull = prb_createPathFindIter((prb_PathFindSpec) {dirNotNull, prb_PathFindMode_AllFilesInDir, .recursive = false});
+    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
+    prb_PathFindIterator iterTrailingSlash = prb_createPathFindIter((prb_PathFindSpec) {dirTrailingSlash, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
+    prb_PathFindIterator iterNotNull = prb_createPathFindIter((prb_PathFindSpec) {dirNotNull, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
 
     i32 filesFound[] = {0, 0, 0, 0};
     i32 totalEntries = 0;
@@ -746,8 +746,14 @@ test_pathFindIter(void) {
     prb_destroyPathFindIter(&iterNotNull);
     prb_destroyPathFindIter(&iterTrailingSlash);
 
-    prb_PathFindIterator iterPattern = prb_createPathFindIter((prb_PathFindSpec) {pattern, prb_PathFindMode_Glob, .recursive = false});
-    prb_PathFindIterator iterPatternNotNull = prb_createPathFindIter((prb_PathFindSpec) {patternNotNull, prb_PathFindMode_Glob, .recursive = false});
+    prb_PathFindSpec iterPatternSpec = {};
+    iterPatternSpec.dir = dir;
+    iterPatternSpec.mode = prb_PathFindMode_Glob;
+    iterPatternSpec.recursive = false;
+    iterPatternSpec.glob.pattern = pattern;
+    prb_PathFindIterator iterPattern = prb_createPathFindIter(iterPatternSpec);
+    iterPatternSpec.glob.pattern = patternNotNull;
+    prb_PathFindIterator iterPatternNotNull = prb_createPathFindIter(iterPatternSpec);
     i32                  totalEntriesPattern = 0;
     for (; prb_pathFindIterNext(&iterPattern) == prb_Success; totalEntriesPattern++) {
         bool found = false;
@@ -778,9 +784,10 @@ test_pathFindIter(void) {
     prb_destroyPathFindIter(&iterPatternNotNull);
 
     prb_clearDirectory(dir);
-    iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllFilesInDir, .recursive = false});
+    iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
     prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
-    iter = prb_createPathFindIter((prb_PathFindSpec) {pattern, prb_PathFindMode_Glob, .recursive = false});
+    iterPatternSpec.glob.pattern = pattern;
+    iter = prb_createPathFindIter(iterPatternSpec);
     prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
 
     // NOTE(khvorov) Recursive search
@@ -830,7 +837,7 @@ test_pathFindIter(void) {
 
     bool emptyNestedDirFound = false;
 
-    prb_PathFindIterator iterRecursive = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllFilesInDir, .recursive = true});
+    prb_PathFindIterator iterRecursive = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllEntriesInDir, .recursive = true, {}});
     while (prb_pathFindIterNext(&iterRecursive) == prb_Success) {
         bool found = false;
 
@@ -885,6 +892,53 @@ test_pathFindIter(void) {
     prb_assert(emptyNestedDirFound);
 
     prb_assert(iterRecursive.curMatchCount == prb_arrayLength(files) + prb_arrayLength(nestedFiles) + prb_arrayLength(nestedNestedFiles) + 3);
+
+    iterPatternSpec.recursive = true;
+    prb_PathFindIterator iterRecursivePattern = prb_createPathFindIter(iterPatternSpec);
+    while (prb_pathFindIterNext(&iterRecursivePattern) == prb_Success) {
+        bool found = false;
+
+        for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
+            prb_String file = files[fileIndex];
+            found = prb_streq(file, iterRecursivePattern.curPath);
+            if (found) {
+                filesFound[fileIndex] += 1;
+            }
+        }
+
+        for (usize fileIndex = 0; fileIndex < prb_arrayLength(nestedFiles) && !found; fileIndex++) {
+            prb_String file = nestedFiles[fileIndex];
+            found = prb_streq(file, iterRecursivePattern.curPath);
+            if (found) {
+                nestedFilesFound[fileIndex] += 1;
+            }
+        }
+
+        for (usize fileIndex = 0; fileIndex < prb_arrayLength(nestedFiles) && !found; fileIndex++) {
+            prb_String file = nestedNestedFiles[fileIndex];
+            found = prb_streq(file, iterRecursivePattern.curPath);
+            if (found) {
+                nestedNestedFilesFound[fileIndex] += 1;
+            }
+        }
+    }
+
+    prb_assert(filesFound[0] == 1);
+    prb_assert(filesFound[1] == 2);
+    prb_assert(filesFound[2] == 1);
+    prb_assert(filesFound[3] == 2);
+
+    prb_assert(nestedFilesFound[0] == 1);
+    prb_assert(nestedFilesFound[1] == 2);
+    prb_assert(nestedFilesFound[2] == 1);
+    prb_assert(nestedFilesFound[3] == 2);
+
+    prb_assert(nestedNestedFilesFound[0] == 1);
+    prb_assert(nestedNestedFilesFound[1] == 2);
+    prb_assert(nestedNestedFilesFound[2] == 1);
+    prb_assert(nestedNestedFilesFound[3] == 2);
+
+    prb_assert(iterRecursivePattern.curMatchCount == 6);
 
     prb_removeDirectoryIfExists(dir);
     prb_endTempMemory(temp);

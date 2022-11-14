@@ -299,14 +299,22 @@ typedef struct prb_StrFindIterator {
 } prb_StrFindIterator;
 
 typedef enum prb_PathFindMode {
-    prb_PathFindMode_AllFilesInDir,
+    prb_PathFindMode_AllEntriesInDir,
     prb_PathFindMode_Glob,
 } prb_PathFindMode;
 
 typedef struct prb_PathFindSpec {
-    prb_String       pattern;
+    prb_String       dir;
     prb_PathFindMode mode;
     bool             recursive;
+    union {
+        struct {
+            prb_String pattern;
+        } glob;
+        struct {
+            int32_t ignore;
+        } allFilesInDir;
+    };
 } prb_PathFindSpec;
 
 typedef struct prb_PathFindIterator {
@@ -1094,7 +1102,7 @@ prb_isFile(prb_String path) {
 prb_PUBLICDEF bool
 prb_directoryIsEmpty(prb_String path) {
     prb_TempMemory       temp = prb_beginTempMemory();
-    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllFilesInDir, .recursive = false});
+    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
     bool                 result = prb_pathFindIterNext(&iter) == prb_Failure;
     prb_destroyPathFindIter(&iter);
     prb_endTempMemory(temp);
@@ -1172,7 +1180,7 @@ prb_removeDirectoryIfExists(prb_String path) {
 #elif prb_PLATFORM_LINUX
 
     if (prb_pathExists(path)) {
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllFilesInDir, .recursive = false});
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
         while (prb_pathFindIterNext(&iter)) {
             prb_removeFileOrDirectoryIfExists(iter.curPath);
         }
@@ -1345,8 +1353,6 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
     prb_TempMemory       temp = prb_beginTempMemory();
     prb_PathFindIterator iter = {};
     iter.spec = spec;
-    iter.curPath = (prb_String) {};
-    const char* patternNull = prb_strGetNullTerminated(spec.pattern);
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1355,17 +1361,34 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
 #elif prb_PLATFORM_LINUX
 
     switch (spec.mode) {
-        case prb_PathFindMode_AllFilesInDir: {
-            DIR* handle = opendir(patternNull);
+        case prb_PathFindMode_AllEntriesInDir: {
+            const char* dirNull = prb_strGetNullTerminated(spec.dir);
+            DIR* handle = opendir(dirNull);
             prb_assert(handle);
             prb_endTempMemory(temp);
             arrput(iter.allFilesInDir.handles, handle);
-            arrput(iter.allFilesInDir.parents, spec.pattern);
+            arrput(iter.allFilesInDir.parents, spec.dir);
         } break;
 
         case prb_PathFindMode_Glob: {
             iter.glob.currentIndex = -1;
-            iter.glob.returnVal = glob(patternNull, GLOB_NOSORT, 0, &iter.glob.result);
+            prb_String pattern = prb_pathJoin(spec.dir, spec.glob.pattern);
+            iter.glob.returnVal = glob(pattern.str, GLOB_NOSORT, 0, &iter.glob.result);
+            if (spec.recursive) {
+                prb_PathFindSpec recursiveSpec = spec;
+                recursiveSpec.mode = prb_PathFindMode_AllEntriesInDir;
+                prb_PathFindIterator recursiveIter = prb_createPathFindIter(recursiveSpec);
+                while (prb_pathFindIterNext(&recursiveIter)) {
+                    if (prb_isDirectory(recursiveIter.curPath)) {
+                        prb_String newPat = prb_pathJoin(recursiveIter.curPath, spec.glob.pattern);
+                        int newReturnVal = glob(newPat.str, GLOB_NOSORT | GLOB_APPEND, 0, &iter.glob.result);
+                        if (newReturnVal == 0) {
+                            iter.glob.returnVal = 0;
+                        }
+                    }
+                }
+                prb_destroyPathFindIter(&recursiveIter);
+            }
             prb_endTempMemory(temp);
         } break;
     }
@@ -1389,7 +1412,7 @@ prb_pathFindIterNext(prb_PathFindIterator* iter) {
 #elif prb_PLATFORM_LINUX
 
     switch (iter->spec.mode) {
-        case prb_PathFindMode_AllFilesInDir: {
+        case prb_PathFindMode_AllEntriesInDir: {
             DIR* handle = iter->allFilesInDir.handles[arrlen(iter->allFilesInDir.handles) - 1];
             prb_String parent = iter->allFilesInDir.parents[arrlen(iter->allFilesInDir.parents) - 1];
             for (struct dirent* entry = readdir(handle); entry; entry = readdir(handle)) {
@@ -1445,7 +1468,7 @@ prb_destroyPathFindIter(prb_PathFindIterator* iter) {
 #elif prb_PLATFORM_LINUX
 
     switch (iter->spec.mode) {
-        case prb_PathFindMode_AllFilesInDir:
+        case prb_PathFindMode_AllEntriesInDir:
             for (int32_t handleIndex = 0; handleIndex < arrlen(iter->allFilesInDir.handles); handleIndex++) {
                 closedir(iter->allFilesInDir.handles[handleIndex]);
             }

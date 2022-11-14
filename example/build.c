@@ -81,19 +81,13 @@ compileStaticLib(
     cmdStart = prb_fmt("%.*s %.*s", cmdStart, pdbOutputFlag);
 #endif
 
-    int32_t     compileSourcesCount = compileSourcesRelToDownloadCount;
-    prb_String* compileSources = prb_allocArray(prb_String, compileSourcesCount);
-    for (int32_t sourceIndex = 0; sourceIndex < compileSourcesCount; sourceIndex++) {
-        compileSources[sourceIndex] = prb_pathJoin(download.downloadDir, compileSourcesRelToDownload[sourceIndex]);
-    }
-
-    int32_t      allInputMatchesCount = compileSourcesCount;
+    int32_t      allInputMatchesCount = compileSourcesRelToDownloadCount;
     prb_String** allInputMatches = 0;
     arrsetcap(allInputMatches, allInputMatchesCount);
     int32_t allInputFilepathsCount = 0;
-    for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesCount; inputPatternIndex++) {
-        prb_String           inputPattern = compileSources[inputPatternIndex];
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {inputPattern, prb_PathFindMode_Glob, .recursive = false});
+    for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesRelToDownloadCount; inputPatternIndex++) {
+        prb_String           inputPattern = compileSourcesRelToDownload[inputPatternIndex];
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {download.downloadDir, prb_PathFindMode_Glob, .recursive = false, .glob.pattern = inputPattern});
         prb_String*          inputMatches = 0;
         while (prb_pathFindIterNext(&iter)) {
             arrput(inputMatches, iter.curPath);
