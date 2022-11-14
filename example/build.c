@@ -591,6 +591,7 @@ main() {
         prb_STR("src/render/software/*.c"),
         prb_STR("src/cpuinfo/*.c"),
         prb_STR("src/*.c"),
+        prb_STR("src/misc/*.c"),
 #if prb_PLATFORM_WINDOWS
         prb_STR("src/core/windows/windows.c"),
         prb_STR("src/filesystem/windows/*.c"),
@@ -605,6 +606,7 @@ main() {
         prb_STR("src/video/x11/*.c"),
         prb_STR("src/core/unix/SDL_poll.c"),
         prb_STR("src/core/linux/SDL_threadprio.c"),
+        prb_STR("src/misc/unix/*.c"),
 #endif
     };
 
