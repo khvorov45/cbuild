@@ -1230,6 +1230,24 @@ test_utf8CharIter(void) {
     prb_assert(iter.curCharCount == prb_arrayLength(charsUtf32));
 }
 
+function void
+test_getArgArrayFromString(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+
+    prb_String strings[] = {prb_STR("prg arg1 arg2 arg3"), prb_STR("  prg arg1 arg2  arg3 ")};
+
+    for (i32 strIndex = 0; strIndex < prb_arrayLength(strings); strIndex++) {
+        const char** args = prb_getArgArrayFromString(strings[strIndex]);
+        prb_assert(arrlen(args) == 4 + 1);
+        prb_assert(prb_streq(prb_STR(args[0]), prb_STR("prg")));
+        prb_assert(prb_streq(prb_STR(args[1]), prb_STR("arg1")));
+        prb_assert(prb_streq(prb_STR(args[2]), prb_STR("arg2")));
+        prb_assert(prb_streq(prb_STR(args[3]), prb_STR("arg3")));
+    }
+
+    prb_endTempMemory(temp);
+}
+
 int
 main() {
     prb_TimeStart testStart = prb_timeStart();
@@ -1273,6 +1291,7 @@ main() {
     test_strStartsEnds();
     test_lineIter();
     test_utf8CharIter();
+    test_getArgArrayFromString();
 
     test_printColor();
 

@@ -2237,38 +2237,38 @@ prb_lineIterNext(prb_LineIterator* iter) {
 
 prb_PUBLICDEF const char**
 prb_getArgArrayFromString(prb_String string) {
-    // TODO(khvorov) Rework to use a string find iterator
-    int32_t spacesCount = 0;
-    for (int32_t strIndex = 0; strIndex < string.len; strIndex++) {
-        char ch = string.str[strIndex];
-        if (ch == ' ') {
-            spacesCount++;
+    const char**       args = 0;
+    prb_StringFindSpec spec = {
+        .str = string,
+        .pattern = prb_STR(" "),
+        .mode = prb_StringFindMode_AnyChar,
+        .direction = prb_StringDirection_FromStart,
+    };
+
+    int32_t             prevSpaceIndex = -1;
+    prb_StrFindIterator iter = prb_createStrFindIter(spec);
+    for (;;) {
+        int32_t spaceIndex = 0;
+        if (prb_strFindIterNext(&iter) == prb_Success) {
+            prb_assert(iter.curResult.found);
+            spaceIndex = iter.curResult.matchByteIndex;
+        } else {
+            spaceIndex = string.len;
+        }
+        int32_t arglen = spaceIndex - prevSpaceIndex - 1;
+        if (arglen > 0) {
+            prb_String  arg = {string.str + prevSpaceIndex + 1, arglen};
+            const char* argNull = prb_fmt("%.*s", prb_LIT(arg)).str;
+            arrput(args, argNull);
+        }
+        prevSpaceIndex = spaceIndex;
+        if (spaceIndex == string.len) {
+            break;
         }
     }
 
-    int32_t* spacesIndices = prb_allocArray(int32_t, spacesCount);
-    {
-        int32_t index = 0;
-        for (int32_t strIndex = 0; strIndex < string.len; strIndex++) {
-            char ch = string.str[strIndex];
-            if (ch == ' ') {
-                spacesIndices[index++] = strIndex;
-            }
-        }
-    }
-
-    int32_t argCount = 0;
     // NOTE(khvorov) Arg array needs a null at the end
-    const char** args = prb_allocArray(const char*, spacesCount + 1 + 1);
-    for (int32_t spaceIndex = 0; spaceIndex <= spacesCount; spaceIndex++) {
-        int32_t    spaceBefore = spaceIndex == 0 ? -1 : spacesIndices[spaceIndex - 1];
-        int32_t    spaceAfter = spaceIndex == spacesCount ? string.len : spacesIndices[spaceIndex];
-        prb_String arg = {string.str + spaceBefore + 1, spaceAfter - spaceBefore - 1};
-        if (arg.len > 0) {
-            const char* argNull = prb_strGetNullTerminated(arg);
-            args[argCount++] = argNull;
-        }
-    }
+    arrput(args, 0);
 
     return args;
 }
