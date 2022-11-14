@@ -806,7 +806,7 @@ test_pathFindIter(void) {
     prb_assert(prb_arrayLength(nestedNestedFiles) == prb_arrayLength(files));
 
     prb_String emptyNestedDir = prb_pathJoin(dir, prb_STR("emptynested"));
-    prb_createDirIfNotExists(emptyNestedDir);    
+    prb_createDirIfNotExists(emptyNestedDir);
 
     for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
         prb_String file = files[fileIndex];

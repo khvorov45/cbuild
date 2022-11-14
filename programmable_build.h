@@ -104,7 +104,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), alignof(type))
 #define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), alignof(type))
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
-#define prb_unused(x) ((x)=(x))
+#define prb_unused(x) ((x) = (x))
 
 #define prb_countLeading1sU32(x) __builtin_clz(~(x))
 #define prb_countLeading1sU8(x) prb_countLeading1sU32((x) << 24)
