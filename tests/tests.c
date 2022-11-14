@@ -192,7 +192,7 @@ test_pathExists(void) {
     prb_removeFileIfExists(filepath);
     prb_assert(!prb_pathExists(filepath));
     prb_assert(!prb_pathExists(filepathNotNull));
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
     prb_assert(prb_pathExists(filepath));
     prb_assert(prb_pathExists(filepathNotNull));
     prb_removeFileIfExists(filepath);
@@ -202,7 +202,7 @@ test_pathExists(void) {
     prb_removeFileIfExists(filepathNotNull);
     prb_assert(!prb_pathExists(filepathNotNull));
     prb_assert(!prb_pathExists(filepath));
-    prb_writeEntireFile(filepathNotNull, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepathNotNull, "1", 1);
     prb_assert(prb_pathExists(filepathNotNull));
     prb_assert(prb_pathExists(filepath));
     prb_removeFileIfExists(filepathNotNull);
@@ -265,7 +265,7 @@ test_isFile(void) {
     prb_removeFileIfExists(filepath);
     prb_assert(!prb_isFile(filepath));
     prb_assert(!prb_isFile(filepathNotNull));
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
     prb_assert(prb_isFile(filepath));
     prb_assert(prb_isFile(filepathNotNull));
     prb_removeFileIfExists(filepath);
@@ -275,7 +275,7 @@ test_isFile(void) {
     prb_removeFileIfExists(filepathNotNull);
     prb_assert(!prb_isFile(filepathNotNull));
     prb_assert(!prb_isFile(filepath));
-    prb_writeEntireFile(filepathNotNull, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepathNotNull, "1", 1);
     prb_assert(prb_isFile(filepathNotNull));
     prb_assert(prb_isFile(filepath));
     prb_removeFileIfExists(filepathNotNull);
@@ -296,7 +296,7 @@ test_directoryIsEmpty(void) {
     prb_clearDirectory(dir);
     prb_assert(prb_directoryIsEmpty(dir));
     prb_String filepath = prb_pathJoin(dir, prb_STR("file.txt"));
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
     prb_assert(!prb_directoryIsEmpty(dir));
     prb_removeFileIfExists(filepath);
     prb_assert(prb_directoryIsEmpty(dir));
@@ -304,7 +304,7 @@ test_directoryIsEmpty(void) {
     prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
     prb_assert(prb_directoryIsEmpty(dirTrailingSlash));
     prb_assert(prb_directoryIsEmpty(dir));
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
     prb_assert(!prb_directoryIsEmpty(dirTrailingSlash));
     prb_assert(!prb_directoryIsEmpty(dir));
     prb_removeFileIfExists(filepath);
@@ -315,7 +315,7 @@ test_directoryIsEmpty(void) {
     dirNotNull.len = dir.len;
     prb_assert(prb_directoryIsEmpty(dirNotNull));
     prb_assert(prb_directoryIsEmpty(dir));
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
     prb_assert(!prb_directoryIsEmpty(dirNotNull));
     prb_assert(!prb_directoryIsEmpty(dir));
     prb_removeFileIfExists(filepath);
@@ -368,7 +368,7 @@ test_removeFileOrDirectoryIfExists(void) {
     prb_String filepath = prb_pathJoin(dir, prb_STR("file.txt"));
     prb_String filepathNotNull = prb_fmt("%.*sabc", prb_LIT(filepath));
     filepathNotNull.len = filepath.len;
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
 
     prb_assert(prb_isDirectory(dir));
     prb_assert(prb_isFile(filepath));
@@ -377,13 +377,13 @@ test_removeFileOrDirectoryIfExists(void) {
     prb_assert(prb_isDirectory(dir));
     prb_assert(!prb_isFile(filepath));
 
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
 
     prb_removeFileOrDirectoryIfExists(filepathNotNull);
     prb_assert(prb_isDirectory(dir));
     prb_assert(!prb_isFile(filepath));
 
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
 
     prb_removeFileOrDirectoryIfExists(dir);
     prb_assert(!prb_isDirectory(dir));
@@ -421,11 +421,11 @@ test_removeFileIfExists(void) {
     filepathNotNull.len = filepath.len;
 
     prb_assert(!prb_isFile(filepath));
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
     prb_assert(prb_isFile(filepath));
     prb_removeFileIfExists(filepath);
     prb_assert(!prb_isFile(filepath));
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
     prb_assert(prb_isFile(filepath));
     prb_removeFileIfExists(filepathNotNull);
     prb_assert(!prb_isFile(filepath));
@@ -474,14 +474,14 @@ test_clearDirectory(void) {
     prb_assert(prb_directoryIsEmpty(dir));
 
     prb_String filepath = prb_pathJoin(dir, prb_STR("file.txt"));
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
 
     prb_assert(!prb_directoryIsEmpty(dir));
     prb_clearDirectory(dir);
     prb_assert(prb_directoryIsEmpty(dir));
 
     prb_String dirTrailingSlash = prb_fmt("%.*s/", prb_LIT(dir));
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
     prb_assert(!prb_directoryIsEmpty(dir));
     prb_assert(!prb_directoryIsEmpty(dirTrailingSlash));
     prb_clearDirectory(dirTrailingSlash);
@@ -490,7 +490,7 @@ test_clearDirectory(void) {
 
     prb_String dirNotNull = prb_fmt("%.*sabs", prb_LIT(dir));
     dirNotNull.len = dir.len;
-    prb_writeEntireFile(filepath, (prb_Bytes) {(uint8_t*)"1", 1});
+    prb_writeEntireFile(filepath, "1", 1);
     prb_assert(!prb_directoryIsEmpty(dir));
     prb_assert(!prb_directoryIsEmpty(dirNotNull));
     prb_clearDirectory(dirNotNull);
@@ -509,7 +509,7 @@ test_getCurrentWorkingDir(void) {
     prb_String cwd = prb_getCurrentWorkingDir();
     prb_assert(prb_isDirectory(cwd));
     prb_String filename = prb_STR(__FUNCTION__);
-    prb_writeEntireFile(filename, (prb_Bytes) {(uint8_t*)filename.str, filename.len});
+    prb_writeEntireFile(filename, filename.str, filename.len);
     prb_Bytes fileContent = prb_readEntireFile(prb_pathJoin(cwd, filename));
     prb_assert(prb_streq((prb_String) {(const char*)fileContent.data, fileContent.len}, filename));
     prb_removeFileIfExists(filename);
@@ -704,12 +704,12 @@ test_pathFindIter(void) {
 
     for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
         prb_String file = files[fileIndex];
-        prb_writeEntireFile(file, (prb_Bytes) {(u8*)file.str, file.len});
+        prb_writeEntireFile(file, file.str, file.len);
     }
 
-    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllFilesInDir});
-    prb_PathFindIterator iterTrailingSlash = prb_createPathFindIter((prb_PathFindSpec) {dirTrailingSlash, prb_PathFindMode_AllFilesInDir});
-    prb_PathFindIterator iterNotNull = prb_createPathFindIter((prb_PathFindSpec) {dirNotNull, prb_PathFindMode_AllFilesInDir});
+    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllFilesInDir, .recursive = false});
+    prb_PathFindIterator iterTrailingSlash = prb_createPathFindIter((prb_PathFindSpec) {dirTrailingSlash, prb_PathFindMode_AllFilesInDir, .recursive = false});
+    prb_PathFindIterator iterNotNull = prb_createPathFindIter((prb_PathFindSpec) {dirNotNull, prb_PathFindMode_AllFilesInDir, .recursive = false});
 
     i32 filesFound[] = {0, 0, 0, 0};
     i32 totalEntries = 0;
@@ -746,8 +746,8 @@ test_pathFindIter(void) {
     prb_destroyPathFindIter(&iterNotNull);
     prb_destroyPathFindIter(&iterTrailingSlash);
 
-    prb_PathFindIterator iterPattern = prb_createPathFindIter((prb_PathFindSpec) {pattern, prb_PathFindMode_Glob});
-    prb_PathFindIterator iterPatternNotNull = prb_createPathFindIter((prb_PathFindSpec) {patternNotNull, prb_PathFindMode_Glob});
+    prb_PathFindIterator iterPattern = prb_createPathFindIter((prb_PathFindSpec) {pattern, prb_PathFindMode_Glob, .recursive = false});
+    prb_PathFindIterator iterPatternNotNull = prb_createPathFindIter((prb_PathFindSpec) {patternNotNull, prb_PathFindMode_Glob, .recursive = false});
     i32                  totalEntriesPattern = 0;
     for (; prb_pathFindIterNext(&iterPattern) == prb_Success; totalEntriesPattern++) {
         bool found = false;
@@ -778,10 +778,113 @@ test_pathFindIter(void) {
     prb_destroyPathFindIter(&iterPatternNotNull);
 
     prb_clearDirectory(dir);
-    iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllFilesInDir});
+    iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllFilesInDir, .recursive = false});
     prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
-    iter = prb_createPathFindIter((prb_PathFindSpec) {pattern, prb_PathFindMode_Glob});
+    iter = prb_createPathFindIter((prb_PathFindSpec) {pattern, prb_PathFindMode_Glob, .recursive = false});
     prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
+
+    // NOTE(khvorov) Recursive search
+
+    prb_String nestedDir = prb_pathJoin(dir, prb_STR("nested"));
+    prb_createDirIfNotExists(nestedDir);
+    prb_String nestedFiles[] = {
+        prb_pathJoin(nestedDir, prb_STR("nf1.c")),
+        prb_pathJoin(nestedDir, prb_STR("nf2.h")),
+        prb_pathJoin(nestedDir, prb_STR("nf3.c")),
+        prb_pathJoin(nestedDir, prb_STR("nf4.h")),
+    };
+    prb_assert(prb_arrayLength(nestedFiles) == prb_arrayLength(files));
+
+    prb_String nestedNestedDir = prb_pathJoin(nestedDir, prb_STR("nestednested"));
+    prb_createDirIfNotExists(nestedNestedDir);
+    prb_String nestedNestedFiles[] = {
+        prb_pathJoin(nestedNestedDir, prb_STR("nnf1.c")),
+        prb_pathJoin(nestedNestedDir, prb_STR("nnf2.h")),
+        prb_pathJoin(nestedNestedDir, prb_STR("nnf3.c")),
+        prb_pathJoin(nestedNestedDir, prb_STR("nnf4.h")),
+    };
+    prb_assert(prb_arrayLength(nestedNestedFiles) == prb_arrayLength(files));
+
+    prb_String emptyNestedDir = prb_pathJoin(dir, prb_STR("emptynested"));
+    prb_createDirIfNotExists(emptyNestedDir);    
+
+    for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
+        prb_String file = files[fileIndex];
+        prb_writeEntireFile(file, file.str, file.len);
+        prb_String nestedFile = nestedFiles[fileIndex];
+        prb_writeEntireFile(nestedFile, nestedFile.str, nestedFile.len);
+        prb_String nestedNestedFile = nestedNestedFiles[fileIndex];
+        prb_writeEntireFile(nestedNestedFile, nestedNestedFile.str, nestedNestedFile.len);
+    }
+
+    filesFound[0] = 0;
+    filesFound[1] = 0;
+    filesFound[2] = 0;
+    filesFound[3] = 0;
+
+    i32  nestedFilesFound[] = {0, 0, 0, 0};
+    bool nestedDirFound = false;
+
+    i32  nestedNestedFilesFound[] = {0, 0, 0, 0};
+    bool nestedNestedDirFound = false;
+
+    bool emptyNestedDirFound = false;
+
+    prb_PathFindIterator iterRecursive = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllFilesInDir, .recursive = true});
+    while (prb_pathFindIterNext(&iterRecursive) == prb_Success) {
+        bool found = false;
+
+        for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
+            prb_String file = files[fileIndex];
+            found = prb_streq(file, iterRecursive.curPath);
+            if (found) {
+                filesFound[fileIndex] += 1;
+            }
+        }
+
+        for (usize fileIndex = 0; fileIndex < prb_arrayLength(nestedFiles) && !found; fileIndex++) {
+            prb_String file = nestedFiles[fileIndex];
+            found = prb_streq(file, iterRecursive.curPath);
+            if (found) {
+                nestedFilesFound[fileIndex] += 1;
+            }
+        }
+
+        for (usize fileIndex = 0; fileIndex < prb_arrayLength(nestedFiles) && !found; fileIndex++) {
+            prb_String file = nestedNestedFiles[fileIndex];
+            found = prb_streq(file, iterRecursive.curPath);
+            if (found) {
+                nestedNestedFilesFound[fileIndex] += 1;
+            }
+        }
+
+        if (!found) {
+            nestedDirFound = nestedDirFound || prb_streq(iterRecursive.curPath, nestedDir);
+            nestedNestedDirFound = nestedNestedDirFound || prb_streq(iterRecursive.curPath, nestedNestedDir);
+            emptyNestedDirFound = emptyNestedDirFound || prb_streq(iterRecursive.curPath, emptyNestedDir);
+        }
+    }
+
+    prb_assert(filesFound[0] == 1);
+    prb_assert(filesFound[1] == 1);
+    prb_assert(filesFound[2] == 1);
+    prb_assert(filesFound[3] == 1);
+
+    prb_assert(nestedFilesFound[0] == 1);
+    prb_assert(nestedFilesFound[1] == 1);
+    prb_assert(nestedFilesFound[2] == 1);
+    prb_assert(nestedFilesFound[3] == 1);
+
+    prb_assert(nestedNestedFilesFound[0] == 1);
+    prb_assert(nestedNestedFilesFound[1] == 1);
+    prb_assert(nestedNestedFilesFound[2] == 1);
+    prb_assert(nestedNestedFilesFound[3] == 1);
+
+    prb_assert(nestedDirFound);
+    prb_assert(nestedNestedDirFound);
+    prb_assert(emptyNestedDirFound);
+
+    prb_assert(iterRecursive.curMatchCount == prb_arrayLength(files) + prb_arrayLength(nestedFiles) + prb_arrayLength(nestedNestedFiles) + 3);
 
     prb_removeDirectoryIfExists(dir);
     prb_endTempMemory(temp);

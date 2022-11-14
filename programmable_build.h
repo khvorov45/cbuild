@@ -104,6 +104,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #define prb_allocArray(type, len) (type*)prb_allocAndZero((len) * sizeof(type), alignof(type))
 #define prb_allocStruct(type) (type*)prb_allocAndZero(sizeof(type), alignof(type))
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
+#define prb_unused(x) ((x)=(x))
 
 #define prb_countLeading1sU32(x) __builtin_clz(~(x))
 #define prb_countLeading1sU8(x) prb_countLeading1sU32((x) << 24)
@@ -305,6 +306,7 @@ typedef enum prb_PathFindMode {
 typedef struct prb_PathFindSpec {
     prb_String       pattern;
     prb_PathFindMode mode;
+    bool             recursive;
 } prb_PathFindSpec;
 
 typedef struct prb_PathFindIterator {
@@ -316,7 +318,8 @@ typedef struct prb_PathFindIterator {
 #elif prb_PLATFORM_LINUX
     union {
         struct {
-            DIR* handle;
+            prb_String* parents;
+            DIR**       handles;
         } allFilesInDir;
         struct {
             int     returnVal;
@@ -374,7 +377,7 @@ prb_PUBLICDEC uint64_t             prb_getEarliestLastModifiedFromPattern(prb_St
 prb_PUBLICDEC uint64_t             prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 prb_PUBLICDEC uint64_t             prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
 prb_PUBLICDEC prb_Bytes            prb_readEntireFile(prb_String path);
-prb_PUBLICDEC void                 prb_writeEntireFile(prb_String path, prb_Bytes content);
+prb_PUBLICDEC void                 prb_writeEntireFile(prb_String path, const void* content, int32_t contentLen);
 prb_PUBLICDEC void                 prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION Strings
@@ -991,7 +994,6 @@ typedef struct prb_linux_GetFileStatResult {
 
 static prb_linux_GetFileStatResult
 prb_linux_getFileStat(prb_String path) {
-    prb_assert(path.str && path.len > 0);
     prb_TempMemory              temp = prb_beginTempMemory();
     prb_linux_GetFileStatResult result = {};
     const char*                 pathNull = prb_strGetNullTerminated(path);
@@ -1092,7 +1094,7 @@ prb_isFile(prb_String path) {
 prb_PUBLICDEF bool
 prb_directoryIsEmpty(prb_String path) {
     prb_TempMemory       temp = prb_beginTempMemory();
-    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllFilesInDir});
+    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllFilesInDir, .recursive = false});
     bool                 result = prb_pathFindIterNext(&iter) == prb_Failure;
     prb_destroyPathFindIter(&iter);
     prb_endTempMemory(temp);
@@ -1170,7 +1172,7 @@ prb_removeDirectoryIfExists(prb_String path) {
 #elif prb_PLATFORM_LINUX
 
     if (prb_pathExists(path)) {
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllFilesInDir});
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllFilesInDir, .recursive = false});
         while (prb_pathFindIterNext(&iter)) {
             prb_removeFileOrDirectoryIfExists(iter.curPath);
         }
@@ -1354,13 +1356,17 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
 
     switch (spec.mode) {
         case prb_PathFindMode_AllFilesInDir: {
-            iter.allFilesInDir.handle = opendir(patternNull);
-            prb_assert(iter.allFilesInDir.handle);
+            DIR* handle = opendir(patternNull);
+            prb_assert(handle);
+            prb_endTempMemory(temp);
+            arrput(iter.allFilesInDir.handles, handle);
+            arrput(iter.allFilesInDir.parents, spec.pattern);
         } break;
 
         case prb_PathFindMode_Glob: {
             iter.glob.currentIndex = -1;
             iter.glob.returnVal = glob(patternNull, GLOB_NOSORT, 0, &iter.glob.result);
+            prb_endTempMemory(temp);
         } break;
     }
 
@@ -1368,7 +1374,6 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
 #error unimplemented
 #endif
 
-    prb_endTempMemory(temp);
     return iter;
 }
 
@@ -1385,15 +1390,31 @@ prb_pathFindIterNext(prb_PathFindIterator* iter) {
 
     switch (iter->spec.mode) {
         case prb_PathFindMode_AllFilesInDir: {
-            for (struct dirent* entry = readdir(iter->allFilesInDir.handle); entry; entry = readdir(iter->allFilesInDir.handle)) {
+            DIR* handle = iter->allFilesInDir.handles[arrlen(iter->allFilesInDir.handles) - 1];
+            prb_String parent = iter->allFilesInDir.parents[arrlen(iter->allFilesInDir.parents) - 1];
+            for (struct dirent* entry = readdir(handle); entry; entry = readdir(handle)) {
                 bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
                 bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
                 if (!isDot && !isDoubleDot) {
                     result = prb_Success;
-                    iter->curPath = prb_pathJoin(iter->spec.pattern, prb_STR(entry->d_name));
+                    iter->curPath = prb_pathJoin(parent, prb_STR(entry->d_name));
                     iter->curMatchCount += 1;
+                    if (iter->spec.recursive && prb_isDirectory(iter->curPath)) {
+                        DIR* newHandle = opendir(iter->curPath.str);
+                        prb_assert(newHandle);
+                        arrput(iter->allFilesInDir.handles, newHandle);
+                        arrput(iter->allFilesInDir.parents, iter->curPath);
+                    }
                     break;
                 }
+            }
+
+            if (result == prb_Failure && arrlen(iter->allFilesInDir.handles) > 1) {
+                prb_String doneDirPath = arrpop(iter->allFilesInDir.parents);
+                prb_unused(doneDirPath);
+                DIR* doneDir = arrpop(iter->allFilesInDir.handles);
+                closedir(doneDir);
+                result = prb_pathFindIterNext(iter);
             }
         } break;
 
@@ -1424,7 +1445,11 @@ prb_destroyPathFindIter(prb_PathFindIterator* iter) {
 #elif prb_PLATFORM_LINUX
 
     switch (iter->spec.mode) {
-        case prb_PathFindMode_AllFilesInDir: closedir(iter->allFilesInDir.handle); break;
+        case prb_PathFindMode_AllFilesInDir:
+            for (int32_t handleIndex = 0; handleIndex < arrlen(iter->allFilesInDir.handles); handleIndex++) {
+                closedir(iter->allFilesInDir.handles[handleIndex]);
+            }
+            break;
         case prb_PathFindMode_Glob: globfree(&iter->glob.result); break;
     }
 
@@ -1574,7 +1599,7 @@ prb_readEntireFile(prb_String path) {
 }
 
 prb_PUBLICDEF void
-prb_writeEntireFile(prb_String path, prb_Bytes content) {
+prb_writeEntireFile(prb_String path, const void* content, int32_t contentLen) {
 #if prb_PLATFORM_WINDOWS
 
 #error unimplemented
@@ -1583,8 +1608,8 @@ prb_writeEntireFile(prb_String path, prb_Bytes content) {
 
     int handle = prb_linux_open(path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
     prb_assert(handle != -1);
-    int32_t writeResult = write(handle, content.data, content.len);
-    prb_assert(writeResult == content.len);
+    ssize_t writeResult = write(handle, content, contentLen);
+    prb_assert(writeResult == contentLen);
     close(handle);
 
 #else
@@ -1611,7 +1636,7 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
     prb_addStringSegment(&arrayStr, "};");
     prb_endString();
 
-    prb_writeEntireFile(outPath, (prb_Bytes) {(uint8_t*)arrayStr.str, arrayStr.len});
+    prb_writeEntireFile(outPath, arrayStr.str, arrayStr.len);
     prb_endTempMemory(temp);
 }
 
@@ -1637,9 +1662,8 @@ prb_strSliceForward(prb_String str, int32_t bytes) {
 
 prb_PUBLICDEF const char*
 prb_strGetNullTerminated(prb_String str) {
-    prb_assert(str.str && str.len > 0);
     const char* result = str.str;
-    if (str.str[str.len] != '\0') {
+    if (str.str && str.str[str.len] != '\0') {
         result = prb_fmt("%.*s", str.len, str.str).str;
     }
     return result;

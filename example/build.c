@@ -93,7 +93,7 @@ compileStaticLib(
     int32_t allInputFilepathsCount = 0;
     for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesCount; inputPatternIndex++) {
         prb_String           inputPattern = compileSources[inputPatternIndex];
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {inputPattern, prb_PathFindMode_Glob});
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {inputPattern, prb_PathFindMode_Glob, .recursive = false});
         prb_String*          inputMatches = 0;
         while (prb_pathFindIterNext(&iter)) {
             arrput(inputMatches, iter.curPath);
@@ -232,7 +232,7 @@ textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
         .direction = prb_StringDirection_FromStart,
     };
     prb_String newContent = prb_strReplace(spec, replacement);
-    prb_writeEntireFile(path, (prb_Bytes) {(uint8_t*)newContent.str, newContent.len});
+    prb_writeEntireFile(path, newContent.str, newContent.len);
 }
 
 int
