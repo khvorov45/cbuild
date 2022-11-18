@@ -322,6 +322,7 @@ test_directoryIsEmpty(void) {
     prb_assert(prb_directoryIsEmpty(dirNotNull));
     prb_assert(prb_directoryIsEmpty(dir));
 
+    prb_removeDirectoryIfExists(dir);
     prb_endTempMemory(temp);
 }
 
