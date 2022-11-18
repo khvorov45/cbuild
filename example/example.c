@@ -913,7 +913,7 @@ drawMemRect(Renderer* renderer, i32 topY, i32 memUsed, i32 totalMemoryUsed, i32 
         TempMemory tempMem = arenaBeginTemp(renderer->arena);
         String     memUsageStr = fmtMemUsage(renderer->arena, memUsed);
         String     memsizeString = stringFmt(renderer->arena, "%s: %s", text.str.ptr, memUsageStr.ptr);
-        drawTextline(renderer, memsizeString, memRect.w + text.xOff, topY + text.yOff, color);
+        drawTextline(renderer, memsizeString, memRect.w + text.xOff, text.yOff, color);
         endTempMemory(tempMem);
     }
 
@@ -947,7 +947,7 @@ drawArenaUsage(Renderer* renderer, i32 size, i32 used, i32 topY, i32 totalMemory
         renderer,
         usageStr,
         width + text.xOff,
-        topY + text.yOff,
+        text.yOff,
         (Color) {.r = 200, .g = 200, .b = 200, .a = 255}
     );
     endTempMemory(tempMem);
@@ -1029,6 +1029,8 @@ main(int argc, char* argv[]) {
                         globalGPADataSDL.used + globalGPADataFT.used + globalGPADataHB.used + virtualArena.size;
                     i32 memRectHeight = 20;
                     i32 textXPad = 5;
+                    i32 arbitraryLineHeight = 20;
+                    i32 textYOffset = 0;
                     i32 topY = drawMemRect(
                         &renderer,
                         0,
@@ -1036,8 +1038,9 @@ main(int argc, char* argv[]) {
                         totalMemoryUsed,
                         memRectHeight,
                         (Color) {.r = 100, .g = 100, .a = 255},
-                        (MemRectText) {.str = stringFromCstring("SDL"), .xOff = textXPad}
+                        (MemRectText) {.str = stringFromCstring("SDL"), .xOff = textXPad, .yOff = textYOffset}
                     );
+                    textYOffset += arbitraryLineHeight;
 
                     topY = drawMemRect(
                         &renderer,
@@ -1046,8 +1049,9 @@ main(int argc, char* argv[]) {
                         totalMemoryUsed,
                         memRectHeight,
                         (Color) {.r = 100, .b = 100, .a = 255},
-                        (MemRectText) {.str = stringFromCstring("FT"), .xOff = textXPad, .yOff = -5}
+                        (MemRectText) {.str = stringFromCstring("FT"), .xOff = textXPad, .yOff = textYOffset}
                     );
+                    textYOffset += arbitraryLineHeight;
 
                     topY = drawMemRect(
                         &renderer,
@@ -1056,8 +1060,9 @@ main(int argc, char* argv[]) {
                         totalMemoryUsed,
                         memRectHeight,
                         (Color) {.g = 100, .b = 100, .a = 255},
-                        (MemRectText) {.str = stringFromCstring("HB"), .xOff = textXPad, .yOff = 5}
+                        (MemRectText) {.str = stringFromCstring("HB"), .xOff = textXPad, .yOff = textYOffset}
                     );
+                    textYOffset += arbitraryLineHeight;
 
                     topY = drawArenaUsage(
                         &renderer,
@@ -1066,8 +1071,9 @@ main(int argc, char* argv[]) {
                         topY,
                         totalMemoryUsed,
                         memRectHeight,
-                        (MemRectText) {.str = stringFromCstring("Arena"), .xOff = textXPad, .yOff = 15}
+                        (MemRectText) {.str = stringFromCstring("Arena"), .xOff = textXPad, .yOff = textYOffset}
                     );
+                    textYOffset += arbitraryLineHeight;
                 }
 
                 // NOTE(khvorov) Print timings
