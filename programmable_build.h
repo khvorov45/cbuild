@@ -1518,7 +1518,8 @@ prb_getLastModifiedFromPath(prb_String path) {
 
     prb_linux_GetFileStatResult statResult = prb_linux_getFileStat(path);
     if (statResult.success) {
-        result = (prb_LastModResult) {.success = true, .timestamp = statResult.stat.st_mtim.tv_sec};
+        prb_assert(statResult.stat.st_mtim.tv_sec >= 0);
+        result = (prb_LastModResult) {.success = true, .timestamp = (uint64_t)statResult.stat.st_mtim.tv_sec};
     }
 
 #else
