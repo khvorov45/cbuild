@@ -347,6 +347,11 @@ typedef enum prb_LastModKind {
     prb_LastModKind_Latest,
 } prb_LastModKind;
 
+typedef struct prb_LastModResult {
+    bool     success;
+    uint64_t timestamp;
+} prb_LastModResult;
+
 #ifdef prb_NO_IMPLEMENTATION
 extern prb_Arena prb_globalArena;
 #endif
@@ -387,9 +392,9 @@ prb_PUBLICDEC prb_String           prb_replaceExt(prb_String path, prb_String ne
 prb_PUBLICDEC prb_PathFindIterator prb_createPathFindIter(prb_PathFindSpec spec);
 prb_PUBLICDEC prb_Status           prb_pathFindIterNext(prb_PathFindIterator* iter);
 prb_PUBLICDEC void                 prb_destroyPathFindIter(prb_PathFindIterator* iter);
-prb_PUBLICDEC uint64_t             prb_getLastModifiedPath(prb_String path);
-prb_PUBLICDEC uint64_t             prb_getLastModifiedPaths(prb_String* path, int32_t pathCount, prb_LastModKind kind);
-prb_PUBLICDEC uint64_t             prb_getLastModifiedFindSpec(prb_PathFindSpec spec, prb_LastModKind kind);
+prb_PUBLICDEC prb_LastModResult    prb_getLastModifiedFromPath(prb_String path);
+prb_PUBLICDEC prb_LastModResult    prb_getLastModifiedFromPaths(prb_String* path, int32_t pathCount, prb_LastModKind kind);
+prb_PUBLICDEC prb_LastModResult    prb_getLastModifiedFromFindSpec(prb_PathFindSpec spec, prb_LastModKind kind);
 prb_PUBLICDEC prb_Bytes            prb_readEntireFile(prb_String path);
 prb_PUBLICDEC void                 prb_writeEntireFile(prb_String path, const void* content, int32_t contentLen);
 prb_PUBLICDEC void                 prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
@@ -1489,8 +1494,10 @@ prb_destroyPathFindIter(prb_PathFindIterator* iter) {
     *iter = (prb_PathFindIterator) {};
 }
 
-prb_PUBLICDEF uint64_t
-prb_getLastModifiedPath(prb_String path) {
+prb_PUBLICDEF prb_LastModResult
+prb_getLastModifiedFromPath(prb_String path) {
+    prb_LastModResult result = {};
+
 #if prb_PLATFORM_WINDOWS
 
     WIN32_FIND_DATAA findData = {};
@@ -1510,8 +1517,9 @@ prb_getLastModifiedPath(prb_String path) {
 #elif prb_PLATFORM_LINUX
 
     prb_linux_GetFileStatResult statResult = prb_linux_getFileStat(path);
-    prb_assert(statResult.success);
-    uint64_t result = statResult.stat.st_mtim.tv_sec;
+    if (statResult.success) {
+        result = (prb_LastModResult) {.success = true, .timestamp = statResult.stat.st_mtim.tv_sec};
+    }
 
 #else
 #error unimplemented
@@ -1520,33 +1528,37 @@ prb_getLastModifiedPath(prb_String path) {
     return result;
 }
 
-prb_PUBLICDEF uint64_t
-prb_getLastModifiedPaths(prb_String* paths, int32_t pathCount, prb_LastModKind kind) {
-    uint64_t result = 0;
+prb_PUBLICDEF prb_LastModResult
+prb_getLastModifiedFromPaths(prb_String* paths, int32_t pathCount, prb_LastModKind kind) {
+    prb_LastModResult result = {.success = true, .timestamp = 0};
     if (kind == prb_LastModKind_Earliest) {
-        result = UINT64_MAX;
+        result.timestamp = UINT64_MAX;
     }
-    for (int32_t pathIndex = 0; pathIndex < pathCount; pathIndex++) {
-        prb_String path = paths[pathIndex];
-        uint64_t thisLastMod = prb_getLastModifiedPath(path);
-        switch (kind) {
-            case prb_LastModKind_Earliest: result = prb_min(result, thisLastMod); break;
-            case prb_LastModKind_Latest: result = prb_max(result, thisLastMod); break;
+    for (int32_t pathIndex = 0; pathIndex < pathCount && result.success; pathIndex++) {
+        prb_String        path = paths[pathIndex];
+        prb_LastModResult thisLastMod = prb_getLastModifiedFromPath(path);
+        if (thisLastMod.success) {
+            switch (kind) {
+                case prb_LastModKind_Earliest: result.timestamp = prb_min(result.timestamp, thisLastMod.timestamp); break;
+                case prb_LastModKind_Latest: result.timestamp = prb_max(result.timestamp, thisLastMod.timestamp); break;
+            }
+        } else {
+            result = (prb_LastModResult) {.success = false, .timestamp = 0};
         }
     }
     return result;
 }
 
-prb_PUBLICDEF uint64_t
-prb_getLastModifiedFindSpec(prb_PathFindSpec spec, prb_LastModKind kind) {
-    prb_TempMemory temp = prb_beginTempMemory();
-    prb_String* paths = 0;
+prb_PUBLICDEF prb_LastModResult
+prb_getLastModifiedFromFindSpec(prb_PathFindSpec spec, prb_LastModKind kind) {
+    prb_TempMemory       temp = prb_beginTempMemory();
+    prb_String*          paths = 0;
     prb_PathFindIterator iter = prb_createPathFindIter(spec);
     while (prb_pathFindIterNext(&iter) == prb_Success) {
         arrput(paths, iter.curPath);
     }
     prb_destroyPathFindIter(&iter);
-    uint64_t result = prb_getLastModifiedPaths(paths, arrlen(paths), kind);
+    prb_LastModResult result = prb_getLastModifiedFromPaths(paths, arrlen(paths), kind);
     prb_endTempMemory(temp);
     return result;
 }

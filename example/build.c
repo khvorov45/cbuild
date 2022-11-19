@@ -1,194 +1,226 @@
 #include "../programmable_build.h"
 
-typedef struct StaticLib {
-    bool       success;
-    prb_String libFile;
-} StaticLib;
+typedef struct ProjectInfo {
+    prb_String rootDir;
+    prb_String compileOutDir;
+} ProjectInfo;
 
-typedef enum DownloadStatus {
-    DownloadStatus_Downloaded,
-    DownloadStatus_Skipped,
-    DownloadStatus_Failed,
-} DownloadStatus;
+typedef struct StaticLibInfo {
+    prb_String  name;
+    prb_String  downloadDir;
+    prb_String  includeDir;
+    prb_String  includeFlag;
+    prb_String  libFile;
+    prb_String  compileFlags;
+    prb_String* sourcesRelToDownload;
+    int32_t     sourcesCount;
+} StaticLibInfo;
 
-typedef struct DownloadResult {
-    DownloadStatus status;
-    prb_String     downloadDir;
-    prb_String     includeDir;
-    prb_String     includeFlag;
-} DownloadResult;
-
-static DownloadResult
-downloadRepo(prb_String rootDir, prb_String name, prb_String downloadUrl, prb_String includeDirRelToDownload) {
-    prb_String     downloadDir = prb_pathJoin(rootDir, name);
-    DownloadStatus downloadStatus = DownloadStatus_Failed;
-    if (!prb_isDirectory(downloadDir) || prb_directoryIsEmpty(downloadDir)) {
-        prb_String cmd = prb_fmtAndPrintln(
-            "git clone --depth 1 %.*s %.*s",
-            downloadUrl.len,
-            downloadUrl.str,
-            downloadDir.len,
-            downloadDir.str
-        );
-        prb_ProcessHandle handle = prb_execCmd(cmd, 0, (prb_String) {});
-        prb_assert(handle.completed);
-        if (handle.completionStatus == prb_Success) {
-            downloadStatus = DownloadStatus_Downloaded;
-        }
-    } else {
-        prb_fmtAndPrintln("skip git clone %.*s", name.len, name.str);
-        downloadStatus = DownloadStatus_Skipped;
-    }
-    prb_String     includeDir = prb_pathJoin(downloadDir, includeDirRelToDownload);
-    DownloadResult result = {
-        .status = downloadStatus,
-        .downloadDir = downloadDir,
-        .includeDir = includeDir,
-        .includeFlag = prb_fmt("-I%.*s", includeDir.len, includeDir.str),
+static StaticLibInfo
+getStaticLibInfo(
+    ProjectInfo project,
+    prb_String  name,
+    prb_String  includeDirRelToDownload,
+    prb_String  compileFlags,
+    prb_String* sourcesRelToDownload,
+    int32_t     sourcesCount
+) {
+    StaticLibInfo result = {
+        .name = name,
+        .downloadDir = prb_pathJoin(project.rootDir, name),
+        .sourcesRelToDownload = sourcesRelToDownload,
+        .sourcesCount = sourcesCount,
     };
+    result.includeDir = prb_pathJoin(result.downloadDir, includeDirRelToDownload);
+    result.includeFlag = prb_fmt("-I%.*s", prb_LIT(result.includeDir));
+    result.compileFlags = prb_fmt("%.*s %.*s", prb_LIT(compileFlags), prb_LIT(result.includeFlag));
+
+#if prb_PLATFORM_WINDOWS
+    prb_String libFilename = prb_fmt("%.*s.lib", prb_LIT(name));
+#elif prb_PLATFORM_LINUX
+    prb_String libFilename = prb_fmt("%.*s.a", prb_LIT(name));
+#else
+#error unimplemented
+#endif
+
+    result.libFile = prb_pathJoin(project.compileOutDir, libFilename);
     return result;
 }
 
-static StaticLib
-compileStaticLib(
-    prb_String     name,
-    prb_String     compileOutDir,
-    prb_String     compileCmdStart,
-    DownloadResult download,
-    prb_String*    compileSourcesRelToDownload,
-    int32_t        compileSourcesRelToDownloadCount,
-    prb_String*    extraCompileFlags,
-    int32_t        extraCompileFlagsCount
-) {
-    prb_String objDir = prb_pathJoin(compileOutDir, name);
+static prb_Status
+gitClone(prb_String downloadDir, prb_String downloadUrl) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_Status     downloadStatus = prb_Failure;
+    if (!prb_isDirectory(downloadDir) || prb_directoryIsEmpty(downloadDir)) {
+        prb_String        cmd = prb_fmtAndPrintln("git clone --depth 1 %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(downloadDir));
+        prb_ProcessHandle handle = prb_execCmd(cmd, 0, (prb_String) {});
+        prb_assert(handle.completed);
+        downloadStatus = handle.completionStatus;
+    } else {
+        prb_String name = prb_getLastEntryInPath(downloadDir);
+        prb_fmtAndPrintln("skip git clone %.*s", prb_LIT(name));
+        downloadStatus = prb_Success;
+    }
+    prb_endTempMemory(temp);
+    return downloadStatus;
+}
+
+typedef enum Compiler {
+    Compiler_Gcc,
+    Compiler_Clang,
+    Compiler_Msvc,
+} Compiler;
+
+static prb_String
+constructCompileCmd(Compiler compiler, prb_String flags, prb_String inputPath, prb_String outputPath, prb_String linkFlags) {
+    prb_String cmd = prb_beginString();
+
+    switch (compiler) {
+        case Compiler_Gcc: prb_addStringSegment(&cmd, "gcc -g"); break;
+        case Compiler_Clang: prb_addStringSegment(&cmd, "clang -g"); break;
+        case Compiler_Msvc: prb_addStringSegment(&cmd, "cl /nologo /diagnostics:column /FC /Zi"); break;
+    }
+
+    prb_addStringSegment(&cmd, " %.*s", prb_LIT(flags));
+    bool isObj = prb_strEndsWith(outputPath, prb_STR("obj"), prb_StringFindMode_Exact);
+    if (isObj) {
+        prb_addStringSegment(&cmd, " -c");
+    }
+
+#if prb_PLATFORM_WINDOWS
+    if (compiler == Compiler_Msvc) {
+        prb_String pdbPath = prb_replaceExt(outputPath, prb_STR("pdb"));
+        prb_addStringSegment(&cmd, " /Fd%.s", pdbPath);
+    }
+#endif
+
+    switch (compiler) {
+        case Compiler_Gcc:
+        case Compiler_Clang: prb_addStringSegment(&cmd, " %.*s -o %.*s", prb_LIT(inputPath), prb_LIT(outputPath)); break;
+        case Compiler_Msvc: {
+            prb_String objPath = isObj ? outputPath : prb_replaceExt(outputPath, prb_STR("obj"));
+            prb_addStringSegment(&cmd, " /Fo%.*s", prb_LIT(objPath));
+            if (!isObj) {
+                prb_addStringSegment(&cmd, " /Fe%.*s", prb_LIT(outputPath));
+            }
+        } break;
+    }
+
+    if (linkFlags.str && linkFlags.len > 0) {
+        switch (compiler) {
+            case Compiler_Gcc:
+            case Compiler_Clang: prb_addStringSegment(&cmd, " %.*s", prb_LIT(linkFlags)); break;
+            case Compiler_Msvc: prb_addStringSegment(&cmd, "-link -incremental:no %.*s", prb_LIT(linkFlags)); break;
+        }
+        prb_addStringSegment(&cmd, " %.*s", prb_LIT(linkFlags));
+    }
+
+    prb_endString();
+    prb_writeToStdout(cmd);
+    prb_writeToStdout(prb_STR("\n"));
+    return cmd;
+}
+
+static prb_Status
+compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_Status     result = prb_Success;
+
+    prb_String objDir = prb_pathJoin(project.compileOutDir, lib.name);
     prb_createDirIfNotExists(objDir);
 
-    prb_String extraFlagsStr = prb_stringsJoin(extraCompileFlags, extraCompileFlagsCount, prb_STR(" "));
-    prb_String cmdStart = prb_fmt(
-        "%.*s %.*s %.*s",
-        prb_LIT(compileCmdStart),
-        prb_LIT(download.includeFlag),
-        prb_LIT(extraFlagsStr)
-    );
+    // TODO(khvorov) Remove all objs that don't correspond to any inputs
 
-#if prb_PLATFORM_WINDOWS
-    prb_String pdbPath = prb_pathJoin(compileOutDir, prb_fmt("%.*s.pdb", name));
-    prb_String pdbOutputFlag = prb_fmt("/Fd%.*s", pdbPath);
-    cmdStart = prb_fmt("%.*s %.*s", cmdStart, pdbOutputFlag);
-#endif
-
-    int32_t      allInputMatchesCount = compileSourcesRelToDownloadCount;
-    prb_String** allInputMatches = 0;
-    arrsetcap(allInputMatches, allInputMatchesCount);
-    int32_t allInputFilepathsCount = 0;
-    for (int32_t inputPatternIndex = 0; inputPatternIndex < compileSourcesRelToDownloadCount; inputPatternIndex++) {
-        prb_String           inputPattern = compileSourcesRelToDownload[inputPatternIndex];
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {download.downloadDir, prb_PathFindMode_Glob, .recursive = false, .glob.pattern = inputPattern});
-        prb_String*          inputMatches = 0;
+    prb_String* inputPaths = 0;
+    for (int32_t srcIndex = 0; srcIndex < lib.sourcesCount; srcIndex++) {
+        prb_String           srcRelToDownload = lib.sourcesRelToDownload[srcIndex];
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {lib.downloadDir, prb_PathFindMode_Glob, .glob.pattern = srcRelToDownload});
         while (prb_pathFindIterNext(&iter)) {
-            arrput(inputMatches, iter.curPath);
+            arrput(inputPaths, iter.curPath);
         }
         prb_destroyPathFindIter(&iter);
-        prb_assert(arrlen(inputMatches) > 0);
-        allInputMatches[inputPatternIndex] = inputMatches;
-        allInputFilepathsCount += arrlen(inputMatches);
     }
+    prb_assert(arrlen(inputPaths) > 0);
 
     // NOTE(khvorov) Recompile everything whenever any .h file changes
-    uint64_t latestHFileChange = prb_getLastModifiedFindSpec(
-        (prb_PathFindSpec) {download.downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")},
-        prb_LastModKind_Latest
-    );
+    uint64_t latestHFileChange = 0;
+    {
+        prb_LastModResult lm = prb_getLastModifiedFromFindSpec(
+            (prb_PathFindSpec) {lib.downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")},
+            prb_LastModKind_Latest
+        );
+        prb_assert(lm.success);
+        latestHFileChange = lm.timestamp;
+    }
 
-    prb_String*        allOutputFilepaths = prb_allocArray(prb_String, allInputFilepathsCount);
-    prb_ProcessHandle* processes = prb_allocArray(prb_ProcessHandle, allInputFilepathsCount);
-    int32_t            processCount = 0;
-    int32_t            allOutputFilepathsCount = 0;
-    for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
-        prb_String* inputMatch = allInputMatches[inputMatchIndex];
-        for (int32_t inputFilepathIndex = 0; inputFilepathIndex < arrlen(inputMatch); inputFilepathIndex++) {
-            prb_String inputFilepath = inputMatch[inputFilepathIndex];
-            prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
-            prb_String outputFilename = prb_replaceExt(inputFilename, prb_STR("obj"));
-            prb_String outputFilepath = prb_pathJoin(objDir, outputFilename);
+    prb_String*        outputFilepaths = 0;
+    prb_ProcessHandle* processes = 0;
+    for (int32_t inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
+        prb_String inputFilepath = inputPaths[inputPathIndex];
+        prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
+        prb_String outputFilename = prb_replaceExt(inputFilename, prb_STR("obj"));
+        prb_String outputFilepath = prb_pathJoin(objDir, outputFilename);
+        arrput(outputFilepaths, outputFilepath);
 
-            allOutputFilepaths[allOutputFilepathsCount++] = outputFilepath;
+        prb_LastModResult sourceLastMod = prb_getLastModifiedFromPath(inputFilepath);
+        prb_assert(sourceLastMod.success);
 
-            uint64_t sourceLastMod = prb_getLastModifiedPath(inputFilepath);
-            uint64_t outputLastMod = prb_getLastModifiedPath(outputFilepath);
+        prb_LastModResult outputLastMod = prb_getLastModifiedFromPath(outputFilepath);
 
-            if (sourceLastMod > outputLastMod || latestHFileChange > outputLastMod) {
-#if prb_PLATFORM_WINDOWS
-                prb_fmt("/Fo%.*s/", objDir);
-#elif prb_PLATFORM_LINUX
-                prb_String cmd = prb_fmtAndPrintln(
-                    "%.*s -c -o %.*s %.*s",
-                    cmdStart.len,
-                    cmdStart.str,
-                    outputFilepath.len,
-                    outputFilepath.str,
-                    inputFilepath.len,
-                    inputFilepath.str
-                );
-#endif
-                processes[processCount++] = prb_execCmd(cmd, prb_ProcessFlag_DontWait, (prb_String) {});
-            }
+        if (!outputLastMod.success || sourceLastMod.timestamp > outputLastMod.timestamp || latestHFileChange > outputLastMod.timestamp) {
+            prb_String        cmd = constructCompileCmd(compiler, lib.compileFlags, inputFilepath, outputFilepath, prb_STR(""));
+            prb_ProcessHandle process = prb_execCmd(cmd, prb_ProcessFlag_DontWait, (prb_String) {});
+            arrput(processes, process);
         }
     }
 
-    if (processCount == 0) {
-        prb_fmtAndPrintln("skip compile %.*s", name.len, name.str);
+    if (arrlen(processes) == 0) {
+        prb_fmtAndPrintln("skip compile %.*s", prb_LIT(lib.name));
     }
 
-    StaticLib  result = {0};
-    prb_Status compileStatus = prb_waitForProcesses(processes, processCount);
+    prb_Status compileStatus = prb_waitForProcesses(processes, arrlen(processes));
+    result = compileStatus;
     if (compileStatus == prb_Success) {
-#if prb_PLATFORM_WINDOWS
-        prb_String staticLibFileExt = prb_STR("lib");
-#elif prb_PLATFORM_LINUX
-        prb_String staticLibFileExt = prb_STR("a");
-#endif
-        prb_String libFile = prb_pathJoin(compileOutDir, prb_fmt("%.*s.%.*s", prb_LIT(name), prb_LIT(staticLibFileExt)));
+        prb_String objsPathsString = prb_stringsJoin(outputFilepaths, arrlen(outputFilepaths), prb_STR(" "));
 
-        prb_String objsPathsString = prb_stringsJoin(allOutputFilepaths, allOutputFilepathsCount, prb_STR(" "));
-
-        uint64_t   sourceLastMod = prb_getLastModifiedPaths(allOutputFilepaths, allOutputFilepathsCount, prb_LastModKind_Latest);
-        uint64_t   outputLastMod = prb_getLastModifiedPath(libFile);
-        prb_Status libStatus = prb_Success;
-        if (sourceLastMod > outputLastMod) {
+        prb_LastModResult sourceLastMod = prb_getLastModifiedFromPaths(outputFilepaths, arrlen(outputFilepaths), prb_LastModKind_Latest);
+        prb_assert(sourceLastMod.success);
+        prb_LastModResult outputLastMod = prb_getLastModifiedFromPath(lib.libFile);
+        prb_Status        libStatus = prb_Success;
+        if (!outputLastMod.success || (sourceLastMod.timestamp > outputLastMod.timestamp)) {
 #if prb_PLATFORM_WINDOWS
             prb_String libCmd = prb_fmtAndPrintln("lib /nologo -out:%.*s %.*s", libFile, objsPattern);
 #elif prb_PLATFORM_LINUX
-            prb_String libCmd = prb_fmtAndPrintln("ar rcs %.*s %.*s", prb_LIT(libFile), prb_LIT(objsPathsString));
+            prb_String libCmd = prb_fmtAndPrintln("ar rcs %.*s %.*s", prb_LIT(lib.libFile), prb_LIT(objsPathsString));
 #endif
-            prb_removeFileIfExists(libFile);
+            prb_removeFileIfExists(lib.libFile);
             prb_ProcessHandle libHandle = prb_execCmd(libCmd, 0, (prb_String) {});
             prb_assert(libHandle.completed);
             libStatus = libHandle.completionStatus;
         } else {
-            prb_fmtAndPrintln("skip lib %.*s", prb_LIT(name));
+            prb_fmtAndPrintln("skip lib %.*s", prb_LIT(lib.name));
         }
 
-        if (libStatus == prb_Success) {
-            result = (StaticLib) {.success = true, .libFile = libFile};
-        }
+        result = libStatus;
     }
 
+    prb_endTempMemory(temp);
     return result;
 }
 
 static void
-compileAndRunBidiGenTab(prb_String src, prb_String compileCmdStart, prb_String runArgs, prb_String outpath) {
+compileAndRunBidiGenTab(Compiler compiler, prb_String src, prb_String flags, prb_String runArgs, prb_String outpath) {
+    prb_TempMemory temp = prb_beginTempMemory();
     if (!prb_isFile(outpath)) {
-#if prb_PLATFORM_LINUX
-        prb_String exeExt = prb_STR("bin");
+#if prb_PLATFORM_WINDOWS
+        prb_String exeFilename = prb_replaceExt(stc, prb_STR("exe"));
+#elif prb_PLATFORM_LINUX
+        prb_String exeFilename = prb_replaceExt(src, prb_STR("bin"));
+#else
+#error unimplemented
 #endif
-        prb_String exeFilename = prb_replaceExt(src, exeExt);
-#if prb_PLATFORM_LINUX
-        prb_String compileCommandEnd = prb_fmt("-o %.*s", prb_LIT(exeFilename));
-#endif
-
-        prb_String        cmd = prb_fmtAndPrintln("%.*s %.*s %.*s", prb_LIT(compileCmdStart), prb_LIT(compileCommandEnd), prb_LIT(src));
+        prb_String        packtabPath = prb_pathJoin(prb_getParentDir(src), prb_STR("packtab.c"));
+        prb_String        cmd = constructCompileCmd(compiler, flags, prb_fmt("%.*s %.*s", prb_LIT(packtabPath), prb_LIT(src)), exeFilename, prb_STR(""));
         prb_ProcessHandle handle = prb_execCmd(cmd, 0, (prb_String) {});
         prb_assert(handle.completed);
         if (handle.completionStatus != prb_Success) {
@@ -202,6 +234,7 @@ compileAndRunBidiGenTab(prb_String src, prb_String compileCmdStart, prb_String r
             prb_terminate(1);
         }
     }
+    prb_endTempMemory(temp);
 }
 
 prb_PUBLICDEF void
@@ -225,15 +258,14 @@ main() {
     prb_TimeStart scriptStartTime = prb_timeStart();
     prb_init(1 * prb_GIGABYTE);
 
-    prb_String rootDir = prb_getParentDir(prb_STR(__FILE__));
-
-    prb_String compileOutDir = prb_pathJoin(rootDir, prb_STR("build-debug"));
-    prb_createDirIfNotExists(compileOutDir);
+    ProjectInfo project = {.rootDir = prb_getParentDir(prb_STR(__FILE__))};
+    project.compileOutDir = prb_pathJoin(project.rootDir, prb_STR("build-debug"));
+    prb_createDirIfNotExists(project.compileOutDir);
 
 #if prb_PLATFORM_WINDOWS
-    prb_String compileCmdStart = prb_STR("cl /nologo /diagnostics:column /FC /Zi");
+    Compiler compiler = Compiler_Msvc;
 #elif prb_PLATFORM_LINUX
-    prb_String compileCmdStart = prb_STR("gcc -g");
+    Compiler compiler = Compiler_Gcc;
 #else
 #error unimlemented
 #endif
@@ -242,24 +274,28 @@ main() {
     // SECTION Fribidi
     //
 
-    prb_String     fribidiName = prb_STR("fribidi");
-    DownloadResult fribidiDownload = downloadRepo(rootDir, fribidiName, prb_STR("https://github.com/fribidi/fribidi"), prb_STR("lib"));
-    if (fribidiDownload.status == DownloadStatus_Failed) {
-        return 1;
-    }
+    prb_String fribidiCompileSouces[] = {prb_STR("lib/*.c")};
 
     prb_String fribidiNoConfigFlag = prb_STR("-DDONT_HAVE_FRIBIDI_CONFIG_H -DDONT_HAVE_FRIBIDI_UNICODE_VERSION_H");
 
+    // TODO(khvorov) Custom allocators for fribidi
+    StaticLibInfo fribidi = getStaticLibInfo(
+        project,
+        prb_STR("fribidi"),
+        prb_STR("lib"),
+        prb_fmt("%.*s -DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1 -DHAVE_STRINGIZE=1", prb_LIT(fribidiNoConfigFlag)),
+        fribidiCompileSouces,
+        prb_arrayLength(fribidiCompileSouces)
+    );
+    prb_assert(gitClone(fribidi.downloadDir, prb_STR("https://github.com/fribidi/fribidi")) == prb_Success);
+
     // NOTE(khvorov) Generate fribidi tables
     {
-        prb_String gentabDir = prb_pathJoin(fribidiDownload.downloadDir, prb_STR("gen.tab"));
-        prb_String packtabPath = prb_pathJoin(gentabDir, prb_STR("packtab.c"));
-        prb_String cmd = prb_fmt(
-            "%.*s %.*s %.*s -DHAVE_STDLIB_H=1 -DHAVE_STRING_H -DHAVE_STRINGIZE %.*s",
-            prb_LIT(compileCmdStart),
+        prb_String gentabDir = prb_pathJoin(fribidi.downloadDir, prb_STR("gen.tab"));
+        prb_String flags = prb_fmt(
+            "%.*s %.*s -DHAVE_STDLIB_H=1 -DHAVE_STRING_H -DHAVE_STRINGIZE",
             prb_LIT(fribidiNoConfigFlag),
-            prb_LIT(fribidiDownload.includeFlag),
-            prb_LIT(packtabPath)
+            prb_LIT(fribidi.includeFlag)
         );
         prb_String datadir = prb_pathJoin(gentabDir, prb_STR("unidata"));
         prb_String unidat = prb_pathJoin(datadir, prb_STR("UnicodeData.txt"));
@@ -269,86 +305,64 @@ main() {
 
         prb_String bracketsPath = prb_pathJoin(datadir, prb_STR("BidiBrackets.txt"));
         compileAndRunBidiGenTab(
+            compiler,
             prb_pathJoin(gentabDir, prb_STR("gen-brackets-tab.c")),
-            cmd,
+            flags,
             prb_fmt("%d %.*s %.*s", maxDepth, prb_LIT(bracketsPath), prb_LIT(unidat)),
-            prb_pathJoin(fribidiDownload.includeDir, prb_STR("brackets.tab.i"))
+            prb_pathJoin(fribidi.includeDir, prb_STR("brackets.tab.i"))
         );
 
         compileAndRunBidiGenTab(
+            compiler,
             prb_pathJoin(gentabDir, prb_STR("gen-arabic-shaping-tab.c")),
-            cmd,
+            flags,
             prb_fmt("%d %.*s", maxDepth, prb_LIT(unidat)),
-            prb_pathJoin(fribidiDownload.includeDir, prb_STR("arabic-shaping.tab.i"))
+            prb_pathJoin(fribidi.includeDir, prb_STR("arabic-shaping.tab.i"))
         );
 
         prb_String shapePath = prb_pathJoin(datadir, prb_STR("ArabicShaping.txt"));
         compileAndRunBidiGenTab(
+            compiler,
             prb_pathJoin(gentabDir, prb_STR("gen-joining-type-tab.c")),
-            cmd,
+            flags,
             prb_fmt("%d %.*s %.*s", maxDepth, prb_LIT(unidat), prb_LIT(shapePath)),
-            prb_pathJoin(fribidiDownload.includeDir, prb_STR("joining-type.tab.i"))
+            prb_pathJoin(fribidi.includeDir, prb_STR("joining-type.tab.i"))
         );
 
         compileAndRunBidiGenTab(
+            compiler,
             prb_pathJoin(gentabDir, prb_STR("gen-brackets-type-tab.c")),
-            cmd,
+            flags,
             prb_fmt("%d %.*s", maxDepth, prb_LIT(bracketsPath)),
-            prb_pathJoin(fribidiDownload.includeDir, prb_STR("brackets-type.tab.i"))
+            prb_pathJoin(fribidi.includeDir, prb_STR("brackets-type.tab.i"))
         );
 
         prb_String mirrorPath = prb_pathJoin(datadir, prb_STR("BidiMirroring.txt"));
         compileAndRunBidiGenTab(
+            compiler,
             prb_pathJoin(gentabDir, prb_STR("gen-mirroring-tab.c")),
-            cmd,
+            flags,
             prb_fmt("%d %.*s", maxDepth, prb_LIT(mirrorPath)),
-            prb_pathJoin(fribidiDownload.includeDir, prb_STR("mirroring.tab.i"))
+            prb_pathJoin(fribidi.includeDir, prb_STR("mirroring.tab.i"))
         );
 
         compileAndRunBidiGenTab(
+            compiler,
             prb_pathJoin(gentabDir, prb_STR("gen-bidi-type-tab.c")),
-            cmd,
+            flags,
             prb_fmt("%d %.*s", maxDepth, prb_LIT(unidat)),
-            prb_pathJoin(fribidiDownload.includeDir, prb_STR("bidi-type.tab.i"))
+            prb_pathJoin(fribidi.includeDir, prb_STR("bidi-type.tab.i"))
         );
     }
 
-    prb_String fribidiCompileSources[] = {prb_STR("lib/*.c")};
-
-    prb_String fribidiCompileFlags[] = {
-        fribidiNoConfigFlag,
-        // TODO(khvorov) Custom allocators for fribidi
-        prb_STR("-DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1"),
-        prb_STR("-DHAVE_STRINGIZE=1"),
-    };
-
     // prb_clearDirectory(prb_pathJoin(compileOutDir, fribidiName));
-    StaticLib fribidi = compileStaticLib(
-        fribidiName,
-        compileOutDir,
-        compileCmdStart,
-        fribidiDownload,
-        fribidiCompileSources,
-        prb_arrayLength(fribidiCompileSources),
-        fribidiCompileFlags,
-        prb_arrayLength(fribidiCompileFlags)
-    );
-    if (!fribidi.success) {
-        return 1;
-    }
+    prb_assert(compileStaticLib(project, compiler, fribidi) == prb_Success);
 
     //
     // SECTION ICU
     //
 
     // TODO(khvorov) Custom allocation for ICU
-    prb_String     icuName = prb_STR("icu");
-    DownloadResult icuDownload =
-        downloadRepo(rootDir, icuName, prb_STR("https://github.com/unicode-org/icu"), prb_STR("icu4c/source/common"));
-
-    if (icuDownload.status == DownloadStatus_Failed) {
-        return 1;
-    }
 
     prb_String icuCompileSources[] = {
         prb_STR("icu4c/source/common/uchar.cpp"),
@@ -408,45 +422,22 @@ main() {
         prb_STR("icu4c/source/stubdata/stubdata.cpp"),  // NOTE(khvorov) We won't need to access data here
     };
 
-    prb_String icuFlags[] = {
-        prb_STR("-DU_COMMON_IMPLEMENTATION=1"),
-        prb_STR("-DU_COMBINED_IMPLEMENTATION=1"),
-        prb_STR("-DU_STATIC_IMPLEMENTATION=1"),
-    };
+    StaticLibInfo icu = getStaticLibInfo(
+        project,
+        prb_STR("icu"),
+        prb_STR("icu4c/source/common"),
+        prb_STR("-DU_COMMON_IMPLEMENTATION=1 -DU_COMBINED_IMPLEMENTATION=1 -DU_STATIC_IMPLEMENTATION=1"),
+        icuCompileSources,
+        prb_arrayLength(icuCompileSources)
+    );
+    prb_assert(gitClone(icu.downloadDir, prb_STR("https://github.com/unicode-org/icu")) == prb_Success);
 
     // prb_clearDirectory(prb_pathJoin(compileOutDir, icuName));
-    StaticLib icu = compileStaticLib(
-        icuName,
-        compileOutDir,
-        compileCmdStart,
-        icuDownload,
-        icuCompileSources,
-        prb_arrayLength(icuCompileSources),
-        icuFlags,
-        prb_arrayLength(icuFlags)
-    );
-
-    if (!icu.success) {
-        return 1;
-    }
+    prb_assert(compileStaticLib(project, compiler, icu) == prb_Success);
 
     //
     // SECTION Freetype and harfbuzz (they depend on each other)
     //
-
-    prb_String     freetypeName = prb_STR("freetype");
-    DownloadResult freetypeDownload =
-        downloadRepo(rootDir, freetypeName, prb_STR("https://github.com/freetype/freetype"), prb_STR("include"));
-    if (freetypeDownload.status == DownloadStatus_Failed) {
-        return 1;
-    }
-
-    prb_String     harfbuzzName = prb_STR("harfbuzz");
-    DownloadResult harfbuzzDownload =
-        downloadRepo(rootDir, harfbuzzName, prb_STR("https://github.com/harfbuzz/harfbuzz"), prb_STR("src"));
-    if (harfbuzzDownload.status == DownloadStatus_Failed) {
-        return 1;
-    }
 
     prb_String freetypeCompileSources[] = {
         // Required
@@ -506,57 +497,40 @@ main() {
         prb_STR("src/psnames/psnames.c"),
     };
 
-    prb_String freetypeCompileFlags[] = {
-        harfbuzzDownload.includeFlag,
-        prb_STR("-DFT2_BUILD_LIBRARY"),
-        prb_STR("-DFT_CONFIG_OPTION_DISABLE_STREAM_SUPPORT"),
-        prb_STR("-DFT_CONFIG_OPTION_USE_HARFBUZZ"),
-    };
-
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, freetypeName));
-    StaticLib freetype = compileStaticLib(
-        freetypeName,
-        compileOutDir,
-        compileCmdStart,
-        freetypeDownload,
+    StaticLibInfo freetype = getStaticLibInfo(
+        project,
+        prb_STR("freetype"),
+        prb_STR("include"),
+        prb_fmt("-DFT2_BUILD_LIBRARY -DFT_CONFIG_OPTION_DISABLE_STREAM_SUPPORT -DFT_CONFIG_OPTION_USE_HARFBUZZ"),
         freetypeCompileSources,
-        prb_arrayLength(freetypeCompileSources),
-        freetypeCompileFlags,
-        prb_arrayLength(freetypeCompileFlags)
+        prb_arrayLength(freetypeCompileSources)
     );
 
-    if (!freetype.success) {
-        return 1;
-    };
+    prb_assert(gitClone(freetype.downloadDir, prb_STR("https://github.com/freetype/freetype")) == prb_Success);
 
     prb_String harfbuzzCompileSources[] = {
         prb_STR("src/harfbuzz.cc"),
         prb_STR("src/hb-icu.cc"),
     };
 
-    prb_String harfbuzzCompileFlags[] = {
-        icuDownload.includeFlag,
-        freetypeDownload.includeFlag,
-        prb_STR("-DHAVE_ICU=1"),
-        prb_STR("-DHAVE_FREETYPE=1"),
-        prb_STR("-DHB_CUSTOM_MALLOC=1"),
-    };
-
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, harfbuzzName));
-    StaticLib harfbuzz = compileStaticLib(
-        harfbuzzName,
-        compileOutDir,
-        compileCmdStart,
-        harfbuzzDownload,
+    StaticLibInfo harfbuzz = getStaticLibInfo(
+        project,
+        prb_STR("harfbuzz"),
+        prb_STR("src"),
+        prb_fmt("%.*s %.*s -DHAVE_ICU=1 -DHAVE_FREETYPE=1 -DHB_CUSTOM_MALLOC=1", prb_LIT(icu.includeFlag), prb_LIT(freetype.includeFlag)),
         harfbuzzCompileSources,
-        prb_arrayLength(harfbuzzCompileSources),
-        harfbuzzCompileFlags,
-        prb_arrayLength(harfbuzzCompileFlags)
+        prb_arrayLength(harfbuzzCompileSources)
     );
 
-    if (!harfbuzz.success) {
-        return 1;
-    };
+    prb_assert(gitClone(harfbuzz.downloadDir, prb_STR("https://github.com/harfbuzz/harfbuzz")) == prb_Success);
+
+    freetype.compileFlags = prb_fmt("%.*s %.*s", prb_LIT(freetype.compileFlags), prb_LIT(harfbuzz.includeFlag));
+
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, freetypeName));
+    prb_assert(compileStaticLib(project, compiler, freetype) == prb_Success);
+
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, harfbuzzName));
+    prb_assert(compileStaticLib(project, compiler, harfbuzz) == prb_Success);
 
     //
     // SECTION SDL
@@ -627,14 +601,20 @@ main() {
 #endif
     };
 
-    prb_String     sdlName = prb_STR("sdl");
-    DownloadResult sdlDownload = downloadRepo(rootDir, sdlName, prb_STR("https://github.com/libsdl-org/SDL"), prb_STR("include"));
-    if (sdlDownload.status == DownloadStatus_Failed) {
-        return 1;
-    }
+    StaticLibInfo sdl = getStaticLibInfo(
+        project,
+        prb_STR("sdl"),
+        prb_STR("include"),
+        prb_stringsJoin(sdlCompileFlags, prb_arrayLength(sdlCompileFlags), prb_STR(" ")),
+        sdlCompileSources,
+        prb_arrayLength(sdlCompileSources)
+    );
 
-    if (sdlDownload.status == DownloadStatus_Downloaded) {
-        prb_String downloadDir = sdlDownload.downloadDir;
+    bool sdlNotDownloaded = !prb_isDirectory(sdl.downloadDir) || prb_directoryIsEmpty(sdl.downloadDir);
+    prb_assert(gitClone(sdl.downloadDir, prb_STR("https://github.com/libsdl-org/SDL")) == prb_Success);
+
+    if (sdlNotDownloaded) {
+        prb_String downloadDir = sdl.downloadDir;
 
         // NOTE(khvorov) Purge dynamic api because otherwise you have to compile a lot more of sdl
         prb_String dynapiPath = prb_pathJoin(downloadDir, prb_STR("src/dynapi/SDL_dynapi.h"));
@@ -663,45 +643,24 @@ main() {
     }
 
     // prb_clearDirectory(prb_pathJoin(compileOutDir, sdlName));
-    StaticLib sdl = compileStaticLib(
-        sdlName,
-        compileOutDir,
-        compileCmdStart,
-        sdlDownload,
-        sdlCompileSources,
-        prb_arrayLength(sdlCompileSources),
-        sdlCompileFlags,
-        prb_arrayLength(sdlCompileFlags)
-    );
-
-    if (!sdl.success) {
-        return 1;
-    }
+    prb_assert(compileStaticLib(project, compiler, sdl) == prb_Success);
 
     //
     // SECTION Main program
     //
 
     prb_String mainFlags[] = {
-        freetypeDownload.includeFlag,
-        sdlDownload.includeFlag,
-        harfbuzzDownload.includeFlag,
-        icuDownload.includeFlag,
-        fribidiDownload.includeFlag,
-        fribidiNoConfigFlag,        
+        freetype.includeFlag,
+        sdl.includeFlag,
+        harfbuzz.includeFlag,
+        icu.includeFlag,
+        fribidi.includeFlag,
+        fribidiNoConfigFlag,
         prb_STR("-Wall -Wextra -Wno-unused-function"),
-#if prb_PLATFORM_WINDOWS
-        prb_STR("-Zi"),
-        prb_stringJoin2("-Fo"), prb_pathJoin(compileOutDir, prb_STR("example.obj")))),
-        prb_stringJoin2("-Fe"), prb_pathJoin(compileOutDir, prb_STR("example.exe")))),
-        prb_stringJoin2("-Fd"), prb_pathJoin(compileOutDir, prb_STR("example.pdb")))),
-#elif prb_PLATFORM_LINUX
-        prb_fmt("-o %.*s/example.bin", prb_LIT(compileOutDir)),
-#endif
     };
 
     prb_String mainFiles[] = {
-        prb_pathJoin(rootDir, prb_STR("example.c")),
+        prb_pathJoin(project.rootDir, prb_STR("example.c")),
         freetype.libFile,
         sdl.libFile,
         harfbuzz.libFile,
@@ -710,32 +669,25 @@ main() {
     };
 
 #if prb_PLATFORM_WINDOWS
-    prb_String mainLinkFlags =
-        prb_STR(" -link -incremental:no -subsystem:windows ")
-            prb_STR("User32.lib ");
+    prb_String mainOutName = prb_STR("example.exe");
+    prb_String mainLinkFlags = prb_STR("-subsystem:windows User32.lib");
 #elif prb_PLATFORM_LINUX
+    prb_String mainOutName = prb_STR("example.bin");
     // TODO(khvorov) Get rid of -lm and -ldl
     prb_String mainLinkFlags = prb_STR("-lX11 -lm -lstdc++ -ldl -lfontconfig");
 #endif
 
-    prb_String mainFlagsStr = prb_stringsJoin(mainFlags, prb_arrayLength(mainFlags), prb_STR(" "));
-    prb_String mainFilesStr = prb_stringsJoin(mainFiles, prb_arrayLength(mainFiles), prb_STR(" "));
-    prb_String mainCmd = prb_fmtAndPrintln(
-        "%.*s %.*s %.*s %.*s",
-        prb_LIT(compileCmdStart),
-        prb_LIT(mainFlagsStr),
-        prb_LIT(mainFilesStr),
-        prb_LIT(mainLinkFlags)
+    prb_String mainCmd = constructCompileCmd(
+        compiler,
+        prb_stringsJoin(mainFlags, prb_arrayLength(mainFlags), prb_STR(" ")),
+        prb_stringsJoin(mainFiles, prb_arrayLength(mainFiles), prb_STR(" ")),
+        prb_pathJoin(project.rootDir, mainOutName),
+        mainLinkFlags
     );
 
     prb_ProcessHandle mainHandle = prb_execCmd(mainCmd, 0, (prb_String) {});
-    prb_assert(mainHandle.completed);
+    prb_assert(mainHandle.completed && mainHandle.completionStatus == prb_Success);
 
-    if (mainHandle.completionStatus == prb_Success) {
-        prb_fmtAndPrintln("total: %.2fms", prb_getMsFrom(scriptStartTime));
-    } else {
-        return 1;
-    }
-
+    prb_fmtAndPrintln("total: %.2fms", prb_getMsFrom(scriptStartTime));
     return 0;
 }
