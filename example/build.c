@@ -66,12 +66,9 @@ compileStaticLib(
     prb_String extraFlagsStr = prb_stringsJoin(extraCompileFlags, extraCompileFlagsCount, prb_STR(" "));
     prb_String cmdStart = prb_fmt(
         "%.*s %.*s %.*s",
-        compileCmdStart.len,
-        compileCmdStart.str,
-        download.includeFlag.len,
-        download.includeFlag.str,
-        extraFlagsStr.len,
-        extraFlagsStr.str
+        prb_LIT(compileCmdStart),
+        prb_LIT(download.includeFlag),
+        prb_LIT(extraFlagsStr)
     );
 
 #if prb_PLATFORM_WINDOWS
@@ -98,18 +95,10 @@ compileStaticLib(
     }
 
     // NOTE(khvorov) Recompile everything whenever any .h file changes
-    // TODO(khvorov) Probably just search the whole directory recursively for .h files
-    prb_String hfilesInIncludePattern = prb_pathJoin(download.includeDir, prb_STR("*.h"));
-    uint64_t   latestHFileChange = prb_getLatestLastModifiedFromPattern(hfilesInIncludePattern);
-    for (int32_t inputMatchIndex = 0; inputMatchIndex < allInputMatchesCount; inputMatchIndex++) {
-        prb_String* inputMatch = allInputMatches[inputMatchIndex];
-        for (int32_t inputFilepathIndex = 0; inputFilepathIndex < arrlen(inputMatch); inputFilepathIndex++) {
-            prb_String inputFilepath = inputMatch[inputFilepathIndex];
-            prb_String inputDir = prb_getParentDir(inputFilepath);
-            prb_String adjacentHFilesPattern = prb_pathJoin(inputDir, prb_STR("*.h"));
-            latestHFileChange = prb_max(latestHFileChange, prb_getLatestLastModifiedFromPattern(adjacentHFilesPattern));
-        }
-    }
+    uint64_t latestHFileChange = prb_getLastModifiedFindSpec(
+        (prb_PathFindSpec) {download.downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")},
+        prb_LastModKind_Latest
+    );
 
     prb_String*        allOutputFilepaths = prb_allocArray(prb_String, allInputFilepathsCount);
     prb_ProcessHandle* processes = prb_allocArray(prb_ProcessHandle, allInputFilepathsCount);
@@ -125,8 +114,8 @@ compileStaticLib(
 
             allOutputFilepaths[allOutputFilepathsCount++] = outputFilepath;
 
-            uint64_t sourceLastMod = prb_getLatestLastModifiedFromPattern(inputFilepath);
-            uint64_t outputLastMod = prb_getEarliestLastModifiedFromPattern(outputFilepath);
+            uint64_t sourceLastMod = prb_getLastModifiedPath(inputFilepath);
+            uint64_t outputLastMod = prb_getLastModifiedPath(outputFilepath);
 
             if (sourceLastMod > outputLastMod || latestHFileChange > outputLastMod) {
 #if prb_PLATFORM_WINDOWS
@@ -163,8 +152,8 @@ compileStaticLib(
 
         prb_String objsPathsString = prb_stringsJoin(allOutputFilepaths, allOutputFilepathsCount, prb_STR(" "));
 
-        uint64_t   sourceLastMod = prb_getLatestLastModifiedFromPatterns(allOutputFilepaths, allOutputFilepathsCount);
-        uint64_t   outputLastMod = prb_getEarliestLastModifiedFromPattern(libFile);
+        uint64_t   sourceLastMod = prb_getLastModifiedPaths(allOutputFilepaths, allOutputFilepathsCount, prb_LastModKind_Latest);
+        uint64_t   outputLastMod = prb_getLastModifiedPath(libFile);
         prb_Status libStatus = prb_Success;
         if (sourceLastMod > outputLastMod) {
 #if prb_PLATFORM_WINDOWS

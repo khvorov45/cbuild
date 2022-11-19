@@ -342,6 +342,11 @@ typedef struct prb_PathFindIterator {
 #endif
 } prb_PathFindIterator;
 
+typedef enum prb_LastModKind {
+    prb_LastModKind_Earliest,
+    prb_LastModKind_Latest,
+} prb_LastModKind;
+
 #ifdef prb_NO_IMPLEMENTATION
 extern prb_Arena prb_globalArena;
 #endif
@@ -382,10 +387,9 @@ prb_PUBLICDEC prb_String           prb_replaceExt(prb_String path, prb_String ne
 prb_PUBLICDEC prb_PathFindIterator prb_createPathFindIter(prb_PathFindSpec spec);
 prb_PUBLICDEC prb_Status           prb_pathFindIterNext(prb_PathFindIterator* iter);
 prb_PUBLICDEC void                 prb_destroyPathFindIter(prb_PathFindIterator* iter);
-prb_PUBLICDEC uint64_t             prb_getLatestLastModifiedFromPattern(prb_String pattern);
-prb_PUBLICDEC uint64_t             prb_getEarliestLastModifiedFromPattern(prb_String pattern);
-prb_PUBLICDEC uint64_t             prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
-prb_PUBLICDEC uint64_t             prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount);
+prb_PUBLICDEC uint64_t             prb_getLastModifiedPath(prb_String path);
+prb_PUBLICDEC uint64_t             prb_getLastModifiedPaths(prb_String* path, int32_t pathCount, prb_LastModKind kind);
+prb_PUBLICDEC uint64_t             prb_getLastModifiedFindSpec(prb_PathFindSpec spec, prb_LastModKind kind);
 prb_PUBLICDEC prb_Bytes            prb_readEntireFile(prb_String path);
 prb_PUBLICDEC void                 prb_writeEntireFile(prb_String path, const void* content, int32_t contentLen);
 prb_PUBLICDEC void                 prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
@@ -1486,11 +1490,7 @@ prb_destroyPathFindIter(prb_PathFindIterator* iter) {
 }
 
 prb_PUBLICDEF uint64_t
-prb_getLatestLastModifiedFromPattern(prb_String pattern) {
-    uint64_t       result = 0;
-    prb_TempMemory temp = prb_beginTempMemory();
-    const char*    patNull = prb_strGetNullTerminated(pattern);
-
+prb_getLastModifiedPath(prb_String path) {
 #if prb_PLATFORM_WINDOWS
 
     WIN32_FIND_DATAA findData = {};
@@ -1509,93 +1509,45 @@ prb_getLatestLastModifiedFromPattern(prb_String pattern) {
 
 #elif prb_PLATFORM_LINUX
 
-    glob_t globResult = {};
-    if (glob(patNull, GLOB_NOSORT, 0, &globResult) == 0) {
-        prb_assert(globResult.gl_pathc <= INT32_MAX);
-        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char* path = globResult.gl_pathv[resultIndex];
-            struct stat statBuf = {};
-            if (stat(path, &statBuf) == 0) {
-                uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
-                result = prb_max(result, thisLastMod);
-            }
-        }
-    }
-    globfree(&globResult);
+    prb_linux_GetFileStatResult statResult = prb_linux_getFileStat(path);
+    prb_assert(statResult.success);
+    uint64_t result = statResult.stat.st_mtim.tv_sec;
 
 #else
 #error unimplemented
 #endif
 
-    prb_endTempMemory(temp);
     return result;
 }
 
 prb_PUBLICDEF uint64_t
-prb_getEarliestLastModifiedFromPattern(prb_String pattern) {
-    uint64_t       result = UINT64_MAX;
-    prb_TempMemory temp = prb_beginTempMemory();
-    const char*    patNull = prb_strGetNullTerminated(pattern);
-
-#if prb_PLATFORM_WINDOWS
-
-    WIN32_FIND_DATAA findData;
-    HANDLE           firstHandle = FindFirstFileA(pattern, &findData);
-    if (firstHandle != INVALID_HANDLE_VALUE) {
-        uint64_t thisLastMod =
-            ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
-        result = prb_min(result, thisLastMod);
-        while (FindNextFileA(firstHandle, &findData)) {
-            thisLastMod =
-                ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
-            result = prb_min(result, thisLastMod);
-        }
-        FindClose(firstHandle);
-    } else {
-        result = 0;
-    }
-
-#elif prb_PLATFORM_LINUX
-
-    glob_t globResult = {};
-    if (glob(patNull, GLOB_NOSORT, 0, &globResult) == 0) {
-        prb_assert(globResult.gl_pathc <= INT32_MAX);
-        for (int32_t resultIndex = 0; resultIndex < (int32_t)globResult.gl_pathc; resultIndex++) {
-            char* path = globResult.gl_pathv[resultIndex];
-            struct stat statBuf = {};
-            if (stat(path, &statBuf) == 0) {
-                uint64_t thisLastMod = statBuf.st_mtim.tv_sec;
-                result = prb_min(result, thisLastMod);
-            }
-        }
-    } else {
-        result = 0;
-    }
-    globfree(&globResult);
-
-#else
-#error unimplemented
-#endif
-
-    prb_endTempMemory(temp);
-    return result;
-}
-
-prb_PUBLICDEF uint64_t
-prb_getLatestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
+prb_getLastModifiedPaths(prb_String* paths, int32_t pathCount, prb_LastModKind kind) {
     uint64_t result = 0;
-    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
-        result = prb_max(result, prb_getLatestLastModifiedFromPattern(patterns[patternIndex]));
+    if (kind == prb_LastModKind_Earliest) {
+        result = UINT64_MAX;
+    }
+    for (int32_t pathIndex = 0; pathIndex < pathCount; pathIndex++) {
+        prb_String path = paths[pathIndex];
+        uint64_t thisLastMod = prb_getLastModifiedPath(path);
+        switch (kind) {
+            case prb_LastModKind_Earliest: result = prb_min(result, thisLastMod); break;
+            case prb_LastModKind_Latest: result = prb_max(result, thisLastMod); break;
+        }
     }
     return result;
 }
 
 prb_PUBLICDEF uint64_t
-prb_getEarliestLastModifiedFromPatterns(prb_String* patterns, int32_t patternsCount) {
-    uint64_t result = UINT64_MAX;
-    for (int32_t patternIndex = 0; patternIndex < patternsCount; patternIndex++) {
-        result = prb_min(result, prb_getEarliestLastModifiedFromPattern(patterns[patternIndex]));
+prb_getLastModifiedFindSpec(prb_PathFindSpec spec, prb_LastModKind kind) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_String* paths = 0;
+    prb_PathFindIterator iter = prb_createPathFindIter(spec);
+    while (prb_pathFindIterNext(&iter) == prb_Success) {
+        arrput(paths, iter.curPath);
     }
+    prb_destroyPathFindIter(&iter);
+    uint64_t result = prb_getLastModifiedPaths(paths, arrlen(paths), kind);
+    prb_endTempMemory(temp);
     return result;
 }
 
