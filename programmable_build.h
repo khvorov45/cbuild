@@ -3,8 +3,10 @@
 Repository: https://github.com/khvorov45/programmable_build
 See example/build.c for an example build script.
 
-Define prb_IMPLEMENTATION before including the header in exactly one translation unit.
-Define prb_NOT_STATIC if using in multiple translation units.
+If using in multiple translation units:
+    - Define prb_NOT_STATIC in the translation unit that has the implementation
+    - Define prb_NO_IMPLEMENTATION to use as a normal header
+
 Don't forget to call prb_init() before doing anything.
 
 Note that all memory operations (such as string formatting) 
@@ -172,7 +174,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #endif
 // clang-format on
 
-#ifndef prb_IMPLEMENTATION
+#ifdef prb_NO_IMPLEMENTATION
 #define prb_NOT_STATIC
 #endif
 
@@ -340,7 +342,7 @@ typedef struct prb_PathFindIterator {
 #endif
 } prb_PathFindIterator;
 
-#ifndef prb_IMPLEMENTATION
+#ifdef prb_NO_IMPLEMENTATION
 extern prb_Arena prb_globalArena;
 #endif
 
@@ -857,7 +859,7 @@ stbds_shmode_func_wrapper(T*, size_t elemsize, int mode) {
 
 #endif  // PROGRAMMABLE_BUILD_H
 
-#ifdef prb_IMPLEMENTATION
+#ifndef prb_NO_IMPLEMENTATION
 
 #ifdef prb_NOT_STATIC
 prb_Arena prb_globalArena;
@@ -5052,7 +5054,7 @@ stbds_strreset(stbds_string_arena* a) {
     prb_memset(a, 0, sizeof(*a));
 }
 
-#endif  // prb_IMPLEMENTATION
+#endif  // prb_NO_IMPLEMENTATION
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

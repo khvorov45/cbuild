@@ -1106,7 +1106,7 @@ test_fileformat(void) {
             win = prb_strSliceForward(win, nameStartRes.matchByteIndex + 1);
             prb_String name = prb_fmt("%.*s", win.len, win.str);
             arrput(headerNames, name);
-        } else if (prb_strStartsWith(lineIter.curLine, prb_STR("#ifdef prb_IMPLEMENTATION"), prb_StringFindMode_Exact)) {
+        } else if (prb_strStartsWith(lineIter.curLine, prb_STR("#ifndef prb_NO_IMPLEMENTATION"), prb_StringFindMode_Exact)) {
             break;
         }
     }

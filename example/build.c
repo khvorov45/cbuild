@@ -1,4 +1,3 @@
-#define prb_IMPLEMENTATION
 #include "../programmable_build.h"
 
 typedef struct StaticLib {
