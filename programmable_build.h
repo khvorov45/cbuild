@@ -35,9 +35,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 */
 
 // TODO(khvorov) Make sure utf8 paths work on windows
-// TODO(khvorov) File search by regex + recursive
-// TODO(khvorov) Directory iterator to compress all readdir usages
-// TODO(khvorov) Get rid of static array allocations and just stick to stb ds dynamic arrays?
+// TODO(khvorov) File search by regex
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
