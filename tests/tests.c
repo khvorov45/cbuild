@@ -3,6 +3,7 @@
 #define function static
 
 typedef uint8_t  u8;
+typedef uint64_t u64;
 typedef int32_t  i32;
 typedef uint32_t u32;
 typedef size_t   usize;
@@ -945,6 +946,102 @@ test_pathFindIter(void) {
     prb_endTempMemory(temp);
 }
 
+function void
+test_getLastModifiedFromPath(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_String     dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_clearDirectory(dir);
+    prb_String file = prb_pathJoin(dir, prb_STR("f1.c"));
+
+    prb_LastModResult lastMod = prb_getLastModifiedFromPath(file);
+    prb_assert(!lastMod.success && lastMod.timestamp == 0);
+    prb_writeEntireFile(file, file.str, file.len);
+    lastMod = prb_getLastModifiedFromPath(file);
+    prb_assert(lastMod.success);
+
+    u64 t1 = lastMod.timestamp;
+    prb_sleep(10.0f);
+
+    prb_writeEntireFile(file, file.str, file.len);
+    lastMod = prb_getLastModifiedFromPath(file);
+    prb_assert(lastMod.success);
+
+    u64 t2 = lastMod.timestamp;
+    prb_assert(t2 > t1);
+
+    prb_removeDirectoryIfExists(dir);
+    prb_endTempMemory(temp);
+}
+
+function void
+test_getLastModifiedFromPaths(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_String     dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_clearDirectory(dir);
+
+    prb_String f1 = prb_pathJoin(dir, prb_STR("f1.c"));
+    prb_writeEntireFile(f1, f1.str, f1.len);
+    prb_LastModResult lastModf1 = prb_getLastModifiedFromPath(f1);
+    prb_assert(lastModf1.success);
+
+    prb_String        f2 = prb_pathJoin(dir, prb_STR("f2.c"));
+    prb_String        both[] = {f1, f2};
+    prb_LastModResult lastModBoth = prb_getLastModifiedFromPaths(both, prb_arrayLength(both), prb_LastModKind_Earliest);
+    prb_assert(!lastModBoth.success && lastModBoth.timestamp == 0);
+
+    prb_sleep(10.0f);
+
+    prb_writeEntireFile(f2, f2.str, f2.len);
+    prb_LastModResult lastModf2 = prb_getLastModifiedFromPath(f2);
+    prb_assert(lastModf2.success);
+    prb_assert(lastModf2.timestamp > lastModf1.timestamp);
+
+    lastModBoth = prb_getLastModifiedFromPaths(both, prb_arrayLength(both), prb_LastModKind_Earliest);
+    prb_assert(lastModBoth.success);
+    prb_assert(lastModBoth.timestamp == lastModf1.timestamp);
+
+    lastModBoth = prb_getLastModifiedFromPaths(both, prb_arrayLength(both), prb_LastModKind_Latest);
+    prb_assert(lastModBoth.success);
+    prb_assert(lastModBoth.timestamp == lastModf2.timestamp);
+
+    prb_removeDirectoryIfExists(dir);
+    prb_endTempMemory(temp);
+}
+
+function void
+test_getLastModifiedFromFindSpec(void) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_String     dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_clearDirectory(dir);
+
+    prb_String f1 = prb_pathJoin(dir, prb_STR("f1.c"));
+    prb_writeEntireFile(f1, f1.str, f1.len);
+    prb_LastModResult lastModf1 = prb_getLastModifiedFromPath(f1);
+    prb_assert(lastModf1.success);
+
+    prb_sleep(10.0f);
+
+    prb_String f2 = prb_pathJoin(dir, prb_STR("f2.h"));
+    prb_writeEntireFile(f2, f2.str, f2.len);
+    prb_LastModResult lastModf2 = prb_getLastModifiedFromPath(f2);
+    prb_assert(lastModf2.success);
+    prb_assert(lastModf2.timestamp > lastModf1.timestamp);
+
+    prb_PathFindSpec spec = {};
+    spec.dir = dir;
+    spec.mode = prb_PathFindMode_Glob;
+    spec.glob.pattern = prb_STR("*.c");
+    prb_LastModResult lastMod = prb_getLastModifiedFromFindSpec(spec, prb_LastModKind_Earliest);
+    prb_assert(lastMod.success && lastMod.timestamp == lastModf1.timestamp);
+
+    spec.glob.pattern = prb_STR("*.h");
+    lastMod = prb_getLastModifiedFromFindSpec(spec, prb_LastModKind_Earliest);
+    prb_assert(lastMod.success && lastMod.timestamp == lastModf2.timestamp);
+
+    prb_removeDirectoryIfExists(dir);
+    prb_endTempMemory(temp);
+}
+
 //
 //
 //
@@ -1441,6 +1538,9 @@ main() {
     test_getLastEntryInPath();
     test_replaceExt();
     test_pathFindIter();
+    test_getLastModifiedFromPath();
+    test_getLastModifiedFromPaths();
+    test_getLastModifiedFromFindSpec();
 
     test_strings();
     test_fileformat();

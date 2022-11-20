@@ -436,6 +436,7 @@ prb_PUBLICDEC prb_Status           prb_lineIterNext(prb_LineIterator* iter);
 prb_PUBLICDEC const char**      prb_getArgArrayFromString(prb_String string);
 prb_PUBLICDEC prb_ProcessHandle prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath);
 prb_PUBLICDEC prb_Status        prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
+prb_PUBLICDEC void              prb_sleep(float ms);
 
 // SECTION Timing
 prb_PUBLICDEC prb_TimeStart prb_timeStart(void);
@@ -1516,8 +1517,10 @@ prb_getLastModifiedFromPath(prb_String path) {
 
     prb_linux_GetFileStatResult statResult = prb_linux_getFileStat(path);
     if (statResult.success) {
-        prb_assert(statResult.stat.st_mtim.tv_sec >= 0);
-        result = (prb_LastModResult) {.success = true, .timestamp = (uint64_t)statResult.stat.st_mtim.tv_sec};
+        result = (prb_LastModResult) {
+            .success = true,
+            .timestamp = (uint64_t)statResult.stat.st_mtim.tv_sec * 1000 * 1000 * 1000 + (uint64_t)statResult.stat.st_mtim.tv_nsec,
+        };
     }
 
 #else
@@ -2411,6 +2414,25 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
 #endif
 
     return result;
+}
+
+prb_PUBLICDEF void              
+prb_sleep(float ms) {
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    float secf = ms * 0.001f;
+    long int sec = (long int)(secf);
+    long int nsec = (long int)((secf - (float)sec) * 1000.0f * 1000.0f * 1000.0f);
+    struct timespec ts = {.tv_sec = sec, .tv_nsec = nsec};
+    nanosleep(&ts, 0);
+
+#else
+#error unimplemented
+#endif
 }
 
 //
