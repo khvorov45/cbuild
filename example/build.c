@@ -106,7 +106,7 @@ constructCompileCmd(Compiler compiler, prb_String flags, prb_String inputPath, p
         } break;
     }
 
-    if (linkFlags.str && linkFlags.len > 0) {
+    if (linkFlags.ptr && linkFlags.len > 0) {
         switch (compiler) {
             case Compiler_Gcc:
             case Compiler_Clang: prb_addStringSegment(&cmd, " %.*s", prb_LIT(linkFlags)); break;
@@ -160,7 +160,7 @@ compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
     {
         prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {.dir = objDir, .mode = prb_PathFindMode_AllEntriesInDir});
         while (prb_pathFindIterNext(&iter)) {
-            shput(existingObjs, iter.curPath.str, false);
+            shput(existingObjs, iter.curPath.ptr, false);
         }
         prb_destroyPathFindIter(&iter);
     }
@@ -173,8 +173,8 @@ compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
         prb_String outputFilename = prb_replaceExt(inputFilename, prb_STR("obj"));
         prb_String outputFilepath = prb_pathJoin(objDir, outputFilename);
         arrput(outputFilepaths, outputFilepath);
-        if (shgeti(existingObjs, (char*)outputFilepath.str) != -1) {
-            shput(existingObjs, (char*)outputFilepath.str, true);
+        if (shgeti(existingObjs, (char*)outputFilepath.ptr) != -1) {
+            shput(existingObjs, (char*)outputFilepath.ptr, true);
         }
 
         prb_LastModResult sourceLastMod = prb_getLastModifiedFromPath(inputFilepath);
@@ -270,7 +270,7 @@ textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
         .direction = prb_StringDirection_FromStart,
     };
     prb_String newContent = prb_strReplace(spec, replacement);
-    prb_writeEntireFile(path, newContent.str, newContent.len);
+    prb_writeEntireFile(path, newContent.ptr, newContent.len);
 }
 
 int

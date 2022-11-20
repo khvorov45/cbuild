@@ -511,7 +511,7 @@ test_getCurrentWorkingDir(void) {
     prb_String cwd = prb_getCurrentWorkingDir();
     prb_assert(prb_isDirectory(cwd));
     prb_String filename = prb_STR(__FUNCTION__);
-    prb_writeEntireFile(filename, filename.str, filename.len);
+    prb_writeEntireFile(filename, filename.ptr, filename.len);
     prb_Bytes fileContent = prb_readEntireFile(prb_pathJoin(cwd, filename));
     prb_assert(prb_streq((prb_String) {(const char*)fileContent.data, fileContent.len}, filename));
     prb_removeFileIfExists(filename);
@@ -706,7 +706,7 @@ test_pathFindIter(void) {
 
     for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
         prb_String file = files[fileIndex];
-        prb_writeEntireFile(file, file.str, file.len);
+        prb_writeEntireFile(file, file.ptr, file.len);
     }
 
     prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
@@ -819,11 +819,11 @@ test_pathFindIter(void) {
 
     for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
         prb_String file = files[fileIndex];
-        prb_writeEntireFile(file, file.str, file.len);
+        prb_writeEntireFile(file, file.ptr, file.len);
         prb_String nestedFile = nestedFiles[fileIndex];
-        prb_writeEntireFile(nestedFile, nestedFile.str, nestedFile.len);
+        prb_writeEntireFile(nestedFile, nestedFile.ptr, nestedFile.len);
         prb_String nestedNestedFile = nestedNestedFiles[fileIndex];
-        prb_writeEntireFile(nestedNestedFile, nestedNestedFile.str, nestedNestedFile.len);
+        prb_writeEntireFile(nestedNestedFile, nestedNestedFile.ptr, nestedNestedFile.len);
     }
 
     filesFound[0] = 0;
@@ -955,14 +955,14 @@ test_getLastModifiedFromPath(void) {
 
     prb_LastModResult lastMod = prb_getLastModifiedFromPath(file);
     prb_assert(!lastMod.success && lastMod.timestamp == 0);
-    prb_writeEntireFile(file, file.str, file.len);
+    prb_writeEntireFile(file, file.ptr, file.len);
     lastMod = prb_getLastModifiedFromPath(file);
     prb_assert(lastMod.success);
 
     u64 t1 = lastMod.timestamp;
     prb_sleep(10.0f);
 
-    prb_writeEntireFile(file, file.str, file.len);
+    prb_writeEntireFile(file, file.ptr, file.len);
     lastMod = prb_getLastModifiedFromPath(file);
     prb_assert(lastMod.success);
 
@@ -980,7 +980,7 @@ test_getLastModifiedFromPaths(void) {
     prb_clearDirectory(dir);
 
     prb_String f1 = prb_pathJoin(dir, prb_STR("f1.c"));
-    prb_writeEntireFile(f1, f1.str, f1.len);
+    prb_writeEntireFile(f1, f1.ptr, f1.len);
     prb_LastModResult lastModf1 = prb_getLastModifiedFromPath(f1);
     prb_assert(lastModf1.success);
 
@@ -991,7 +991,7 @@ test_getLastModifiedFromPaths(void) {
 
     prb_sleep(10.0f);
 
-    prb_writeEntireFile(f2, f2.str, f2.len);
+    prb_writeEntireFile(f2, f2.ptr, f2.len);
     prb_LastModResult lastModf2 = prb_getLastModifiedFromPath(f2);
     prb_assert(lastModf2.success);
     prb_assert(lastModf2.timestamp > lastModf1.timestamp);
@@ -1015,14 +1015,14 @@ test_getLastModifiedFromFindSpec(void) {
     prb_clearDirectory(dir);
 
     prb_String f1 = prb_pathJoin(dir, prb_STR("f1.c"));
-    prb_writeEntireFile(f1, f1.str, f1.len);
+    prb_writeEntireFile(f1, f1.ptr, f1.len);
     prb_LastModResult lastModf1 = prb_getLastModifiedFromPath(f1);
     prb_assert(lastModf1.success);
 
     prb_sleep(10.0f);
 
     prb_String f2 = prb_pathJoin(dir, prb_STR("f2.h"));
-    prb_writeEntireFile(f2, f2.str, f2.len);
+    prb_writeEntireFile(f2, f2.ptr, f2.len);
     prb_LastModResult lastModf2 = prb_getLastModifiedFromPath(f2);
     prb_assert(lastModf2.success);
     prb_assert(lastModf2.timestamp > lastModf1.timestamp);
@@ -1182,7 +1182,7 @@ test_fileformat(void) {
         prb_assert(!prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEF"), prb_StringFindMode_Exact));
 
         if (prb_strStartsWith(lineIter.curLine, prb_STR("// SECTION"), prb_StringFindMode_Exact)) {
-            prb_String name = prb_fmt("%.*s", lineIter.curLine.len, lineIter.curLine.str);
+            prb_String name = prb_fmt("%.*s", lineIter.curLine.len, lineIter.curLine.ptr);
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEC"), prb_StringFindMode_Exact)) {
             prb_StringFindResult onePastNameEndRes = prb_strFind((prb_StringFindSpec) {
@@ -1192,7 +1192,7 @@ test_fileformat(void) {
                 .direction = prb_StringDirection_FromStart,
             });
             prb_assert(onePastNameEndRes.found);
-            prb_String           win = {lineIter.curLine.str, onePastNameEndRes.matchByteIndex};
+            prb_String           win = {lineIter.curLine.ptr, onePastNameEndRes.matchByteIndex};
             prb_StringFindResult nameStartRes = prb_strFind((prb_StringFindSpec) {
                 .str = win,
                 .pattern = prb_STR(" "),
@@ -1201,7 +1201,7 @@ test_fileformat(void) {
             });
             prb_assert(nameStartRes.found);
             win = prb_strSliceForward(win, nameStartRes.matchByteIndex + 1);
-            prb_String name = prb_fmt("%.*s", win.len, win.str);
+            prb_String name = prb_fmt("%.*s", win.len, win.ptr);
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.curLine, prb_STR("#ifndef prb_NO_IMPLEMENTATION"), prb_StringFindMode_Exact)) {
             break;
@@ -1221,7 +1221,7 @@ test_fileformat(void) {
             }
             );
             prb_assert(implementationRes.found);
-            prb_String name = prb_fmt("%.*s", implementationRes.matchByteIndex, lineIter.curLine.str);
+            prb_String name = prb_fmt("%.*s", implementationRes.matchByteIndex, lineIter.curLine.ptr);
             arrput(implNames, name);
         } else if (prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEF"), prb_StringFindMode_Exact)) {
             prb_assert(prb_lineIterNext(&lineIter) == prb_Success);
@@ -1233,7 +1233,7 @@ test_fileformat(void) {
                 .direction = prb_StringDirection_FromStart,
             });
             prb_assert(nameLenRes.found);
-            prb_String name = prb_fmt("%.*s", nameLenRes.matchByteIndex, lineIter.curLine.str);
+            prb_String name = prb_fmt("%.*s", nameLenRes.matchByteIndex, lineIter.curLine.ptr);
             arrput(implNames, name);
         }
     }
@@ -1339,7 +1339,7 @@ test_strFind(void) {
         );
     }
 
-    spec.str.str = "prb_one() prb_2()";
+    spec.str.ptr = "prb_one() prb_2()";
     {
         spec.direction = prb_StringDirection_FromEnd;
         prb_StringFindResult res = prb_strFind(spec);

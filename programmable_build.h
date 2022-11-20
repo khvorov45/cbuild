@@ -112,7 +112,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // clang-format off
 
 #define prb_STR(x) (prb_String) {x, prb_strlen(x)}
-#define prb_LIT(x) (x).len, (x).str
+#define prb_LIT(x) (x).len, (x).ptr
 
 // Debug break taken from SDL
 // https://github.com/libsdl-org/SDL/blob/main/include/SDL_assert.h
@@ -199,7 +199,7 @@ typedef struct prb_TempMemory {
 
 // Assume: utf-8, immutable
 typedef struct prb_String {
-    const char* str;
+    const char* ptr;
     int32_t     len;
 } prb_String;
 
@@ -1240,13 +1240,13 @@ prb_getCurrentWorkingDir(void) {
 
 prb_PUBLICDEF prb_String
 prb_pathJoin(prb_String path1, prb_String path2) {
-    prb_assert(path1.str && path2.str && path1.len > 0 && path2.len > 0);
-    char path1LastChar = path1.str[path1.len - 1];
+    prb_assert(path1.ptr && path2.ptr && path1.len > 0 && path2.len > 0);
+    char path1LastChar = path1.ptr[path1.len - 1];
     bool path1EndsOnSep = prb_charIsSep(path1LastChar);
     if (path1EndsOnSep) {
         path1.len -= 1;
     }
-    char path2FirstChar = path2.str[0];
+    char path2FirstChar = path2.ptr[0];
     bool path2StartsOnSep = prb_charIsSep(path2FirstChar);
     if (path2StartsOnSep) {
         path2 = prb_strSliceForward(path2, 1);
@@ -1314,7 +1314,7 @@ prb_getParentDir(prb_String path) {
 #endif
 
     prb_StringFindResult findResult = prb_findSepBeforeLastEntry(path);
-    prb_String           result = findResult.found ? (prb_String) {path.str, findResult.matchByteIndex + 1} : prb_getCurrentWorkingDir();
+    prb_String           result = findResult.found ? (prb_String) {path.ptr, findResult.matchByteIndex + 1} : prb_getCurrentWorkingDir();
     return result;
 }
 
@@ -1351,9 +1351,9 @@ prb_replaceExt(prb_String path, prb_String newExt) {
     prb_StringFindResult dotFind = prb_strFind(spec);
     prb_String           result = {};
     if (dotFind.found) {
-        result = prb_fmt("%.*s.%.*s", dotFind.matchByteIndex, path.str, newExt.len, newExt.str);
+        result = prb_fmt("%.*s.%.*s", dotFind.matchByteIndex, path.ptr, newExt.len, newExt.ptr);
     } else {
-        result = prb_fmt("%.*s.%.*s", path.len, path.str, newExt.len, newExt.str);
+        result = prb_fmt("%.*s.%.*s", path.len, path.ptr, newExt.len, newExt.ptr);
     }
     return result;
 }
@@ -1383,7 +1383,7 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
         case prb_PathFindMode_Glob: {
             iter.glob.currentIndex = -1;
             prb_String pattern = prb_pathJoin(spec.dir, spec.glob.pattern);
-            iter.glob.returnVal = glob(pattern.str, GLOB_NOSORT, 0, &iter.glob.result);
+            iter.glob.returnVal = glob(pattern.ptr, GLOB_NOSORT, 0, &iter.glob.result);
             if (spec.recursive) {
                 prb_PathFindSpec recursiveSpec = spec;
                 recursiveSpec.mode = prb_PathFindMode_AllEntriesInDir;
@@ -1391,7 +1391,7 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
                 while (prb_pathFindIterNext(&recursiveIter)) {
                     if (prb_isDirectory(recursiveIter.curPath)) {
                         prb_String newPat = prb_pathJoin(recursiveIter.curPath, spec.glob.pattern);
-                        int newReturnVal = glob(newPat.str, GLOB_NOSORT | GLOB_APPEND, 0, &iter.glob.result);
+                        int newReturnVal = glob(newPat.ptr, GLOB_NOSORT | GLOB_APPEND, 0, &iter.glob.result);
                         if (newReturnVal == 0) {
                             iter.glob.returnVal = 0;
                         }
@@ -1433,7 +1433,7 @@ prb_pathFindIterNext(prb_PathFindIterator* iter) {
                     iter->curPath = prb_pathJoin(parent, prb_STR(entry->d_name));
                     iter->curMatchCount += 1;
                     if (iter->spec.recursive && prb_isDirectory(iter->curPath)) {
-                        DIR* newHandle = opendir(iter->curPath.str);
+                        DIR* newHandle = opendir(iter->curPath.ptr);
                         prb_assert(newHandle);
                         arrput(iter->allFilesInDir.handles, newHandle);
                         arrput(iter->allFilesInDir.parents, iter->curPath);
@@ -1615,7 +1615,7 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
 
     prb_TempMemory temp = prb_beginTempMemory();
     prb_String     arrayStr = prb_beginString();
-    prb_addStringSegment(&arrayStr, "unsigned char %.*s[] = {", arrayName.len, arrayName.str);
+    prb_addStringSegment(&arrayStr, "unsigned char %.*s[] = {", arrayName.len, arrayName.ptr);
 
     for (int32_t byteIndex = 0; byteIndex < inContent.len; byteIndex++) {
         uint8_t byte = inContent.data[byteIndex];
@@ -1627,7 +1627,7 @@ prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName) 
     prb_addStringSegment(&arrayStr, "};");
     prb_endString();
 
-    prb_writeEntireFile(outPath, arrayStr.str, arrayStr.len);
+    prb_writeEntireFile(outPath, arrayStr.ptr, arrayStr.len);
     prb_endTempMemory(temp);
 }
 
@@ -1639,7 +1639,7 @@ prb_PUBLICDEF bool
 prb_streq(prb_String str1, prb_String str2) {
     bool result = false;
     if (str1.len == str2.len) {
-        result = prb_memeq(str1.str, str2.str, str1.len);
+        result = prb_memeq(str1.ptr, str2.ptr, str1.len);
     }
     return result;
 }
@@ -1647,22 +1647,22 @@ prb_streq(prb_String str1, prb_String str2) {
 prb_PUBLICDEF prb_String
 prb_strSliceForward(prb_String str, int32_t bytes) {
     prb_assert(bytes <= str.len);
-    prb_String result = {str.str + bytes, str.len - bytes};
+    prb_String result = {str.ptr + bytes, str.len - bytes};
     return result;
 }
 
 prb_PUBLICDEF const char*
 prb_strGetNullTerminated(prb_String str) {
-    const char* result = str.str;
-    if (str.str && str.str[str.len] != '\0') {
-        result = prb_fmt("%.*s", str.len, str.str).str;
+    const char* result = str.ptr;
+    if (str.ptr && str.ptr[str.len] != '\0') {
+        result = prb_fmt("%.*s", str.len, str.ptr).ptr;
     }
     return result;
 }
 
 prb_PUBLICDEF prb_StringFindResult
 prb_strFind(prb_StringFindSpec spec) {
-    prb_assert(spec.str.str && spec.pattern.str && spec.str.len >= 0 && spec.pattern.len >= 0);
+    prb_assert(spec.str.ptr && spec.pattern.ptr && spec.str.len >= 0 && spec.pattern.len >= 0);
     prb_StringFindResult result = {};
 
     if (spec.pattern.len > 0) {
@@ -1677,8 +1677,8 @@ prb_strFind(prb_StringFindSpec spec) {
                 // https://en.wikipedia.org/wiki/Raita_algorithm
 
                 if (spec.str.len >= spec.pattern.len) {
-                    uint8_t* str = (uint8_t*)spec.str.str;
-                    uint8_t* pat = (uint8_t*)spec.pattern.str;
+                    uint8_t* str = (uint8_t*)spec.str.ptr;
+                    uint8_t* pat = (uint8_t*)spec.pattern.ptr;
                     int32_t  charOffsets[256];
 
                     for (int32_t i = 0; i < 256; ++i) {
@@ -1713,7 +1713,7 @@ prb_strFind(prb_StringFindSpec spec) {
                     uint8_t patLastCh = pat[spec.pattern.len - 1];
 
                     if (spec.direction == prb_StringDirection_FromEnd && spec.str.len < 0) {
-                        spec.str.len = prb_strlen(spec.str.str);
+                        spec.str.len = prb_strlen(spec.str.ptr);
                     }
 
                     int32_t off = 0;
@@ -1869,11 +1869,11 @@ prb_strReplace(prb_StringFindSpec spec, prb_String replacement) {
         result = prb_fmt(
             "%.*s%.*s%.*s",
             findResult.matchByteIndex,
-            spec.str.str,
+            spec.str.ptr,
             replacement.len,
-            replacement.str,
+            replacement.ptr,
             strAfterMatch.len,
-            strAfterMatch.str
+            strAfterMatch.ptr
         );
     }
     return result;
@@ -1884,9 +1884,9 @@ prb_stringsJoin(prb_String* strings, int32_t stringsCount, prb_String sep) {
     prb_String result = prb_beginString();
     for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
         prb_String str = strings[strIndex];
-        prb_addStringSegment(&result, "%.*s", str.len, str.str);
+        prb_addStringSegment(&result, "%.*s", str.len, str.ptr);
         if (strIndex < stringsCount - 1) {
-            prb_addStringSegment(&result, "%.*s", sep.len, sep.str);
+            prb_addStringSegment(&result, "%.*s", sep.len, sep.ptr);
         }
     }
     prb_endString();
@@ -2046,7 +2046,7 @@ prb_writeToStdout(prb_String msg) {
 
 #elif prb_PLATFORM_LINUX
 
-    ssize_t writeResult = write(STDOUT_FILENO, msg.str, msg.len);
+    ssize_t writeResult = write(STDOUT_FILENO, msg.ptr, msg.len);
     prb_assert(writeResult == msg.len);
 
 #else
@@ -2077,7 +2077,7 @@ prb_resetPrintColor() {
 
 prb_PUBLICDEF prb_Utf8CharIterator
 prb_createUtf8CharIter(prb_String str, prb_StringDirection direction) {
-    prb_assert(str.str && str.len >= 0);
+    prb_assert(str.ptr && str.len >= 0);
     int32_t curByteOffset = 0;
     if (direction == prb_StringDirection_FromEnd) {
         curByteOffset = str.len - 1;
@@ -2122,7 +2122,7 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
 
         result = prb_Success;
 
-        uint8_t firstByte = iter->str.str[iter->curByteOffset];
+        uint8_t firstByte = iter->str.ptr[iter->curByteOffset];
         int32_t leading1s = prb_countLeading1sU8(firstByte);
 
         bool firstByteValid = false;
@@ -2155,7 +2155,7 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
                         prb_assert(chBytes == 2 || chBytes == 3 || chBytes == 4);
                         ch = firstByte & firstByteMask[chBytes - 1];
                         for (int32_t byteIndex = 1; byteIndex < chBytes; byteIndex++) {
-                            uint8_t byte = iter->str.str[iter->curByteOffset + byteIndex];
+                            uint8_t byte = iter->str.ptr[iter->curByteOffset + byteIndex];
                             if (prb_countLeading1sU8(byte) == 1) {
                                 ch = (ch << 6) | (byte & 0b00111111);
                             } else {
@@ -2171,7 +2171,7 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
                         ch = firstByte & 0b00111111;
                         int32_t maxExtraBytes = prb_min(3, iter->curByteOffset);
                         for (int32_t byteIndex = 0; byteIndex < maxExtraBytes; byteIndex++) {
-                            uint8_t byte = iter->str.str[--iter->curByteOffset];
+                            uint8_t byte = iter->str.ptr[--iter->curByteOffset];
                             int32_t byteLeading1s = prb_countLeading1sU8(byte);
                             int32_t chBytesTaken = 6 * (byteIndex + 1);
                             if (byteLeading1s == 1) {
@@ -2205,7 +2205,7 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
 
 prb_PUBLICDEF prb_LineIterator
 prb_createLineIter(prb_String str) {
-    prb_assert(str.str && str.len >= 0);
+    prb_assert(str.ptr && str.len >= 0);
     prb_LineIterator iter = {
         .ogstr = str,
         .curLineCount = 0,
@@ -2236,9 +2236,9 @@ prb_lineIterNext(prb_LineIterator* iter) {
         if (lineEndResult.found) {
             iter->curLine.len = lineEndResult.matchByteIndex;
             iter->curLineEndLen = 1;
-            if (iter->curLine.str[iter->curLine.len] == '\r'
+            if (iter->curLine.ptr[iter->curLine.len] == '\r'
                 && iter->curByteOffset + iter->curLine.len + 1 < iter->ogstr.len
-                && iter->curLine.str[iter->curLine.len + 1] == '\n') {
+                && iter->curLine.ptr[iter->curLine.len + 1] == '\n') {
                 iter->curLineEndLen += 1;
             }
         }
@@ -2275,8 +2275,8 @@ prb_getArgArrayFromString(prb_String string) {
         }
         int32_t arglen = spaceIndex - prevSpaceIndex - 1;
         if (arglen > 0) {
-            prb_String  arg = {string.str + prevSpaceIndex + 1, arglen};
-            const char* argNull = prb_fmt("%.*s", prb_LIT(arg)).str;
+            prb_String  arg = {string.ptr + prevSpaceIndex + 1, arglen};
+            const char* argNull = prb_fmt("%.*s", prb_LIT(arg)).ptr;
             arrput(args, argNull);
         }
         prevSpaceIndex = spaceIndex;
@@ -2298,10 +2298,10 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
     const char*       redirectFilepathNull = 0;
 
     if ((flags & prb_ProcessFlag_RedirectStdout) || (flags & prb_ProcessFlag_RedirectStderr)) {
-        prb_assert(redirectFilepath.str && redirectFilepath.len > 0);
+        prb_assert(redirectFilepath.ptr && redirectFilepath.len > 0);
         redirectFilepathNull = prb_strGetNullTerminated(redirectFilepath);
     } else {
-        prb_assert(redirectFilepath.str == 0);
+        prb_assert(redirectFilepath.ptr == 0);
     }
 
 #if prb_PLATFORM_WINDOWS
