@@ -777,7 +777,7 @@ main() {
         compiler,
         prb_stringsJoin(mainFlags, prb_arrayLength(mainFlags), prb_STR(" ")),
         prb_stringsJoin(mainFiles, prb_arrayLength(mainFiles), prb_STR(" ")),
-        prb_pathJoin(project.rootDir, mainOutName),
+        prb_pathJoin(project.compileOutDir, mainOutName),
         mainLinkFlags
     );
 
