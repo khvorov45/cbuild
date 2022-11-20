@@ -121,6 +121,11 @@ constructCompileCmd(Compiler compiler, prb_String flags, prb_String inputPath, p
     return cmd;
 }
 
+typedef struct StringFound {
+    char* key;
+    bool  value;
+} StringFound;
+
 static prb_Status
 compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
     prb_TempMemory temp = prb_beginTempMemory();
@@ -128,8 +133,6 @@ compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
 
     prb_String objDir = prb_pathJoin(project.compileOutDir, lib.name);
     prb_createDirIfNotExists(objDir);
-
-    // TODO(khvorov) Remove all objs that don't correspond to any inputs
 
     prb_String* inputPaths = 0;
     for (int32_t srcIndex = 0; srcIndex < lib.sourcesCount; srcIndex++) {
@@ -153,6 +156,15 @@ compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
         latestHFileChange = lm.timestamp;
     }
 
+    StringFound* existingObjs = 0;
+    {
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {.dir = objDir, .mode = prb_PathFindMode_AllEntriesInDir});
+        while (prb_pathFindIterNext(&iter)) {
+            shput(existingObjs, iter.curPath.str, false);
+        }
+        prb_destroyPathFindIter(&iter);
+    }
+
     prb_String*        outputFilepaths = 0;
     prb_ProcessHandle* processes = 0;
     for (int32_t inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
@@ -161,6 +173,9 @@ compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
         prb_String outputFilename = prb_replaceExt(inputFilename, prb_STR("obj"));
         prb_String outputFilepath = prb_pathJoin(objDir, outputFilename);
         arrput(outputFilepaths, outputFilepath);
+        if (shgeti(existingObjs, (char*)outputFilepath.str) != -1) {
+            shput(existingObjs, (char*)outputFilepath.str, true);
+        }
 
         prb_LastModResult sourceLastMod = prb_getLastModifiedFromPath(inputFilepath);
         prb_assert(sourceLastMod.success);
@@ -171,6 +186,14 @@ compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
             prb_String        cmd = constructCompileCmd(compiler, lib.compileFlags, inputFilepath, outputFilepath, prb_STR(""));
             prb_ProcessHandle process = prb_execCmd(cmd, prb_ProcessFlag_DontWait, (prb_String) {});
             arrput(processes, process);
+        }
+    }
+
+    // NOTE(khvorov) Remove all objs that don't correspond to any inputs
+    for (int32_t existingObjIndex = 0; existingObjIndex < shlen(existingObjs); existingObjIndex++) {
+        StringFound existingObj = existingObjs[existingObjIndex];
+        if (!existingObj.value) {
+            prb_removeFileIfExists(prb_STR(existingObj.key));
         }
     }
 
