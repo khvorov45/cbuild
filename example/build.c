@@ -47,22 +47,22 @@ getStaticLibInfo(
     return result;
 }
 
-static prb_Status
+static prb_ProcessHandle
 gitClone(prb_String downloadDir, prb_String downloadUrl) {
-    prb_TempMemory temp = prb_beginTempMemory();
-    prb_Status     downloadStatus = prb_Failure;
+    prb_TempMemory    temp = prb_beginTempMemory();
+    prb_ProcessHandle handle = {};
     if (!prb_isDirectory(downloadDir) || prb_directoryIsEmpty(downloadDir)) {
-        prb_String        cmd = prb_fmtAndPrintln("git clone --depth 1 %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(downloadDir));
-        prb_ProcessHandle handle = prb_execCmd(cmd, 0, (prb_String) {});
-        prb_assert(handle.completed);
-        downloadStatus = handle.completionStatus;
+        prb_String cmd = prb_fmtAndPrintln("git clone --depth 1 %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(downloadDir));
+        handle = prb_execCmd(cmd, prb_ProcessFlag_DontWait, (prb_String) {});
     } else {
         prb_String name = prb_getLastEntryInPath(downloadDir);
         prb_fmtAndPrintln("skip git clone %.*s", prb_LIT(name));
-        downloadStatus = prb_Success;
+        handle.valid = true;
+        handle.completed = true;
+        handle.completionStatus = prb_Success;
     }
     prb_endTempMemory(temp);
-    return downloadStatus;
+    return handle;
 }
 
 typedef enum Compiler {
@@ -271,8 +271,10 @@ main() {
 #endif
 
     //
-    // SECTION Fribidi
+    // SECTION Setup
     //
+
+    // NOTE(khvorov) Fribidi
 
     prb_String fribidiCompileSouces[] = {prb_STR("lib/*.c")};
 
@@ -287,80 +289,8 @@ main() {
         fribidiCompileSouces,
         prb_arrayLength(fribidiCompileSouces)
     );
-    prb_assert(gitClone(fribidi.downloadDir, prb_STR("https://github.com/fribidi/fribidi")) == prb_Success);
 
-    // NOTE(khvorov) Generate fribidi tables
-    {
-        prb_String gentabDir = prb_pathJoin(fribidi.downloadDir, prb_STR("gen.tab"));
-        prb_String flags = prb_fmt(
-            "%.*s %.*s -DHAVE_STDLIB_H=1 -DHAVE_STRING_H -DHAVE_STRINGIZE",
-            prb_LIT(fribidiNoConfigFlag),
-            prb_LIT(fribidi.includeFlag)
-        );
-        prb_String datadir = prb_pathJoin(gentabDir, prb_STR("unidata"));
-        prb_String unidat = prb_pathJoin(datadir, prb_STR("UnicodeData.txt"));
-
-        // NOTE(khvorov) This max-depth is also known as compression and is set to 2 in makefiles
-        int32_t maxDepth = 2;
-
-        prb_String bracketsPath = prb_pathJoin(datadir, prb_STR("BidiBrackets.txt"));
-        compileAndRunBidiGenTab(
-            compiler,
-            prb_pathJoin(gentabDir, prb_STR("gen-brackets-tab.c")),
-            flags,
-            prb_fmt("%d %.*s %.*s", maxDepth, prb_LIT(bracketsPath), prb_LIT(unidat)),
-            prb_pathJoin(fribidi.includeDir, prb_STR("brackets.tab.i"))
-        );
-
-        compileAndRunBidiGenTab(
-            compiler,
-            prb_pathJoin(gentabDir, prb_STR("gen-arabic-shaping-tab.c")),
-            flags,
-            prb_fmt("%d %.*s", maxDepth, prb_LIT(unidat)),
-            prb_pathJoin(fribidi.includeDir, prb_STR("arabic-shaping.tab.i"))
-        );
-
-        prb_String shapePath = prb_pathJoin(datadir, prb_STR("ArabicShaping.txt"));
-        compileAndRunBidiGenTab(
-            compiler,
-            prb_pathJoin(gentabDir, prb_STR("gen-joining-type-tab.c")),
-            flags,
-            prb_fmt("%d %.*s %.*s", maxDepth, prb_LIT(unidat), prb_LIT(shapePath)),
-            prb_pathJoin(fribidi.includeDir, prb_STR("joining-type.tab.i"))
-        );
-
-        compileAndRunBidiGenTab(
-            compiler,
-            prb_pathJoin(gentabDir, prb_STR("gen-brackets-type-tab.c")),
-            flags,
-            prb_fmt("%d %.*s", maxDepth, prb_LIT(bracketsPath)),
-            prb_pathJoin(fribidi.includeDir, prb_STR("brackets-type.tab.i"))
-        );
-
-        prb_String mirrorPath = prb_pathJoin(datadir, prb_STR("BidiMirroring.txt"));
-        compileAndRunBidiGenTab(
-            compiler,
-            prb_pathJoin(gentabDir, prb_STR("gen-mirroring-tab.c")),
-            flags,
-            prb_fmt("%d %.*s", maxDepth, prb_LIT(mirrorPath)),
-            prb_pathJoin(fribidi.includeDir, prb_STR("mirroring.tab.i"))
-        );
-
-        compileAndRunBidiGenTab(
-            compiler,
-            prb_pathJoin(gentabDir, prb_STR("gen-bidi-type-tab.c")),
-            flags,
-            prb_fmt("%d %.*s", maxDepth, prb_LIT(unidat)),
-            prb_pathJoin(fribidi.includeDir, prb_STR("bidi-type.tab.i"))
-        );
-    }
-
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, fribidiName));
-    prb_assert(compileStaticLib(project, compiler, fribidi) == prb_Success);
-
-    //
-    // SECTION ICU
-    //
+    // NOTE(khvorov) ICU
 
     // TODO(khvorov) Custom allocation for ICU
 
@@ -430,14 +360,8 @@ main() {
         icuCompileSources,
         prb_arrayLength(icuCompileSources)
     );
-    prb_assert(gitClone(icu.downloadDir, prb_STR("https://github.com/unicode-org/icu")) == prb_Success);
 
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, icuName));
-    prb_assert(compileStaticLib(project, compiler, icu) == prb_Success);
-
-    //
-    // SECTION Freetype and harfbuzz (they depend on each other)
-    //
+    // NOTE(khvorov) Freetype
 
     prb_String freetypeCompileSources[] = {
         // Required
@@ -506,10 +430,65 @@ main() {
         prb_arrayLength(freetypeCompileSources)
     );
 
-    prb_assert(gitClone(freetype.downloadDir, prb_STR("https://github.com/freetype/freetype")) == prb_Success);
+    // NOTE(khvorov) Harfbuzz
 
     prb_String harfbuzzCompileSources[] = {
-        prb_STR("src/harfbuzz.cc"),
+        prb_STR("src/hb-aat-layout.cc"),
+        prb_STR("src/hb-aat-map.cc"),
+        prb_STR("src/hb-blob.cc"),
+        prb_STR("src/hb-buffer-serialize.cc"),
+        prb_STR("src/hb-buffer-verify.cc"),
+        prb_STR("src/hb-buffer.cc"),
+        prb_STR("src/hb-common.cc"),
+        prb_STR("src/hb-coretext.cc"),
+        prb_STR("src/hb-directwrite.cc"),
+        prb_STR("src/hb-draw.cc"),
+        prb_STR("src/hb-face.cc"),
+        prb_STR("src/hb-fallback-shape.cc"),
+        prb_STR("src/hb-font.cc"),
+        prb_STR("src/hb-ft.cc"),
+        prb_STR("src/hb-gdi.cc"),
+        prb_STR("src/hb-glib.cc"),
+        prb_STR("src/hb-graphite2.cc"),
+        prb_STR("src/hb-map.cc"),
+        prb_STR("src/hb-number.cc"),
+        prb_STR("src/hb-ot-cff1-table.cc"),
+        prb_STR("src/hb-ot-cff2-table.cc"),
+        prb_STR("src/hb-ot-color.cc"),
+        prb_STR("src/hb-ot-face.cc"),
+        prb_STR("src/hb-ot-font.cc"),
+        prb_STR("src/hb-ot-layout.cc"),
+        prb_STR("src/hb-ot-map.cc"),
+        prb_STR("src/hb-ot-math.cc"),
+        prb_STR("src/hb-ot-meta.cc"),
+        prb_STR("src/hb-ot-metrics.cc"),
+        prb_STR("src/hb-ot-name.cc"),
+        prb_STR("src/hb-ot-shape-fallback.cc"),
+        prb_STR("src/hb-ot-shape-normalize.cc"),
+        prb_STR("src/hb-ot-shape.cc"),
+        prb_STR("src/hb-ot-shaper-arabic.cc"),
+        prb_STR("src/hb-ot-shaper-default.cc"),
+        prb_STR("src/hb-ot-shaper-hangul.cc"),
+        prb_STR("src/hb-ot-shaper-hebrew.cc"),
+        prb_STR("src/hb-ot-shaper-indic-table.cc"),
+        prb_STR("src/hb-ot-shaper-indic.cc"),
+        prb_STR("src/hb-ot-shaper-khmer.cc"),
+        prb_STR("src/hb-ot-shaper-myanmar.cc"),
+        prb_STR("src/hb-ot-shaper-syllabic.cc"),
+        prb_STR("src/hb-ot-shaper-thai.cc"),
+        prb_STR("src/hb-ot-shaper-use.cc"),
+        prb_STR("src/hb-ot-shaper-vowel-constraints.cc"),
+        prb_STR("src/hb-ot-tag.cc"),
+        prb_STR("src/hb-ot-var.cc"),
+        prb_STR("src/hb-set.cc"),
+        prb_STR("src/hb-shape-plan.cc"),
+        prb_STR("src/hb-shape.cc"),
+        prb_STR("src/hb-shaper.cc"),
+        prb_STR("src/hb-static.cc"),
+        prb_STR("src/hb-style.cc"),
+        prb_STR("src/hb-ucd.cc"),
+        prb_STR("src/hb-unicode.cc"),
+        prb_STR("src/hb-uniscribe.cc"),
         prb_STR("src/hb-icu.cc"),
     };
 
@@ -522,19 +501,10 @@ main() {
         prb_arrayLength(harfbuzzCompileSources)
     );
 
-    prb_assert(gitClone(harfbuzz.downloadDir, prb_STR("https://github.com/harfbuzz/harfbuzz")) == prb_Success);
-
+    // NOTE(khvorov) Freetype and harfbuzz depend on each other
     freetype.compileFlags = prb_fmt("%.*s %.*s", prb_LIT(freetype.compileFlags), prb_LIT(harfbuzz.includeFlag));
 
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, freetypeName));
-    prb_assert(compileStaticLib(project, compiler, freetype) == prb_Success);
-
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, harfbuzzName));
-    prb_assert(compileStaticLib(project, compiler, harfbuzz) == prb_Success);
-
-    //
-    // SECTION SDL
-    //
+    // NOTE(khvorov) SDL
 
     prb_String sdlCompileSources[] = {
         prb_STR("src/atomic/*.c"),
@@ -611,8 +581,90 @@ main() {
     );
 
     bool sdlNotDownloaded = !prb_isDirectory(sdl.downloadDir) || prb_directoryIsEmpty(sdl.downloadDir);
-    prb_assert(gitClone(sdl.downloadDir, prb_STR("https://github.com/libsdl-org/SDL")) == prb_Success);
 
+    //
+    // SECTION Download
+    //
+
+    prb_ProcessHandle* downloadHandles = 0;
+    arrput(downloadHandles, gitClone(fribidi.downloadDir, prb_STR("https://github.com/fribidi/fribidi")));
+    arrput(downloadHandles, gitClone(icu.downloadDir, prb_STR("https://github.com/unicode-org/icu")));
+    arrput(downloadHandles, gitClone(freetype.downloadDir, prb_STR("https://github.com/freetype/freetype")));
+    arrput(downloadHandles, gitClone(harfbuzz.downloadDir, prb_STR("https://github.com/harfbuzz/harfbuzz")));
+    arrput(downloadHandles, gitClone(sdl.downloadDir, prb_STR("https://github.com/libsdl-org/SDL")));
+    prb_assert(prb_waitForProcesses(downloadHandles, arrlen(downloadHandles)) == prb_Success);
+
+    //
+    // SECTION Pre-compilation stuff
+    //
+
+    // NOTE(khvorov) Generate fribidi tables
+    {
+        prb_String gentabDir = prb_pathJoin(fribidi.downloadDir, prb_STR("gen.tab"));
+        prb_String flags = prb_fmt(
+            "%.*s %.*s -DHAVE_STDLIB_H=1 -DHAVE_STRING_H -DHAVE_STRINGIZE",
+            prb_LIT(fribidiNoConfigFlag),
+            prb_LIT(fribidi.includeFlag)
+        );
+        prb_String datadir = prb_pathJoin(gentabDir, prb_STR("unidata"));
+        prb_String unidat = prb_pathJoin(datadir, prb_STR("UnicodeData.txt"));
+
+        // NOTE(khvorov) This max-depth is also known as compression and is set to 2 in makefiles
+        int32_t maxDepth = 2;
+
+        prb_String bracketsPath = prb_pathJoin(datadir, prb_STR("BidiBrackets.txt"));
+        compileAndRunBidiGenTab(
+            compiler,
+            prb_pathJoin(gentabDir, prb_STR("gen-brackets-tab.c")),
+            flags,
+            prb_fmt("%d %.*s %.*s", maxDepth, prb_LIT(bracketsPath), prb_LIT(unidat)),
+            prb_pathJoin(fribidi.includeDir, prb_STR("brackets.tab.i"))
+        );
+
+        compileAndRunBidiGenTab(
+            compiler,
+            prb_pathJoin(gentabDir, prb_STR("gen-arabic-shaping-tab.c")),
+            flags,
+            prb_fmt("%d %.*s", maxDepth, prb_LIT(unidat)),
+            prb_pathJoin(fribidi.includeDir, prb_STR("arabic-shaping.tab.i"))
+        );
+
+        prb_String shapePath = prb_pathJoin(datadir, prb_STR("ArabicShaping.txt"));
+        compileAndRunBidiGenTab(
+            compiler,
+            prb_pathJoin(gentabDir, prb_STR("gen-joining-type-tab.c")),
+            flags,
+            prb_fmt("%d %.*s %.*s", maxDepth, prb_LIT(unidat), prb_LIT(shapePath)),
+            prb_pathJoin(fribidi.includeDir, prb_STR("joining-type.tab.i"))
+        );
+
+        compileAndRunBidiGenTab(
+            compiler,
+            prb_pathJoin(gentabDir, prb_STR("gen-brackets-type-tab.c")),
+            flags,
+            prb_fmt("%d %.*s", maxDepth, prb_LIT(bracketsPath)),
+            prb_pathJoin(fribidi.includeDir, prb_STR("brackets-type.tab.i"))
+        );
+
+        prb_String mirrorPath = prb_pathJoin(datadir, prb_STR("BidiMirroring.txt"));
+        compileAndRunBidiGenTab(
+            compiler,
+            prb_pathJoin(gentabDir, prb_STR("gen-mirroring-tab.c")),
+            flags,
+            prb_fmt("%d %.*s", maxDepth, prb_LIT(mirrorPath)),
+            prb_pathJoin(fribidi.includeDir, prb_STR("mirroring.tab.i"))
+        );
+
+        compileAndRunBidiGenTab(
+            compiler,
+            prb_pathJoin(gentabDir, prb_STR("gen-bidi-type-tab.c")),
+            flags,
+            prb_fmt("%d %.*s", maxDepth, prb_LIT(unidat)),
+            prb_pathJoin(fribidi.includeDir, prb_STR("bidi-type.tab.i"))
+        );
+    }
+
+    // NOTE(khvorov) Fix SDL
     if (sdlNotDownloaded) {
         prb_String downloadDir = sdl.downloadDir;
 
@@ -641,6 +693,27 @@ main() {
             prb_STR("SDL_free(data->ximage->data);data->ximage->data = 0;XDestroyImage(data->ximage);")
         );
     }
+
+    //
+    // SECTION Compile
+    //
+
+    // NOTE(khvorov) Running compilation of multiple libraries in parallel is
+    // probably not worth it since the translation units within each library are
+    // already compiling in parallel and there are more of them than cores on
+    // desktop pcs.
+
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, fribidiName));
+    prb_assert(compileStaticLib(project, compiler, fribidi) == prb_Success);
+
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, icuName));
+    prb_assert(compileStaticLib(project, compiler, icu) == prb_Success);
+
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, freetypeName));
+    prb_assert(compileStaticLib(project, compiler, freetype) == prb_Success);
+
+    // prb_clearDirectory(prb_pathJoin(compileOutDir, harfbuzzName));
+    prb_assert(compileStaticLib(project, compiler, harfbuzz) == prb_Success);
 
     // prb_clearDirectory(prb_pathJoin(compileOutDir, sdlName));
     prb_assert(compileStaticLib(project, compiler, sdl) == prb_Success);
