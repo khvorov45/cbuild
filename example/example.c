@@ -161,15 +161,21 @@ void* dlcalloc(size_t, size_t);
 void* dlrealloc(void*, size_t);
 void  dlfree(void*);
 
+// NOTE(khvorov) None of the libraries create threads nor does this program.
+// Shouldn't be any need to sync access to the global variables below.
+
 typedef struct GeneralPurposeAllocatorData {
     usize used;
+    i32 allocCount;
 } GeneralPurposeAllocatorData;
 
 function usize
 getSizeFromMallocPtr(void* ptr) {
     usize result = 0;
     if (ptr) {
-        result = *((usize*)ptr - 1);
+        usize headAndBits = *((usize*)ptr - 1);
+        // NOTE(khvorov) Last 2 bits of size are always 0, so dlmalloc uses them for flags
+        result = headAndBits & (~(8 - 1));
     }
     return result;
 }
@@ -191,14 +197,18 @@ gpaSubSizeFromMallocPtr(GeneralPurposeAllocatorData* gpa, void* ptr) {
 function void*
 gpaAlloc(GeneralPurposeAllocatorData* gpa, usize size) {
     void* result = dlmalloc(size);
+    assert(result);
     gpaAddSizeFromMallocPtr(gpa, result);
+    gpa->allocCount += 1;
     return result;
 }
 
 function void*
 gpaAllocAndZero(GeneralPurposeAllocatorData* gpa, usize size) {
     void* result = dlcalloc(size, 1);
+    assert(result);
     gpaAddSizeFromMallocPtr(gpa, result);
+    gpa->allocCount += 1;
     return result;
 }
 
@@ -206,6 +216,7 @@ function void*
 gpaRealloc(GeneralPurposeAllocatorData* gpa, void* ptr, usize size) {
     gpaSubSizeFromMallocPtr(gpa, ptr);
     void* result = dlrealloc(ptr, size);
+    assert(result);
     gpaAddSizeFromMallocPtr(gpa, result);
     return result;
 }
@@ -214,6 +225,9 @@ function void
 gpaFree(GeneralPurposeAllocatorData* gpa, void* ptr) {
     gpaSubSizeFromMallocPtr(gpa, ptr);
     dlfree(ptr);
+    if (ptr) {
+        gpa->allocCount -= 1;
+    }
 }
 
 global_variable GeneralPurposeAllocatorData globalGPADataSDL;
@@ -313,6 +327,19 @@ FT_New_Memory(void) {
 FT_BASE_DEF(void)
 FT_Done_Memory(FT_Memory memory) {
     gpaFree(&globalGPADataFT, memory);
+}
+
+global_variable GeneralPurposeAllocatorData globalGPADataFribidi;
+
+void*
+fribidiCustomMalloc(usize size) {
+    void* result = gpaAlloc(&globalGPADataFribidi, size);
+    return result;
+}
+
+void
+fribidiCustomFree(void* ptr) {
+    gpaFree(&globalGPADataFribidi, ptr);
 }
 
 //
@@ -742,13 +769,13 @@ drawTextline(Renderer* renderer, String text, i32 leftX, i32 topY, Color color) 
             fribidi_get_bracket_types(segmentStart, segmentLength, bidiTypes, fribidiBracketTypes);
 
             FriBidiParType fribidiBaseDirection = hbDir == HB_DIRECTION_RTL ? FRIBIDI_TYPE_RTL : FRIBIDI_TYPE_LTR;
-            FriBidiLevel*  firbidiEmbeddingLevels = arenaAllocArray(renderer->arena, FriBidiLevel, segmentLength);
+            FriBidiLevel*  fribidiEmbeddingLevels = arenaAllocArray(renderer->arena, FriBidiLevel, segmentLength);
             FriBidiLevel   embeddingResult = fribidi_get_par_embedding_levels_ex(
                 bidiTypes,
                 fribidiBracketTypes,
                 segmentLength,
                 &fribidiBaseDirection,
-                firbidiEmbeddingLevels
+                fribidiEmbeddingLevels
             );
 
             assert(embeddingResult != 0);
@@ -762,7 +789,7 @@ drawTextline(Renderer* renderer, String text, i32 leftX, i32 topY, Color color) 
                 segmentLength,
                 0,
                 fribidiBaseDirection,
-                firbidiEmbeddingLevels,
+                fribidiEmbeddingLevels,
                 visualStr,
                 0
             );
@@ -1026,7 +1053,7 @@ main(int argc, char* argv[]) {
                 // NOTE(khvorov) Visualize memory usage
                 {
                     i32 totalMemoryUsed =
-                        globalGPADataSDL.used + globalGPADataFT.used + globalGPADataHB.used + virtualArena.size;
+                        globalGPADataSDL.used + globalGPADataFT.used + globalGPADataHB.used + globalGPADataFribidi.used + virtualArena.size;
                     i32 memRectHeight = 20;
                     i32 textXPad = 5;
                     i32 arbitraryLineHeight = 20;
@@ -1061,6 +1088,17 @@ main(int argc, char* argv[]) {
                         memRectHeight,
                         (Color) {.g = 100, .b = 100, .a = 255},
                         (MemRectText) {.str = stringFromCstring("HB"), .xOff = textXPad, .yOff = textYOffset}
+                    );
+                    textYOffset += arbitraryLineHeight;
+
+                    topY = drawMemRect(
+                        &renderer,
+                        topY,
+                        globalGPADataFribidi.used,
+                        totalMemoryUsed,
+                        memRectHeight,
+                        (Color) {.g = 100, .b = 200, .a = 255},
+                        (MemRectText) {.str = stringFromCstring("Fribidi"), .xOff = textXPad, .yOff = textYOffset}
                     );
                     textYOffset += arbitraryLineHeight;
 

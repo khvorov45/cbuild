@@ -300,18 +300,18 @@ main() {
     // NOTE(khvorov) Fribidi
 
     prb_String fribidiCompileSouces[] = {prb_STR("lib/*.c")};
-
     prb_String fribidiNoConfigFlag = prb_STR("-DDONT_HAVE_FRIBIDI_CONFIG_H -DDONT_HAVE_FRIBIDI_UNICODE_VERSION_H");
 
-    // TODO(khvorov) Custom allocators for fribidi
     StaticLibInfo fribidi = getStaticLibInfo(
         project,
         prb_STR("fribidi"),
         prb_STR("lib"),
-        prb_fmt("%.*s -DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1 -DHAVE_STRINGIZE=1", prb_LIT(fribidiNoConfigFlag)),
+        prb_fmt("%.*s -Dfribidi_malloc=fribidiCustomMalloc -Dfribidi_free=fribidiCustomFree -DHAVE_STRING_H=1 -DHAVE_STRINGIZE=1", prb_LIT(fribidiNoConfigFlag)),
         fribidiCompileSouces,
         prb_arrayLength(fribidiCompileSouces)
     );
+
+    bool fribidiNotDownloaded = !prb_isDirectory(fribidi.downloadDir) || prb_directoryIsEmpty(fribidi.downloadDir);
 
     // NOTE(khvorov) ICU
 
@@ -687,6 +687,16 @@ main() {
         );
     }
 
+    // NOTE(khvorov) Forward declarations for fribidi custom allocators
+    if (fribidiNotDownloaded) {
+        prb_String file = prb_pathJoin(fribidi.downloadDir, prb_STR("lib/common.h"));
+        textfileReplace(
+            file,
+            prb_STR("#ifndef fribidi_malloc"),
+            prb_STR("#include <stddef.h>\nvoid* fribidiCustomMalloc(size_t);\nvoid fribidiCustomFree(void*);\n#ifndef fribidi_malloc")
+        );
+    }
+
     // NOTE(khvorov) Fix SDL
     if (sdlNotDownloaded) {
         prb_String downloadDir = sdl.downloadDir;
@@ -726,19 +736,19 @@ main() {
     // already compiling in parallel and there are more of them than cores on
     // desktop pcs.
 
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, fribidiName));
+    // prb_clearDirectory(prb_pathJoin(project.compileOutDir, fribidi.name));
     prb_assert(compileStaticLib(project, compiler, fribidi) == prb_Success);
 
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, icuName));
+    // prb_clearDirectory(prb_pathJoin(project.compileOutDir, icu.name));
     prb_assert(compileStaticLib(project, compiler, icu) == prb_Success);
 
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, freetypeName));
+    // prb_clearDirectory(prb_pathJoin(project.compileOutDir, freetype.name));
     prb_assert(compileStaticLib(project, compiler, freetype) == prb_Success);
 
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, harfbuzzName));
+    // prb_clearDirectory(prb_pathJoin(project.compileOutDir, harfbuzz.name));
     prb_assert(compileStaticLib(project, compiler, harfbuzz) == prb_Success);
 
-    // prb_clearDirectory(prb_pathJoin(compileOutDir, sdlName));
+    // prb_clearDirectory(prb_pathJoin(project.compileOutDir, sdl.name));
     prb_assert(compileStaticLib(project, compiler, sdl) == prb_Success);
 
     //
