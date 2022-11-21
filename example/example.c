@@ -564,28 +564,6 @@ createFontManager(Arena* arena) {
 }
 
 //
-// SECTION Timing
-//
-
-typedef struct Clock {
-    u64 countsPerSecond;
-    u64 counter;
-} Clock;
-
-function Clock
-getCurrentClock() {
-    Clock result = {.countsPerSecond = SDL_GetPerformanceFrequency(), .counter = SDL_GetPerformanceCounter()};
-    return result;
-}
-
-function f32
-getMsFrom(Clock clock) {
-    u64 counterDiff = SDL_GetPerformanceCounter() - clock.counter;
-    f32 result = (f32)counterDiff / (f32)clock.countsPerSecond * 1000.f;
-    return result;
-}
-
-//
 // SECTION Render
 //
 
@@ -660,17 +638,6 @@ renderBegin(Renderer* renderer) {
 function void
 renderEnd(Renderer* renderer) {
     SDL_RenderPresent(renderer->sdlRenderer);
-}
-
-function CompletionStatus
-drawEntireFontTexture(Renderer* renderer) {
-    CompletionStatus result = CompletionStatus_Failure;
-    SDL_Rect         destRect = {.y = 150, .w = renderer->fontTexWidth, .h = renderer->fontTexHeight};
-    int              renderCopyResult = SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlFontTexture, 0, &destRect);
-    if (renderCopyResult == 0) {
-        result = CompletionStatus_Sucess;
-    }
-    return result;
 }
 
 typedef SDL_Rect  Rect2i;

@@ -281,7 +281,8 @@ main() {
     prb_TimeStart scriptStartTime = prb_timeStart();
     prb_init(1 * prb_GIGABYTE);
 
-    ProjectInfo project = {.rootDir = prb_getParentDir(prb_STR(__FILE__))};
+    ProjectInfo project = {};
+    project.rootDir = prb_getParentDir(prb_STR(__FILE__));
     project.compileOutDir = prb_pathJoin(project.rootDir, prb_STR("build-debug"));
     prb_createDirIfNotExists(project.compileOutDir);
 
@@ -762,7 +763,7 @@ main() {
         icu.includeFlag,
         fribidi.includeFlag,
         fribidiNoConfigFlag,
-        prb_STR("-Wall -Wextra -Wno-unused-function"),
+        prb_STR("-Wall -Wextra -Werror"),
     };
 
     prb_String mainFiles[] = {
