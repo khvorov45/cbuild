@@ -11,8 +11,10 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
-    - name: example build
-      run: ./example/build.sh
+    - name: example build debug
+      run: ./example/build.sh debug
+    - name: example build release
+      run: ./example/build.sh release
     - name: tests
       run: ./tests/build.sh
     - name: coverage

@@ -1,8 +1,16 @@
 #include "../programmable_build.h"
 
+typedef enum Compiler {
+    Compiler_Gcc,
+    Compiler_Clang,
+    Compiler_Msvc,
+} Compiler;
+
 typedef struct ProjectInfo {
     prb_String rootDir;
     prb_String compileOutDir;
+    Compiler   compiler;
+    bool       release;
 } ProjectInfo;
 
 typedef struct StaticLibInfo {
@@ -65,20 +73,28 @@ gitClone(prb_String downloadDir, prb_String downloadUrl) {
     return handle;
 }
 
-typedef enum Compiler {
-    Compiler_Gcc,
-    Compiler_Clang,
-    Compiler_Msvc,
-} Compiler;
-
 static prb_String
-constructCompileCmd(Compiler compiler, prb_String flags, prb_String inputPath, prb_String outputPath, prb_String linkFlags) {
+constructCompileCmd(ProjectInfo project, prb_String flags, prb_String inputPath, prb_String outputPath, prb_String linkFlags) {
     prb_String cmd = prb_beginString();
 
-    switch (compiler) {
-        case Compiler_Gcc: prb_addStringSegment(&cmd, "gcc -g"); break;
-        case Compiler_Clang: prb_addStringSegment(&cmd, "clang -g"); break;
-        case Compiler_Msvc: prb_addStringSegment(&cmd, "cl /nologo /diagnostics:column /FC /Zi"); break;
+    switch (project.compiler) {
+        case Compiler_Gcc: prb_addStringSegment(&cmd, "gcc"); break;
+        case Compiler_Clang: prb_addStringSegment(&cmd, "clang"); break;
+        case Compiler_Msvc: prb_addStringSegment(&cmd, "cl /nologo /diagnostics:column /FC"); break;
+    }
+
+    if (project.release) {
+        switch (project.compiler) {
+            case Compiler_Gcc:
+            case Compiler_Clang: prb_addStringSegment(&cmd, " -Ofast"); break;
+            case Compiler_Msvc: prb_addStringSegment(&cmd, " /O2"); break;
+        }
+    } else {
+        switch (project.compiler) {
+            case Compiler_Gcc:
+            case Compiler_Clang: prb_addStringSegment(&cmd, " -g"); break;
+            case Compiler_Msvc: prb_addStringSegment(&cmd, " /Zi"); break;
+        }
     }
 
     prb_addStringSegment(&cmd, " %.*s", prb_LIT(flags));
@@ -94,7 +110,7 @@ constructCompileCmd(Compiler compiler, prb_String flags, prb_String inputPath, p
     }
 #endif
 
-    switch (compiler) {
+    switch (project.compiler) {
         case Compiler_Gcc:
         case Compiler_Clang: prb_addStringSegment(&cmd, " %.*s -o %.*s", prb_LIT(inputPath), prb_LIT(outputPath)); break;
         case Compiler_Msvc: {
@@ -107,7 +123,7 @@ constructCompileCmd(Compiler compiler, prb_String flags, prb_String inputPath, p
     }
 
     if (linkFlags.ptr && linkFlags.len > 0) {
-        switch (compiler) {
+        switch (project.compiler) {
             case Compiler_Gcc:
             case Compiler_Clang: prb_addStringSegment(&cmd, " %.*s", prb_LIT(linkFlags)); break;
             case Compiler_Msvc: prb_addStringSegment(&cmd, "-link -incremental:no %.*s", prb_LIT(linkFlags)); break;
@@ -127,7 +143,7 @@ typedef struct StringFound {
 } StringFound;
 
 static prb_Status
-compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
+compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     prb_TempMemory temp = prb_beginTempMemory();
     prb_Status     result = prb_Success;
 
@@ -183,7 +199,7 @@ compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
         prb_LastModResult outputLastMod = prb_getLastModifiedFromPath(outputFilepath);
 
         if (!outputLastMod.success || sourceLastMod.timestamp > outputLastMod.timestamp || latestHFileChange > outputLastMod.timestamp) {
-            prb_String        cmd = constructCompileCmd(compiler, lib.compileFlags, inputFilepath, outputFilepath, prb_STR(""));
+            prb_String        cmd = constructCompileCmd(project, lib.compileFlags, inputFilepath, outputFilepath, prb_STR(""));
             prb_ProcessHandle process = prb_execCmd(cmd, prb_ProcessFlag_DontWait, (prb_String) {});
             arrput(processes, process);
         }
@@ -232,7 +248,7 @@ compileStaticLib(ProjectInfo project, Compiler compiler, StaticLibInfo lib) {
 }
 
 static void
-compileAndRunBidiGenTab(Compiler compiler, prb_String src, prb_String flags, prb_String runArgs, prb_String outpath) {
+compileAndRunBidiGenTab(ProjectInfo project, prb_String src, prb_String flags, prb_String runArgs, prb_String outpath) {
     prb_TempMemory temp = prb_beginTempMemory();
     if (!prb_isFile(outpath)) {
 #if prb_PLATFORM_WINDOWS
@@ -243,7 +259,7 @@ compileAndRunBidiGenTab(Compiler compiler, prb_String src, prb_String flags, prb
 #error unimplemented
 #endif
         prb_String        packtabPath = prb_pathJoin(prb_getParentDir(src), prb_STR("packtab.c"));
-        prb_String        cmd = constructCompileCmd(compiler, flags, prb_fmt("%.*s %.*s", prb_LIT(packtabPath), prb_LIT(src)), exeFilename, prb_STR(""));
+        prb_String        cmd = constructCompileCmd(project, flags, prb_fmt("%.*s %.*s", prb_LIT(packtabPath), prb_LIT(src)), exeFilename, prb_STR(""));
         prb_ProcessHandle handle = prb_execCmd(cmd, 0, (prb_String) {});
         prb_assert(handle.completed);
         if (handle.completionStatus != prb_Success) {
@@ -275,21 +291,25 @@ textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
 
 int
 main() {
-    // TODO(khvorov) Argument parsing
-    // TODO(khvorov) Release build
     // TODO(khvorov) Clone a specific commit probably
     prb_TimeStart scriptStartTime = prb_timeStart();
     prb_init(1 * prb_GIGABYTE);
 
+    prb_String* cmdArgs = prb_getCmdArgs();
+    prb_assert(arrlen(cmdArgs) == 2);
+    prb_String buildTypeStr = cmdArgs[1];
+    prb_assert(prb_streq(buildTypeStr, prb_STR("debug")) || prb_streq(buildTypeStr, prb_STR("release")));
+
     ProjectInfo project = {};
     project.rootDir = prb_getParentDir(prb_STR(__FILE__));
-    project.compileOutDir = prb_pathJoin(project.rootDir, prb_STR("build-debug"));
+    project.release = prb_streq(buildTypeStr, prb_STR("release"));
+    project.compileOutDir = prb_pathJoin(project.rootDir, prb_fmt("build-%.*s", prb_LIT(buildTypeStr)));
     prb_createDirIfNotExists(project.compileOutDir);
 
 #if prb_PLATFORM_WINDOWS
-    Compiler compiler = Compiler_Msvc;
+    project.compiler = Compiler_Msvc;
 #elif prb_PLATFORM_LINUX
-    Compiler compiler = Compiler_Gcc;
+    project.compiler = Compiler_Gcc;
 #else
 #error unimlemented
 #endif
@@ -636,7 +656,7 @@ main() {
 
         prb_String bracketsPath = prb_pathJoin(datadir, prb_STR("BidiBrackets.txt"));
         compileAndRunBidiGenTab(
-            compiler,
+            project,
             prb_pathJoin(gentabDir, prb_STR("gen-brackets-tab.c")),
             flags,
             prb_fmt("%d %.*s %.*s", maxDepth, prb_LIT(bracketsPath), prb_LIT(unidat)),
@@ -644,7 +664,7 @@ main() {
         );
 
         compileAndRunBidiGenTab(
-            compiler,
+            project,
             prb_pathJoin(gentabDir, prb_STR("gen-arabic-shaping-tab.c")),
             flags,
             prb_fmt("%d %.*s", maxDepth, prb_LIT(unidat)),
@@ -653,7 +673,7 @@ main() {
 
         prb_String shapePath = prb_pathJoin(datadir, prb_STR("ArabicShaping.txt"));
         compileAndRunBidiGenTab(
-            compiler,
+            project,
             prb_pathJoin(gentabDir, prb_STR("gen-joining-type-tab.c")),
             flags,
             prb_fmt("%d %.*s %.*s", maxDepth, prb_LIT(unidat), prb_LIT(shapePath)),
@@ -661,7 +681,7 @@ main() {
         );
 
         compileAndRunBidiGenTab(
-            compiler,
+            project,
             prb_pathJoin(gentabDir, prb_STR("gen-brackets-type-tab.c")),
             flags,
             prb_fmt("%d %.*s", maxDepth, prb_LIT(bracketsPath)),
@@ -670,7 +690,7 @@ main() {
 
         prb_String mirrorPath = prb_pathJoin(datadir, prb_STR("BidiMirroring.txt"));
         compileAndRunBidiGenTab(
-            compiler,
+            project,
             prb_pathJoin(gentabDir, prb_STR("gen-mirroring-tab.c")),
             flags,
             prb_fmt("%d %.*s", maxDepth, prb_LIT(mirrorPath)),
@@ -678,7 +698,7 @@ main() {
         );
 
         compileAndRunBidiGenTab(
-            compiler,
+            project,
             prb_pathJoin(gentabDir, prb_STR("gen-bidi-type-tab.c")),
             flags,
             prb_fmt("%d %.*s", maxDepth, prb_LIT(unidat)),
@@ -736,19 +756,19 @@ main() {
     // desktop pcs.
 
     // prb_clearDirectory(prb_pathJoin(project.compileOutDir, fribidi.name));
-    prb_assert(compileStaticLib(project, compiler, fribidi) == prb_Success);
+    prb_assert(compileStaticLib(project, fribidi) == prb_Success);
 
     // prb_clearDirectory(prb_pathJoin(project.compileOutDir, icu.name));
-    prb_assert(compileStaticLib(project, compiler, icu) == prb_Success);
+    prb_assert(compileStaticLib(project, icu) == prb_Success);
 
     // prb_clearDirectory(prb_pathJoin(project.compileOutDir, freetype.name));
-    prb_assert(compileStaticLib(project, compiler, freetype) == prb_Success);
+    prb_assert(compileStaticLib(project, freetype) == prb_Success);
 
     // prb_clearDirectory(prb_pathJoin(project.compileOutDir, harfbuzz.name));
-    prb_assert(compileStaticLib(project, compiler, harfbuzz) == prb_Success);
+    prb_assert(compileStaticLib(project, harfbuzz) == prb_Success);
 
     // prb_clearDirectory(prb_pathJoin(project.compileOutDir, sdl.name));
-    prb_assert(compileStaticLib(project, compiler, sdl) == prb_Success);
+    prb_assert(compileStaticLib(project, sdl) == prb_Success);
 
     //
     // SECTION Main program
@@ -783,7 +803,7 @@ main() {
 #endif
 
     prb_String mainCmd = constructCompileCmd(
-        compiler,
+        project,
         prb_stringsJoin(mainFlags, prb_arrayLength(mainFlags), prb_STR(" ")),
         prb_stringsJoin(mainFiles, prb_arrayLength(mainFiles), prb_STR(" ")),
         prb_pathJoin(project.compileOutDir, mainOutName),

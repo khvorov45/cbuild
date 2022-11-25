@@ -36,6 +36,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 
 // TODO(khvorov) Make sure utf8 paths work on windows
 // TODO(khvorov) File search by regex
+// TODO(khvorov) Multithreading api
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -282,6 +283,13 @@ typedef struct prb_LineIterator {
     int32_t    curLineEndLen;
 } prb_LineIterator;
 
+typedef struct prb_WordIterator {
+    prb_String ogstr;
+    int32_t    curWordCount;
+    int32_t    curByteOffset;
+    prb_String curWord;
+} prb_WordIterator;
+
 typedef struct prb_Utf8CharIterator {
     prb_String          str;
     prb_StringDirection direction;
@@ -431,8 +439,12 @@ prb_PUBLICDEC prb_Utf8CharIterator prb_createUtf8CharIter(prb_String str, prb_St
 prb_PUBLICDEC prb_Status           prb_utf8CharIterNext(prb_Utf8CharIterator* iter);
 prb_PUBLICDEC prb_LineIterator     prb_createLineIter(prb_String str);
 prb_PUBLICDEC prb_Status           prb_lineIterNext(prb_LineIterator* iter);
+prb_PUBLICDEC prb_WordIterator     prb_createWordIter(prb_String str);
+prb_PUBLICDEC prb_Status           prb_wordIterNext(prb_WordIterator* iter);
 
 // SECTION Processes
+prb_PUBLICDEC prb_String        prb_getCmdline(void);
+prb_PUBLICDEC prb_String*       prb_getCmdArgs(void);
 prb_PUBLICDEC const char**      prb_getArgArrayFromString(prb_String string);
 prb_PUBLICDEC prb_ProcessHandle prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath);
 prb_PUBLICDEC prb_Status        prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
@@ -2249,9 +2261,95 @@ prb_lineIterNext(prb_LineIterator* iter) {
     return result;
 }
 
+prb_PUBLICDEF prb_WordIterator
+prb_createWordIter(prb_String str) {
+    prb_WordIterator iter = {};
+    iter.ogstr = str;
+    return iter;
+}
+
+prb_PUBLICDEF prb_Status
+prb_wordIterNext(prb_WordIterator* iter) {
+    prb_unused(iter);
+    prb_Status result = prb_Failure;
+    // TODO(khvorov) Implement
+    prb_assert(!"unimplemented");
+    return result;
+}
+
 //
 // SECTION Processes (implementation)
 //
+
+#if prb_PLATFORM_LINUX
+
+static prb_Bytes
+prb_linux_readFromProcSelf(void) {
+    int        handle = prb_linux_open(prb_STR("/proc/self/cmdline"), O_RDONLY, 0);
+    prb_String str = prb_beginString();
+    str.len = read(handle, (void*)str.ptr, prb_globalArenaCurrentFreeSize());
+    prb_assert(str.len > 0);
+    prb_globalArenaChangeUsed(str.len);
+    prb_endString();
+    prb_Bytes result = {(uint8_t*)str.ptr, str.len};
+    return result;
+}
+
+#endif
+
+prb_PUBLICDEF prb_String
+prb_getCmdline(void) {
+    prb_String result = {};
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    prb_Bytes procSelfContent = prb_linux_readFromProcSelf();
+    for (int32_t byteIndex = 0; byteIndex < procSelfContent.len; byteIndex++) {
+        if (procSelfContent.data[byteIndex] == '\0') {
+            procSelfContent.data[byteIndex] = ' ';
+        }
+    }
+
+    result = (prb_String) {(const char*)procSelfContent.data, procSelfContent.len};
+
+#elif
+#error unimplemented
+#endif
+
+    return result;
+}
+
+prb_PUBLICDEF prb_String*
+prb_getCmdArgs(void) {
+    prb_String* result = 0;
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    prb_Bytes procSelfContent = prb_linux_readFromProcSelf();
+    prb_String procSelfContentLeft = {(const char*)procSelfContent.data, procSelfContent.len};
+    for (int32_t byteIndex = 0; byteIndex < procSelfContent.len; byteIndex++) {
+        if (procSelfContent.data[byteIndex] == '\0') {
+            int32_t processed = procSelfContent.len - procSelfContentLeft.len;
+            prb_String arg = {procSelfContentLeft.ptr, byteIndex - processed};
+            arrput(result, arg);
+            procSelfContentLeft = prb_strSliceForward(procSelfContentLeft, arg.len + 1);
+        }
+    }
+
+#elif
+#error unimplemented
+#endif
+
+    return result;
+}
 
 prb_PUBLICDEF const char**
 prb_getArgArrayFromString(prb_String string) {
@@ -2416,7 +2514,7 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
     return result;
 }
 
-prb_PUBLICDEF void              
+prb_PUBLICDEF void
 prb_sleep(float ms) {
 #if prb_PLATFORM_WINDOWS
 
