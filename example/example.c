@@ -155,6 +155,37 @@ endTempMemory(TempMemory tempMemory) {
     arena->used = tempMemory.usedWhenBegan;
 }
 
+// NOTE(khvorov) Not using any of ICU that requires memory allocation
+
+#include <unicode/urename.h>
+
+void*
+uprv_malloc(size_t s) {
+    assert(!"should not be called");
+    UNUSED(s);
+    return 0;
+}
+
+void*
+uprv_realloc(void * buffer, size_t size) {
+    assert(!"should not be called");
+    UNUSED(buffer);
+    UNUSED(size);
+    return 0;
+}
+
+void
+uprv_free(void *buffer) {
+    assert(!"should not be called");
+    UNUSED(buffer);
+}
+
+UBool 
+cmemory_cleanup(void) {
+    assert(!"should not be called");
+    return false;
+}
+
 // NOTE(khvorov) SDL has these, it just doesn't expose them
 void* dlmalloc(size_t);
 void* dlcalloc(size_t, size_t);

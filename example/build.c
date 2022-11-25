@@ -316,13 +316,11 @@ main() {
 
     // NOTE(khvorov) ICU
 
-    // TODO(khvorov) Custom allocation for ICU
-
     prb_String icuCompileSources[] = {
         prb_STR("icu4c/source/common/uchar.cpp"),
         prb_STR("icu4c/source/common/utrie.cpp"),
         prb_STR("icu4c/source/common/utrie2.cpp"),
-        prb_STR("icu4c/source/common/cmemory.cpp"),
+        // prb_STR("icu4c/source/common/cmemory.cpp"), // NOTE(khvorov) Replaced in example.c
         prb_STR("icu4c/source/common/utf_impl.cpp"),
         prb_STR("icu4c/source/common/normalizer2.cpp"),
         prb_STR("icu4c/source/common/normalizer2impl.cpp"),
