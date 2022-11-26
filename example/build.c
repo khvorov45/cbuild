@@ -22,6 +22,7 @@ typedef struct StaticLibInfo {
     prb_String  compileFlags;
     prb_String* sourcesRelToDownload;
     int32_t     sourcesCount;
+    bool        notDownloaded;
 } StaticLibInfo;
 
 static StaticLibInfo
@@ -52,18 +53,19 @@ getStaticLibInfo(
 #endif
 
     result.libFile = prb_pathJoin(project.compileOutDir, libFilename);
+    result.notDownloaded = !prb_isDirectory(result.downloadDir) || prb_directoryIsEmpty(result.downloadDir);
     return result;
 }
 
 static prb_ProcessHandle
-gitClone(prb_String downloadDir, prb_String downloadUrl) {
+gitClone(StaticLibInfo lib, prb_String downloadUrl) {
     prb_TempMemory    temp = prb_beginTempMemory();
     prb_ProcessHandle handle = {};
-    if (!prb_isDirectory(downloadDir) || prb_directoryIsEmpty(downloadDir)) {
-        prb_String cmd = prb_fmtAndPrintln("git clone --depth 1 %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(downloadDir));
+    if (lib.notDownloaded) {
+        prb_String cmd = prb_fmtAndPrintln("git clone --depth 1 %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(lib.downloadDir));
         handle = prb_execCmd(cmd, prb_ProcessFlag_DontWait, (prb_String) {});
     } else {
-        prb_String name = prb_getLastEntryInPath(downloadDir);
+        prb_String name = prb_getLastEntryInPath(lib.downloadDir);
         prb_fmtAndPrintln("skip git clone %.*s", prb_LIT(name));
         handle.valid = true;
         handle.completed = true;
@@ -71,6 +73,23 @@ gitClone(prb_String downloadDir, prb_String downloadUrl) {
     }
     prb_endTempMemory(temp);
     return handle;
+}
+
+static prb_Status
+gitReset(StaticLibInfo lib, prb_String commit) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    prb_Status     result = prb_Success;
+    if (lib.notDownloaded) {
+        prb_String cwd = prb_getWorkingDir();
+        prb_assert(prb_setWorkingDir(lib.downloadDir) == prb_Success);
+        prb_String        cmd = prb_fmtAndPrintln("git checkout %.*s --", prb_LIT(commit));
+        prb_ProcessHandle handle = prb_execCmd(cmd, 0, (prb_String) {});
+        prb_assert(handle.completed);
+        result = handle.completionStatus;
+        prb_assert(prb_setWorkingDir(cwd) == prb_Success);
+    }
+    prb_endTempMemory(temp);
+    return result;
 }
 
 static prb_String
@@ -164,7 +183,7 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     // NOTE(khvorov) Recompile everything whenever any .h file changes
     uint64_t latestHFileChange = 0;
     {
-        prb_PathFindSpec spec = {lib.downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")};
+        prb_PathFindSpec  spec = {lib.downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")};
         prb_LastModResult lmh = prb_getLastModifiedFromFindSpec(spec, prb_LastModKind_Latest);
         spec.glob.pattern = prb_STR("*.hh");
         prb_LastModResult lmhh = prb_getLastModifiedFromFindSpec(spec, prb_LastModKind_Latest);
@@ -296,7 +315,6 @@ textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
 
 int
 main() {
-    // TODO(khvorov) Clone a specific commit probably
     prb_TimeStart scriptStartTime = prb_timeStart();
     prb_init(1 * prb_GIGABYTE);
 
@@ -336,8 +354,6 @@ main() {
         fribidiCompileSouces,
         prb_arrayLength(fribidiCompileSouces)
     );
-
-    bool fribidiNotDownloaded = !prb_isDirectory(fribidi.downloadDir) || prb_directoryIsEmpty(fribidi.downloadDir);
 
     // NOTE(khvorov) ICU
 
@@ -627,19 +643,24 @@ main() {
         prb_arrayLength(sdlCompileSources)
     );
 
-    bool sdlNotDownloaded = !prb_isDirectory(sdl.downloadDir) || prb_directoryIsEmpty(sdl.downloadDir);
-
     //
     // SECTION Download
     //
 
     prb_ProcessHandle* downloadHandles = 0;
-    arrput(downloadHandles, gitClone(fribidi.downloadDir, prb_STR("https://github.com/fribidi/fribidi")));
-    arrput(downloadHandles, gitClone(icu.downloadDir, prb_STR("https://github.com/unicode-org/icu")));
-    arrput(downloadHandles, gitClone(freetype.downloadDir, prb_STR("https://github.com/freetype/freetype")));
-    arrput(downloadHandles, gitClone(harfbuzz.downloadDir, prb_STR("https://github.com/harfbuzz/harfbuzz")));
-    arrput(downloadHandles, gitClone(sdl.downloadDir, prb_STR("https://github.com/libsdl-org/SDL")));
+    arrput(downloadHandles, gitClone(fribidi, prb_STR("https://github.com/fribidi/fribidi")));
+    arrput(downloadHandles, gitClone(icu, prb_STR("https://github.com/unicode-org/icu")));
+    arrput(downloadHandles, gitClone(freetype, prb_STR("https://github.com/freetype/freetype")));
+    arrput(downloadHandles, gitClone(harfbuzz, prb_STR("https://github.com/harfbuzz/harfbuzz")));
+    arrput(downloadHandles, gitClone(sdl, prb_STR("https://github.com/libsdl-org/SDL")));
     prb_assert(prb_waitForProcesses(downloadHandles, arrlen(downloadHandles)) == prb_Success);
+
+    // NOTE(khvorov) Latest commits at the time of writing to make sure the example keeps working
+    prb_assert(gitReset(fribidi, prb_STR("a6a4defff24aabf9195f462f9a7736f3d9e9c120")) == prb_Success);
+    prb_assert(gitReset(icu, prb_STR("3654e945b68d5042cbf6254dd559a7ba794a76b3")) == prb_Success);
+    prb_assert(gitReset(freetype, prb_STR("aca4ec5907e0bfb5bbeb01370257a121f3f47a0f")) == prb_Success);
+    prb_assert(gitReset(harfbuzz, prb_STR("a5d35fd80a26cb62c4c9030894f94c0785d183e7")) == prb_Success);
+    prb_assert(gitReset(sdl, prb_STR("bc5677db95f32294a1e2c20f1b4146df02309ac7")) == prb_Success);
 
     //
     // SECTION Pre-compilation stuff
@@ -712,7 +733,7 @@ main() {
     }
 
     // NOTE(khvorov) Forward declarations for fribidi custom allocators
-    if (fribidiNotDownloaded) {
+    if (fribidi.notDownloaded) {
         prb_String file = prb_pathJoin(fribidi.downloadDir, prb_STR("lib/common.h"));
         textfileReplace(
             file,
@@ -722,7 +743,7 @@ main() {
     }
 
     // NOTE(khvorov) Fix SDL
-    if (sdlNotDownloaded) {
+    if (sdl.notDownloaded) {
         prb_String downloadDir = sdl.downloadDir;
 
         // NOTE(khvorov) Purge dynamic api because otherwise you have to compile a lot more of sdl

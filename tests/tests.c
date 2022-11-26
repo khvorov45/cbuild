@@ -508,7 +508,7 @@ function void
 test_getCurrentWorkingDir(void) {
     prb_TempMemory temp = prb_beginTempMemory();
 
-    prb_String cwd = prb_getCurrentWorkingDir();
+    prb_String cwd = prb_getWorkingDir();
     prb_assert(prb_isDirectory(cwd));
     prb_String filename = prb_STR(__FUNCTION__);
     prb_writeEntireFile(filename, filename.ptr, filename.len);
@@ -636,7 +636,7 @@ test_getParentDir(void) {
     prb_assert(prb_streq(prb_getParentDir(prb_STR("test/path/")), prb_STR("test/")));
     prb_assert(prb_streq(prb_getParentDir(prb_STR("test/path2/path")), prb_STR("test/path2/")));
 
-    prb_assert(prb_streq(prb_getParentDir(prb_STR("test")), prb_getCurrentWorkingDir()));
+    prb_assert(prb_streq(prb_getParentDir(prb_STR("test")), prb_getWorkingDir()));
 
 #if prb_PLATFORM_WINDOWS
     prb_assert(prb_streq(prb_getParentDir(prb_STR("C:\\\\test")), prb_STR("C:\\\\")));

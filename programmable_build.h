@@ -37,6 +37,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Make sure utf8 paths work on windows
 // TODO(khvorov) File search by regex
 // TODO(khvorov) Multithreading api
+// TODO(khvorov) See if there is room to return status rather than asserting success
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -388,7 +389,8 @@ prb_PUBLICDEC void                 prb_removeFileOrDirectoryIfExists(prb_String 
 prb_PUBLICDEC void                 prb_removeFileIfExists(prb_String path);
 prb_PUBLICDEC void                 prb_removeDirectoryIfExists(prb_String path);
 prb_PUBLICDEC void                 prb_clearDirectory(prb_String path);
-prb_PUBLICDEC prb_String           prb_getCurrentWorkingDir(void);
+prb_PUBLICDEC prb_String           prb_getWorkingDir(void);
+prb_PUBLICDEC prb_Status           prb_setWorkingDir(prb_String dir);
 prb_PUBLICDEC prb_String           prb_pathJoin(prb_String path1, prb_String path2);
 prb_PUBLICDEC bool                 prb_charIsSep(char ch);
 prb_PUBLICDEC prb_StringFindResult prb_findSepBeforeLastEntry(prb_String path);
@@ -1227,7 +1229,7 @@ prb_clearDirectory(prb_String path) {
 }
 
 prb_PUBLICDEF prb_String
-prb_getCurrentWorkingDir(void) {
+prb_getWorkingDir(void) {
 #if prb_PLATFORM_WINDOWS
 
     // TODO(khvorov) Make sure long paths work
@@ -1248,6 +1250,28 @@ prb_getCurrentWorkingDir(void) {
 #else
 #error unimplemented
 #endif
+}
+
+prb_PUBLICDEF prb_Status           
+prb_setWorkingDir(prb_String dir) {
+    prb_TempMemory temp = prb_beginTempMemory();
+    const char* dirNull = prb_strGetNullTerminated(dir);
+    prb_Status result = prb_Failure;
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    result = chdir(dirNull) == 0;
+
+#else
+#error unimplemented
+#endif    
+
+    prb_endTempMemory(temp);
+    return result;
 }
 
 prb_PUBLICDEF prb_String
@@ -1326,7 +1350,7 @@ prb_getParentDir(prb_String path) {
 #endif
 
     prb_StringFindResult findResult = prb_findSepBeforeLastEntry(path);
-    prb_String           result = findResult.found ? (prb_String) {path.ptr, findResult.matchByteIndex + 1} : prb_getCurrentWorkingDir();
+    prb_String           result = findResult.found ? (prb_String) {path.ptr, findResult.matchByteIndex + 1} : prb_getWorkingDir();
     return result;
 }
 
@@ -2462,9 +2486,9 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
             if (!(flags & prb_ProcessFlag_DontWait)) {
                 int status = 0;
                 pid_t waitResult = waitpid(result.pid, &status, 0);
-                if (waitResult == result.pid && status == 0) {
-                    result.completed = true;
-                    result.completionStatus = prb_Success;
+                result.completed = true;
+                if (waitResult == result.pid) {
+                    result.completionStatus = status == 0;
                 }
             }
         }
