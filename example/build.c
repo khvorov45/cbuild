@@ -164,12 +164,17 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     // NOTE(khvorov) Recompile everything whenever any .h file changes
     uint64_t latestHFileChange = 0;
     {
-        prb_LastModResult lm = prb_getLastModifiedFromFindSpec(
-            (prb_PathFindSpec) {lib.downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")},
-            prb_LastModKind_Latest
-        );
-        prb_assert(lm.success);
-        latestHFileChange = lm.timestamp;
+        prb_PathFindSpec spec = {lib.downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")};
+        prb_LastModResult lmh = prb_getLastModifiedFromFindSpec(spec, prb_LastModKind_Latest);
+        spec.glob.pattern = prb_STR("*.hh");
+        prb_LastModResult lmhh = prb_getLastModifiedFromFindSpec(spec, prb_LastModKind_Latest);
+        if (lmh.success && lmhh.success) {
+            latestHFileChange = prb_max(lmh.timestamp, lmhh.timestamp);
+        } else if (lmh.success) {
+            latestHFileChange = lmh.timestamp;
+        } else if (lmhh.success) {
+            latestHFileChange = lmhh.timestamp;
+        }
     }
 
     StringFound* existingObjs = 0;
@@ -798,7 +803,6 @@ main() {
     prb_String mainLinkFlags = prb_STR("-subsystem:windows User32.lib");
 #elif prb_PLATFORM_LINUX
     prb_String mainOutName = prb_STR("example.bin");
-    // TODO(khvorov) Get rid of -lm and -ldl
     prb_String mainLinkFlags = prb_STR("-lX11 -lm -lstdc++ -ldl -lfontconfig");
 #endif
 
