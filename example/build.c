@@ -167,7 +167,7 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     prb_Status     result = prb_Success;
 
     prb_String objDir = prb_pathJoin(project.compileOutDir, lib.name);
-    prb_createDirIfNotExists(objDir);
+    prb_assert(prb_createDirIfNotExists(objDir) == prb_Success);
 
     prb_String* inputPaths = 0;
     for (int32_t srcIndex = 0; srcIndex < lib.sourcesCount; srcIndex++) {
@@ -327,7 +327,7 @@ main() {
     project.rootDir = prb_getParentDir(prb_STR(__FILE__));
     project.release = prb_streq(buildTypeStr, prb_STR("release"));
     project.compileOutDir = prb_pathJoin(project.rootDir, prb_fmt("build-%.*s", prb_LIT(buildTypeStr)));
-    prb_createDirIfNotExists(project.compileOutDir);
+    prb_assert(prb_createDirIfNotExists(project.compileOutDir) == prb_Success);
 
 #if prb_PLATFORM_WINDOWS
     project.compiler = Compiler_Msvc;

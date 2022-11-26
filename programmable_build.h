@@ -384,7 +384,7 @@ prb_PUBLICDEC bool                 prb_pathExists(prb_String path);
 prb_PUBLICDEC bool                 prb_isDirectory(prb_String path);
 prb_PUBLICDEC bool                 prb_isFile(prb_String path);
 prb_PUBLICDEC bool                 prb_directoryIsEmpty(prb_String path);
-prb_PUBLICDEC void                 prb_createDirIfNotExists(prb_String path);
+prb_PUBLICDEC prb_Status           prb_createDirIfNotExists(prb_String path);
 prb_PUBLICDEC void                 prb_removeFileOrDirectoryIfExists(prb_String path);
 prb_PUBLICDEC void                 prb_removeFileIfExists(prb_String path);
 prb_PUBLICDEC void                 prb_removeDirectoryIfExists(prb_String path);
@@ -1133,10 +1133,11 @@ prb_directoryIsEmpty(prb_String path) {
     return result;
 }
 
-prb_PUBLICDEF void
+prb_PUBLICDEF prb_Status
 prb_createDirIfNotExists(prb_String path) {
     prb_TempMemory temp = prb_beginTempMemory();
     const char*    pathNull = prb_strGetNullTerminated(path);
+    prb_Status     result = prb_Failure;
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1146,7 +1147,9 @@ prb_createDirIfNotExists(prb_String path) {
 #elif prb_PLATFORM_LINUX
 
     if (mkdir(pathNull, S_IRWXU | S_IRWXG | S_IRWXO) == -1) {
-        prb_assert(prb_isDirectory(path));
+        result = prb_isDirectory(path) ? prb_Success : prb_Failure;
+    } else {
+        result = prb_Success;
     }
 
 #else
@@ -1154,6 +1157,7 @@ prb_createDirIfNotExists(prb_String path) {
 #endif
 
     prb_endTempMemory(temp);
+    return result;
 }
 
 prb_PUBLICDEF void
@@ -1225,7 +1229,7 @@ prb_removeDirectoryIfExists(prb_String path) {
 prb_PUBLICDEF void
 prb_clearDirectory(prb_String path) {
     prb_removeFileOrDirectoryIfExists(path);
-    prb_createDirIfNotExists(path);
+    prb_assert(prb_createDirIfNotExists(path) == prb_Success);
 }
 
 prb_PUBLICDEF prb_String
@@ -1252,11 +1256,11 @@ prb_getWorkingDir(void) {
 #endif
 }
 
-prb_PUBLICDEF prb_Status           
+prb_PUBLICDEF prb_Status
 prb_setWorkingDir(prb_String dir) {
     prb_TempMemory temp = prb_beginTempMemory();
-    const char* dirNull = prb_strGetNullTerminated(dir);
-    prb_Status result = prb_Failure;
+    const char*    dirNull = prb_strGetNullTerminated(dir);
+    prb_Status     result = prb_Failure;
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1264,11 +1268,11 @@ prb_setWorkingDir(prb_String dir) {
 
 #elif prb_PLATFORM_LINUX
 
-    result = chdir(dirNull) == 0;
+    result = chdir(dirNull) == 0 ? prb_Success : prb_Failure;
 
 #else
 #error unimplemented
-#endif    
+#endif
 
     prb_endTempMemory(temp);
     return result;
@@ -2488,7 +2492,7 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
                 pid_t waitResult = waitpid(result.pid, &status, 0);
                 result.completed = true;
                 if (waitResult == result.pid) {
-                    result.completionStatus = status == 0;
+                    result.completionStatus = status == 0 ? prb_Success : prb_Failure;
                 }
             }
         }
