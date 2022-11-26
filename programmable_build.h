@@ -37,7 +37,6 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Make sure utf8 paths work on windows
 // TODO(khvorov) File search by regex
 // TODO(khvorov) Multithreading api
-// TODO(khvorov) See if there is room to return status rather than asserting success
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -385,10 +384,10 @@ prb_PUBLICDEC bool                 prb_isDirectory(prb_String path);
 prb_PUBLICDEC bool                 prb_isFile(prb_String path);
 prb_PUBLICDEC bool                 prb_directoryIsEmpty(prb_String path);
 prb_PUBLICDEC prb_Status           prb_createDirIfNotExists(prb_String path);
-prb_PUBLICDEC void                 prb_removeFileOrDirectoryIfExists(prb_String path);
-prb_PUBLICDEC void                 prb_removeFileIfExists(prb_String path);
-prb_PUBLICDEC void                 prb_removeDirectoryIfExists(prb_String path);
-prb_PUBLICDEC void                 prb_clearDirectory(prb_String path);
+prb_PUBLICDEC prb_Status           prb_removeFileOrDirectoryIfExists(prb_String path);
+prb_PUBLICDEC prb_Status           prb_removeFileIfExists(prb_String path);
+prb_PUBLICDEC prb_Status           prb_removeDirectoryIfExists(prb_String path);
+prb_PUBLICDEC prb_Status           prb_clearDirectory(prb_String path);
 prb_PUBLICDEC prb_String           prb_getWorkingDir(void);
 prb_PUBLICDEC prb_Status           prb_setWorkingDir(prb_String dir);
 prb_PUBLICDEC prb_String           prb_pathJoin(prb_String path1, prb_String path2);
@@ -404,7 +403,7 @@ prb_PUBLICDEC prb_LastModResult    prb_getLastModifiedFromPath(prb_String path);
 prb_PUBLICDEC prb_LastModResult    prb_getLastModifiedFromPaths(prb_String* path, int32_t pathCount, prb_LastModKind kind);
 prb_PUBLICDEC prb_LastModResult    prb_getLastModifiedFromFindSpec(prb_PathFindSpec spec, prb_LastModKind kind);
 prb_PUBLICDEC prb_Bytes            prb_readEntireFile(prb_String path);
-prb_PUBLICDEC void                 prb_writeEntireFile(prb_String path, const void* content, int32_t contentLen);
+prb_PUBLICDEC prb_Status           prb_writeEntireFile(prb_String path, const void* content, int32_t contentLen);
 prb_PUBLICDEC void                 prb_binaryToCArray(prb_String inPath, prb_String outPath, prb_String arrayName);
 
 // SECTION Strings
@@ -1137,7 +1136,7 @@ prb_PUBLICDEF prb_Status
 prb_createDirIfNotExists(prb_String path) {
     prb_TempMemory temp = prb_beginTempMemory();
     const char*    pathNull = prb_strGetNullTerminated(path);
-    prb_Status     result = prb_Failure;
+    prb_Status     result = prb_Success;
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1146,10 +1145,8 @@ prb_createDirIfNotExists(prb_String path) {
 
 #elif prb_PLATFORM_LINUX
 
-    if (mkdir(pathNull, S_IRWXU | S_IRWXG | S_IRWXO) == -1) {
-        result = prb_isDirectory(path) ? prb_Success : prb_Failure;
-    } else {
-        result = prb_Success;
+    if (!prb_isDirectory(path)) {
+        result = mkdir(pathNull, S_IRWXU | S_IRWXG | S_IRWXO) == 0 ? prb_Success : prb_Failure;
     }
 
 #else
@@ -1160,18 +1157,20 @@ prb_createDirIfNotExists(prb_String path) {
     return result;
 }
 
-prb_PUBLICDEF void
+prb_PUBLICDEF prb_Status
 prb_removeFileOrDirectoryIfExists(prb_String path) {
+    prb_Status result = prb_Failure;
     if (prb_isDirectory(path)) {
-        prb_removeDirectoryIfExists(path);
+        result = prb_removeDirectoryIfExists(path);
     } else {
-        prb_removeFileIfExists(path);
+        result = prb_removeFileIfExists(path);
     }
+    return result;
 }
 
-prb_PUBLICDEF void
+prb_PUBLICDEF prb_Status
 prb_removeFileIfExists(prb_String path) {
-    prb_assert(!prb_isDirectory(path));
+    prb_Status     result = prb_Success;
     prb_TempMemory temp = prb_beginTempMemory();
     const char*    pathNull = prb_strGetNullTerminated(path);
 
@@ -1181,17 +1180,21 @@ prb_removeFileIfExists(prb_String path) {
 
 #elif prb_PLATFORM_LINUX
 
-    unlink(pathNull);
+    if (prb_isFile(path)) {
+        result = unlink(pathNull) == 0 ? prb_Success : prb_Failure;
+    }
 
 #else
 #error unimplemented
 #endif
 
     prb_endTempMemory(temp);
+    return result;
 }
 
-prb_PUBLICDEF void
+prb_PUBLICDEF prb_Status
 prb_removeDirectoryIfExists(prb_String path) {
+    prb_Status     result = prb_Success;
     prb_TempMemory temp = prb_beginTempMemory();
 
 #if prb_PLATFORM_WINDOWS
@@ -1207,16 +1210,17 @@ prb_removeDirectoryIfExists(prb_String path) {
 
 #elif prb_PLATFORM_LINUX
 
-    if (prb_pathExists(path)) {
+    if (prb_isDirectory(path)) {
         prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
-        while (prb_pathFindIterNext(&iter)) {
-            prb_removeFileOrDirectoryIfExists(iter.curPath);
+        while (prb_pathFindIterNext(&iter) && result == prb_Success) {
+            result = prb_removeFileOrDirectoryIfExists(iter.curPath);
         }
         prb_destroyPathFindIter(&iter);
-        prb_assert(prb_directoryIsEmpty(path));
-        const char* pathNull = prb_strGetNullTerminated(path);
-        int32_t rmdirResult = rmdir(pathNull);
-        prb_assert(rmdirResult == 0);
+        if (result == prb_Success) {
+            prb_assert(prb_directoryIsEmpty(path));
+            const char* pathNull = prb_strGetNullTerminated(path);
+            result = rmdir(pathNull) == 0 ? prb_Success : prb_Failure;
+        }
     }
 
 #else
@@ -1224,12 +1228,16 @@ prb_removeDirectoryIfExists(prb_String path) {
 #endif
 
     prb_endTempMemory(temp);
+    return result;
 }
 
-prb_PUBLICDEF void
+prb_PUBLICDEF prb_Status
 prb_clearDirectory(prb_String path) {
-    prb_removeFileOrDirectoryIfExists(path);
-    prb_assert(prb_createDirIfNotExists(path) == prb_Success);
+    prb_Status result = prb_removeFileOrDirectoryIfExists(path);
+    if (result == prb_Success) {
+        result = prb_createDirIfNotExists(path);
+    }
+    return result;
 }
 
 prb_PUBLICDEF prb_String
@@ -1629,8 +1637,10 @@ prb_readEntireFile(prb_String path) {
     return result;
 }
 
-prb_PUBLICDEF void
+prb_PUBLICDEF prb_Status
 prb_writeEntireFile(prb_String path, const void* content, int32_t contentLen) {
+    prb_Status result = prb_Failure;
+
 #if prb_PLATFORM_WINDOWS
 
 #error unimplemented
@@ -1638,14 +1648,17 @@ prb_writeEntireFile(prb_String path, const void* content, int32_t contentLen) {
 #elif prb_PLATFORM_LINUX
 
     int handle = prb_linux_open(path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
-    prb_assert(handle != -1);
-    ssize_t writeResult = write(handle, content, contentLen);
-    prb_assert(writeResult == contentLen);
-    close(handle);
+    if (handle != -1) {
+        ssize_t writeResult = write(handle, content, contentLen);
+        result = writeResult == contentLen ? prb_Success : prb_Failure;
+        close(handle);
+    }
 
 #else
 #error unimplemented
 #endif
+
+    return result;
 }
 
 prb_PUBLICDEF void

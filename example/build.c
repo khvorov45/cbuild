@@ -233,7 +233,7 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     for (int32_t existingObjIndex = 0; existingObjIndex < shlen(existingObjs); existingObjIndex++) {
         StringFound existingObj = existingObjs[existingObjIndex];
         if (!existingObj.value) {
-            prb_removeFileIfExists(prb_STR(existingObj.key));
+            prb_assert(prb_removeFileIfExists(prb_STR(existingObj.key)) == prb_Success);
         }
     }
 
@@ -256,7 +256,7 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
 #elif prb_PLATFORM_LINUX
             prb_String libCmd = prb_fmtAndPrintln("ar rcs %.*s %.*s", prb_LIT(lib.libFile), prb_LIT(objsPathsString));
 #endif
-            prb_removeFileIfExists(lib.libFile);
+            prb_assert(prb_removeFileIfExists(lib.libFile) == prb_Success);
             prb_ProcessHandle libHandle = prb_execCmd(libCmd, 0, (prb_String) {});
             prb_assert(libHandle.completed);
             libStatus = libHandle.completionStatus;
@@ -310,7 +310,7 @@ textfileReplace(prb_String path, prb_String pattern, prb_String replacement) {
         .direction = prb_StringDirection_FromStart,
     };
     prb_String newContent = prb_strReplace(spec, replacement);
-    prb_writeEntireFile(path, newContent.ptr, newContent.len);
+    prb_assert(prb_writeEntireFile(path, newContent.ptr, newContent.len) == prb_Success);
 }
 
 int
@@ -781,19 +781,19 @@ main() {
     // already compiling in parallel and there are more of them than cores on
     // desktop pcs.
 
-    // prb_clearDirectory(prb_pathJoin(project.compileOutDir, fribidi.name));
+    // prb_assert(prb_clearDirectory(prb_pathJoin(project.compileOutDir, fribidi.name)) == prb_Success);
     prb_assert(compileStaticLib(project, fribidi) == prb_Success);
 
-    // prb_clearDirectory(prb_pathJoin(project.compileOutDir, icu.name));
+    // prb_assert(prb_clearDirectory(prb_pathJoin(project.compileOutDir, icu.name)) == prb_Success);
     prb_assert(compileStaticLib(project, icu) == prb_Success);
 
-    // prb_clearDirectory(prb_pathJoin(project.compileOutDir, freetype.name));
+    // prb_assert(prb_clearDirectory(prb_pathJoin(project.compileOutDir, freetype.name)) == prb_Success);
     prb_assert(compileStaticLib(project, freetype) == prb_Success);
 
-    // prb_clearDirectory(prb_pathJoin(project.compileOutDir, harfbuzz.name));
+    // prb_assert(prb_clearDirectory(prb_pathJoin(project.compileOutDir, harfbuzz.name)) == prb_Success);
     prb_assert(compileStaticLib(project, harfbuzz) == prb_Success);
 
-    // prb_clearDirectory(prb_pathJoin(project.compileOutDir, sdl.name));
+    // prb_assert(prb_clearDirectory(prb_pathJoin(project.compileOutDir, sdl.name)) == prb_Success);
     prb_assert(compileStaticLib(project, sdl) == prb_Success);
 
     //
