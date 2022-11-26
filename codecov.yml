@@ -1,2 +1,6 @@
 ignore:
   - "tests/*.c"
+coverage:
+  status:
+    patch: false
+    project: false
