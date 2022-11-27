@@ -20,7 +20,7 @@ jobs:
     - name: example build clang release
       run: ./example/build.sh clang release
     - name: tests
-      run: ./tests/build.sh
+      run: ./tests/run.sh
     - name: coverage
       uses: codecov/codecov-action@v3
       with:
