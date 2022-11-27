@@ -375,6 +375,7 @@ typedef struct prb_Job {
     prb_JobProc       proc;
     void*             data;
     prb_ProcessStatus status;
+
 #if prb_PLATFORM_WINDOWS
 #error unimplemented
 #elif prb_PLATFORM_LINUX
@@ -2269,7 +2270,7 @@ prb_lineIterNext(prb_LineIterator* iter) {
 
     if (iter->curByteOffset < iter->ogstr.len) {
         iter->curLine = prb_strSliceForward(iter->ogstr, iter->curByteOffset);
-        prb_Arena nullArena = {};
+        prb_Arena          nullArena = {};
         prb_StringFindSpec spec = {
             .arena = &nullArena,
             .str = iter->curLine,
