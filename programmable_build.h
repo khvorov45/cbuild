@@ -1124,8 +1124,11 @@ prb_isFile(prb_String path) {
 
 prb_PUBLICDEF bool
 prb_directoryIsEmpty(prb_String path) {
-    prb_TempMemory       temp = prb_beginTempMemory();
-    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
+    prb_TempMemory   temp = prb_beginTempMemory();
+    prb_PathFindSpec spec = {};
+    spec.dir = path;
+    spec.mode = prb_PathFindMode_AllEntriesInDir;
+    prb_PathFindIterator iter = prb_createPathFindIter(spec);
     bool                 result = prb_pathFindIterNext(&iter) == prb_Failure;
     prb_destroyPathFindIter(&iter);
     prb_endTempMemory(temp);
@@ -1211,7 +1214,10 @@ prb_removeDirectoryIfExists(prb_String path) {
 #elif prb_PLATFORM_LINUX
 
     if (prb_isDirectory(path)) {
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {path, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
+        prb_PathFindSpec spec = {};
+        spec.dir = path;
+        spec.mode = prb_PathFindMode_AllEntriesInDir;
+        prb_PathFindIterator iter = prb_createPathFindIter(spec);
         while (prb_pathFindIterNext(&iter) && result == prb_Success) {
             result = prb_removeFileOrDirectoryIfExists(iter.curPath);
         }

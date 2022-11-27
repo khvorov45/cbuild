@@ -709,9 +709,14 @@ test_pathFindIter(void) {
         prb_assert(prb_writeEntireFile(file, file.ptr, file.len) == prb_Success);
     }
 
-    prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
-    prb_PathFindIterator iterTrailingSlash = prb_createPathFindIter((prb_PathFindSpec) {dirTrailingSlash, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
-    prb_PathFindIterator iterNotNull = prb_createPathFindIter((prb_PathFindSpec) {dirNotNull, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
+    prb_PathFindSpec spec = {};
+    spec.dir = dir;
+    spec.mode = prb_PathFindMode_AllEntriesInDir;
+    prb_PathFindIterator iter = prb_createPathFindIter(spec);
+    spec.dir = dirTrailingSlash;
+    prb_PathFindIterator iterTrailingSlash = prb_createPathFindIter(spec);
+    spec.dir = dirNotNull;
+    prb_PathFindIterator iterNotNull = prb_createPathFindIter(spec);
 
     i32 filesFound[] = {0, 0, 0, 0};
     i32 totalEntries = 0;
@@ -786,7 +791,8 @@ test_pathFindIter(void) {
     prb_destroyPathFindIter(&iterPatternNotNull);
 
     prb_assert(prb_clearDirectory(dir) == prb_Success);
-    iter = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllEntriesInDir, .recursive = false, {}});
+    spec.dir = dir;
+    iter = prb_createPathFindIter(spec);
     prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
     iterPatternSpec.glob.pattern = pattern;
     iter = prb_createPathFindIter(iterPatternSpec);
@@ -839,7 +845,9 @@ test_pathFindIter(void) {
 
     bool emptyNestedDirFound = false;
 
-    prb_PathFindIterator iterRecursive = prb_createPathFindIter((prb_PathFindSpec) {dir, prb_PathFindMode_AllEntriesInDir, .recursive = true, {}});
+    spec.dir = dir;
+    spec.recursive = true;
+    prb_PathFindIterator iterRecursive = prb_createPathFindIter(spec);
     while (prb_pathFindIterNext(&iterRecursive) == prb_Success) {
         bool found = false;
 
