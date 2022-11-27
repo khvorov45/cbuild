@@ -7,11 +7,7 @@ If using in multiple translation units:
     - Define prb_NOT_STATIC in the translation unit that has the implementation
     - Define prb_NO_IMPLEMENTATION to use as a normal header
 
-Don't forget to call prb_init() before doing anything.
-
-Note that all memory operations (such as string formatting) 
-are running off a linear allocator that is not thread-safe,
-(so don't call prb_fmt* from multiple threads, for example).
+Note that arenas are not thread-safe, so don't pass the same arena to multiple threads.
 
 All string formatting functions are wrappers around stb printf
 https://github.com/nothings/stb/blob/master/stb_sprintf.h
@@ -21,8 +17,7 @@ The original stb sprintf API is still exposed.
 The library includes all of stb ds
 https://github.com/nothings/stb/blob/master/stb_ds.h
 There are no wrappers for it, use the original API.
-All memory allocation calls in stb ds are hooked up to the linear allocator 
-everything else is using (memory freeing doesn't do anything). 
+All memory allocation calls in stb ds are using libc realloc/free.
 
 If a prb_* function ever returns an array (pointer to multiple elements) then it's
 an stb ds array, so get its length with arrlen()
