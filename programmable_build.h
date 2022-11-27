@@ -316,6 +316,7 @@ typedef enum prb_PathFindMode {
     prb_PathFindMode_Glob,
 } prb_PathFindMode;
 
+// TODO(khvorov) Put the arena in the right place
 typedef struct prb_PathFindSpec {
     prb_Arena*       arena;
     prb_String       dir;

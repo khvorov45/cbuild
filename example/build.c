@@ -297,6 +297,7 @@ prb_PUBLICDEF void
 textfileReplace(prb_Arena* arena, prb_String path, prb_String pattern, prb_String replacement) {
     prb_Bytes          content = prb_readEntireFile(arena, path);
     prb_StringFindSpec spec = {
+        .arena = arena,
         .str = (prb_String) {(const char*)content.data, content.len},
         .pattern = pattern,
         .mode = prb_StringFindMode_Exact,
