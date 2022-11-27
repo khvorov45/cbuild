@@ -621,7 +621,7 @@ STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char peri
 
 #if !defined(STBDS_REALLOC) && !defined(STBDS_FREE)
 #define STBDS_REALLOC(c, p, s) prb_realloc(p, s)
-#define STBDS_FREE(c, p)
+#define STBDS_FREE(c, p) prb_free(p)
 #endif
 
 #ifdef _MSC_VER
@@ -4382,7 +4382,6 @@ stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap) {
 
 STBDS__PUBLICDEF void
 stbds_arrfreef(void* a) {
-    STBDS_NOTUSED(a);
     STBDS_FREE(NULL, stbds_header(a));
 }
 
