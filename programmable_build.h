@@ -386,10 +386,10 @@ typedef struct prb_Job {
 
 // SECTION Memory
 prb_PUBLICDEC bool           prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
+prb_PUBLICDEC int32_t        prb_getOffsetForAlignment(void* ptr, int32_t align);
 prb_PUBLICDEC void*          prb_vmemAlloc(int32_t bytes);
 prb_PUBLICDEC prb_Arena      prb_createArenaFromVmem(int32_t bytes);
 prb_PUBLICDEC void*          prb_arenaAllocAndZero(prb_Arena* arena, int32_t size, int32_t align);
-prb_PUBLICDEC int32_t        prb_getOffsetForAlignment(void* ptr, int32_t align);
 prb_PUBLICDEC void           prb_arenaAlignFreePtr(prb_Arena* arena, int32_t align);
 prb_PUBLICDEC void*          prb_arenaFreePtr(prb_Arena* arena);
 prb_PUBLICDEC int32_t        prb_arenaFreeSize(prb_Arena* arena);
@@ -917,6 +917,16 @@ prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes) {
     return result;
 }
 
+prb_PUBLICDEF int32_t
+prb_getOffsetForAlignment(void* ptr, int32_t align) {
+    prb_assert(prb_isPowerOf2(align));
+    uintptr_t ptrAligned = (uintptr_t)((uint8_t*)ptr + (align - 1)) & (uintptr_t)(~(align - 1));
+    prb_assert(ptrAligned >= (uintptr_t)ptr);
+    intptr_t diff = ptrAligned - (uintptr_t)ptr;
+    prb_assert(diff < align && diff >= 0);
+    return (int32_t)diff;
+}
+
 prb_PUBLICDEF void*
 prb_vmemAlloc(int32_t bytes) {
 #if prb_PLATFORM_WINDOWS
@@ -952,16 +962,6 @@ prb_arenaAllocAndZero(prb_Arena* arena, int32_t size, int32_t align) {
     prb_arenaChangeUsed(arena, size);
     prb_memset(result, 0, size);
     return result;
-}
-
-prb_PUBLICDEF int32_t
-prb_getOffsetForAlignment(void* ptr, int32_t align) {
-    prb_assert(prb_isPowerOf2(align));
-    uintptr_t ptrAligned = (uintptr_t)((uint8_t*)ptr + (align - 1)) & (uintptr_t)(~(align - 1));
-    prb_assert(ptrAligned >= (uintptr_t)ptr);
-    intptr_t diff = ptrAligned - (uintptr_t)ptr;
-    prb_assert(diff < align && diff >= 0);
-    return (int32_t)diff;
 }
 
 prb_PUBLICDEF void
