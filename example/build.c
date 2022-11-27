@@ -1,5 +1,7 @@
 #include "../programmable_build.h"
 
+// TODO(khvorov) Clean up after stb ds stuff
+
 typedef enum Compiler {
     Compiler_Gcc,
     Compiler_Clang,

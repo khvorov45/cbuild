@@ -8,6 +8,8 @@ typedef int32_t  i32;
 typedef uint32_t u32;
 typedef size_t   usize;
 
+// TODO(khvorov) Clean up after stb ds stuff
+
 //
 // SECTION Memory
 //
@@ -1275,6 +1277,7 @@ test_fileformat(void* data) {
         }
     }
     prb_assert(arrlen(headerNotInImpl) == 0);
+    arrfree(headerNotInImpl);
 
     prb_String* implNotInHeader = setdiff(implNames, headerNames);
     if (arrlen(implNotInHeader) > 0) {
@@ -1286,6 +1289,7 @@ test_fileformat(void* data) {
         }
     }
     prb_assert(arrlen(implNotInHeader) == 0);
+    arrfree(implNotInHeader);
 
     for (i32 index = 0; index < arrlen(headerNames); index++) {
         prb_String headerName = headerNames[index];
