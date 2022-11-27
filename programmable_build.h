@@ -37,6 +37,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Make sure utf8 paths work on windows
 // TODO(khvorov) File search by regex
 // TODO(khvorov) Multithreading api
+// TODO(khvorov) Run sanitizers
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -83,6 +84,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #include <glob.h>
 #include <time.h>
 #include <fcntl.h>
+#include <pthread.h>
 
 #endif
 
@@ -230,10 +232,15 @@ typedef struct prb_Bytes {
     int32_t  len;
 } prb_Bytes;
 
+typedef enum prb_ProcessStatus {
+    prb_ProcessStatus_NotLaunched,
+    prb_ProcessStatus_Launched,
+    prb_ProcessStatus_CompletedSuccess,
+    prb_ProcessStatus_CompletedFailed,
+} prb_ProcessStatus;
+
 typedef struct prb_ProcessHandle {
-    bool       valid;
-    bool       completed;
-    prb_Status completionStatus;
+    prb_ProcessStatus status;
 
 #if prb_PLATFORM_WINDOWS
 #error unimplemented
@@ -358,6 +365,21 @@ typedef struct prb_LastModResult {
     uint64_t timestamp;
 } prb_LastModResult;
 
+typedef void (*prb_JobProc)(void* data);
+
+typedef struct prb_Job {
+    prb_JobProc       proc;
+    void*             data;
+    prb_ProcessStatus status;
+#if prb_PLATFORM_WINDOWS
+#error unimplemented
+#elif prb_PLATFORM_LINUX
+    pthread_t threadid;
+#else
+#error unimplemented
+#endif
+} prb_Job;
+
 #ifdef prb_NO_IMPLEMENTATION
 extern prb_Arena prb_globalArena;
 #endif
@@ -454,6 +476,9 @@ prb_PUBLICDEC void              prb_sleep(float ms);
 // SECTION Timing
 prb_PUBLICDEC prb_TimeStart prb_timeStart(void);
 prb_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
+
+// SECTION Multithreading
+prb_PUBLICDEC prb_Status prb_execJobs(prb_Job* jobs, int32_t jobsCount);
 
 //
 // SECTION stb snprintf
@@ -2505,13 +2530,13 @@ prb_execCmd(prb_String cmd, prb_ProcessFlags flags, prb_String redirectFilepath)
         const char** args = prb_getArgArrayFromString(cmd);
         int spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
         if (spawnResult == 0) {
-            result.valid = true;
+            result.status = prb_ProcessStatus_Launched;
             if (!(flags & prb_ProcessFlag_DontWait)) {
                 int status = 0;
                 pid_t waitResult = waitpid(result.pid, &status, 0);
-                result.completed = true;
-                if (waitResult == result.pid) {
-                    result.completionStatus = status == 0 ? prb_Success : prb_Failure;
+                result.status = prb_ProcessStatus_CompletedFailed;
+                if (waitResult == result.pid && status == 0) {
+                    result.status = prb_ProcessStatus_CompletedSuccess;
                 }
             }
         }
@@ -2537,20 +2562,15 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
 
     for (int32_t handleIndex = 0; handleIndex < handleCount; handleIndex++) {
         prb_ProcessHandle* handle = handles + handleIndex;
-        if (handle->valid) {
-            if (!handle->completed) {
-                int32_t status = 0;
-                pid_t waitResult = waitpid(handle->pid, &status, 0);
-                handle->completed = true;
-                if (waitResult == handle->pid && status == 0) {
-                    handle->completionStatus = prb_Success;
-                } else {
-                    handle->completionStatus = prb_Failure;
-                    result = prb_Failure;
-                }
+        if (handle->status == prb_ProcessStatus_Launched) {
+            int32_t status = 0;
+            pid_t waitResult = waitpid(handle->pid, &status, 0);
+            handle->status = prb_ProcessStatus_CompletedFailed;
+            if (waitResult == handle->pid && status == 0) {
+                handle->status = prb_ProcessStatus_CompletedSuccess;
+            } else {
+                result = prb_Failure;
             }
-        } else {
-            result = prb_Failure;
         }
     }
 
@@ -2616,6 +2636,61 @@ prb_getMsFrom(prb_TimeStart timeStart) {
         uint64_t nsec = now.nsec - timeStart.nsec;
         result = (float)nsec / 1000.0f / 1000.0f;
     }
+    return result;
+}
+
+//
+// SECTION Multithreading (implementation)
+//
+
+#if prb_PLATFORM_LINUX
+
+static void*
+prb_linux_pthreadProc(void* data) {
+    prb_Job* job = (prb_Job*)data;
+    prb_assert(job->status == prb_ProcessStatus_NotLaunched);
+    job->status = prb_ProcessStatus_Launched;
+    job->proc(job->data);
+    return 0;
+}
+
+#endif
+
+prb_PUBLICDEF prb_Status
+prb_execJobs(prb_Job* jobs, int32_t jobsCount) {
+    prb_Status result = prb_Success;
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    for (int32_t jobIndex = 0; jobIndex < jobsCount && result == prb_Success; jobIndex++) {
+        prb_Job* job = jobs + jobIndex;
+        if (job->status == prb_ProcessStatus_NotLaunched) {
+            if (pthread_create(&job->threadid, 0, prb_linux_pthreadProc, job) != 0) {
+                result = prb_Failure;
+            }
+        }
+    }
+
+    for (int32_t jobIndex = 0; jobIndex < jobsCount; jobIndex++) {
+        prb_Job* job = jobs + jobIndex;
+        if (job->status == prb_ProcessStatus_Launched) {
+            if (pthread_join(job->threadid, 0) == 0) {
+                job->status = prb_ProcessStatus_CompletedSuccess;
+            } else {
+                result = prb_Failure;
+            }
+        }
+    }
+
+
+#else
+#error unimplemented
+#endif
+
     return result;
 }
 

@@ -13,7 +13,8 @@ typedef size_t   usize;
 //
 
 function void
-test_memeq(void) {
+test_memeq(void* data) {
+    prb_unused(data);
     const char* p1 = "test1";
     const char* p2 = "test12";
     prb_assert(prb_memeq(p1, p2, prb_strlen(p1)));
@@ -21,7 +22,8 @@ test_memeq(void) {
 }
 
 function void
-test_getOffsetForAlignment(void) {
+test_getOffsetForAlignment(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_assert(prb_getOffsetForAlignment((void*)0, 1) == 0);
@@ -36,7 +38,8 @@ test_getOffsetForAlignment(void) {
 }
 
 function void
-test_globalArenaAlignFreePtr(void) {
+test_globalArenaAlignFreePtr(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     i32 arbitraryAlignment = 16;
@@ -51,7 +54,8 @@ test_globalArenaAlignFreePtr(void) {
 }
 
 function void
-test_allocAndZero(void) {
+test_allocAndZero(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     i32 arbitrarySize = 100;
@@ -70,7 +74,8 @@ test_allocAndZero(void) {
 }
 
 function void
-test_realloc(void) {
+test_realloc(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     i32  initLen = 10;
@@ -92,7 +97,8 @@ test_realloc(void) {
 }
 
 function void
-test_globalArenaCurrentFreePtr(void) {
+test_globalArenaCurrentFreePtr(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     uint8_t* ptrInit = (uint8_t*)prb_globalArenaCurrentFreePtr();
@@ -104,7 +110,8 @@ test_globalArenaCurrentFreePtr(void) {
 }
 
 function void
-test_globalArenaCurrentFreeSize(void) {
+test_globalArenaCurrentFreeSize(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     i32 sizeInit = prb_globalArenaCurrentFreeSize();
@@ -116,7 +123,8 @@ test_globalArenaCurrentFreeSize(void) {
 }
 
 function void
-test_globalArenaChangeUsed(void) {
+test_globalArenaChangeUsed(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     i32 init = prb_globalArena.used;
@@ -131,7 +139,8 @@ test_globalArenaChangeUsed(void) {
 }
 
 function void
-test_beginTempMemory(void) {
+test_beginTempMemory(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
     prb_assert(temp.usedAtBegin == prb_globalArena.used);
     prb_assert(temp.tempCountAtBegin == prb_globalArena.tempCount - 1);
@@ -139,7 +148,8 @@ test_beginTempMemory(void) {
 }
 
 function void
-test_endTempMemory(void) {
+test_endTempMemory(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
     prb_allocAndZero(100, 1);
     prb_endTempMemory(temp);
@@ -152,7 +162,8 @@ test_endTempMemory(void) {
 //
 
 function void
-test_pathExists(void) {
+test_pathExists(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
@@ -216,7 +227,8 @@ test_pathExists(void) {
 }
 
 function void
-test_isDirectory(void) {
+test_isDirectory(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
@@ -256,7 +268,8 @@ test_isDirectory(void) {
 }
 
 function void
-test_isFile(void) {
+test_isFile(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String filepath = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
@@ -290,7 +303,8 @@ test_isFile(void) {
 }
 
 function void
-test_directoryIsEmpty(void) {
+test_directoryIsEmpty(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
@@ -328,7 +342,8 @@ test_directoryIsEmpty(void) {
 }
 
 function void
-test_createDirIfNotExists(void) {
+test_createDirIfNotExists(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
@@ -361,7 +376,8 @@ test_createDirIfNotExists(void) {
 }
 
 function void
-test_removeFileOrDirectoryIfExists(void) {
+test_removeFileOrDirectoryIfExists(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
@@ -412,7 +428,8 @@ test_removeFileOrDirectoryIfExists(void) {
 }
 
 function void
-test_removeFileIfExists(void) {
+test_removeFileIfExists(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
@@ -438,7 +455,8 @@ test_removeFileIfExists(void) {
 }
 
 function void
-test_removeDirectoryIfExists(void) {
+test_removeDirectoryIfExists(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
@@ -468,7 +486,8 @@ test_removeDirectoryIfExists(void) {
 }
 
 function void
-test_clearDirectory(void) {
+test_clearDirectory(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
@@ -505,7 +524,8 @@ test_clearDirectory(void) {
 }
 
 function void
-test_getCurrentWorkingDir(void) {
+test_getCurrentWorkingDir(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String cwd = prb_getWorkingDir();
@@ -520,7 +540,8 @@ test_getCurrentWorkingDir(void) {
 }
 
 function void
-test_pathJoin(void) {
+test_pathJoin(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_assert(prb_streq(prb_pathJoin(prb_STR("a"), prb_STR("b")), prb_STR("a/b")));
@@ -544,7 +565,8 @@ test_pathJoin(void) {
 }
 
 function void
-test_charIsSep(void) {
+test_charIsSep(void* data) {
+    prb_unused(data);
     prb_assert(prb_charIsSep('/'));
 
 #if prb_PLATFORM_WINDOWS
@@ -555,7 +577,8 @@ test_charIsSep(void) {
 }
 
 function void
-test_findSepBeforeLastEntry(void) {
+test_findSepBeforeLastEntry(void* data) {
+    prb_unused(data);
     {
         prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path"));
         prb_assert(res.found);
@@ -629,7 +652,8 @@ test_findSepBeforeLastEntry(void) {
 }
 
 function void
-test_getParentDir(void) {
+test_getParentDir(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_assert(prb_streq(prb_getParentDir(prb_STR("test/path")), prb_STR("test/")));
@@ -650,7 +674,8 @@ test_getParentDir(void) {
 }
 
 function void
-test_getLastEntryInPath(void) {
+test_getLastEntryInPath(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path")), prb_STR("path")));
@@ -672,7 +697,8 @@ test_getLastEntryInPath(void) {
 }
 
 function void
-test_replaceExt(void) {
+test_replaceExt(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_assert(prb_streq(prb_replaceExt(prb_STR("test"), prb_STR("txt")), prb_STR("test.txt")));
@@ -684,7 +710,8 @@ test_replaceExt(void) {
 }
 
 function void
-test_pathFindIter(void) {
+test_pathFindIter(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
@@ -955,7 +982,8 @@ test_pathFindIter(void) {
 }
 
 function void
-test_getLastModifiedFromPath(void) {
+test_getLastModifiedFromPath(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
     prb_String     dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
     prb_assert(prb_clearDirectory(dir) == prb_Success);
@@ -982,7 +1010,8 @@ test_getLastModifiedFromPath(void) {
 }
 
 function void
-test_getLastModifiedFromPaths(void) {
+test_getLastModifiedFromPaths(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
     prb_String     dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
     prb_assert(prb_clearDirectory(dir) == prb_Success);
@@ -1017,7 +1046,8 @@ test_getLastModifiedFromPaths(void) {
 }
 
 function void
-test_getLastModifiedFromFindSpec(void) {
+test_getLastModifiedFromFindSpec(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
     prb_String     dir = prb_pathJoin(prb_getParentDir(prb_STR(__FILE__)), prb_STR(__FUNCTION__));
     prb_assert(prb_clearDirectory(dir) == prb_Success);
@@ -1055,7 +1085,8 @@ test_getLastModifiedFromFindSpec(void) {
 //
 
 function void
-test_printColor(void) {
+test_printColor(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
     prb_fmtAndPrintln("color printing:");
     prb_fmtAndPrintlnColor(prb_ColorID_Blue, "blue");
@@ -1070,7 +1101,8 @@ test_printColor(void) {
 }
 
 function void
-test_strings(void) {
+test_strings(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String str = prb_beginString();
@@ -1087,7 +1119,8 @@ test_strings(void) {
 }
 
 function void
-test_strFindIter(void) {
+test_strFindIter(void* data) {
+    prb_unused(data);
     prb_String         str = prb_STR("prog arg1:val1 arg2:val2 arg3:val3");
     prb_StringFindSpec spec = {
         .str = str,
@@ -1179,7 +1212,8 @@ setdiff(prb_String* arr1, prb_String* arr2) {
 }
 
 function void
-test_fileformat(void) {
+test_fileformat(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_Bytes        fileContents = prb_readEntireFile(prb_STR("programmable_build.h"));
@@ -1278,7 +1312,8 @@ test_fileformat(void) {
 }
 
 function void
-test_strFind(void) {
+test_strFind(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_StringFindSpec spec = {
@@ -1363,7 +1398,8 @@ test_strFind(void) {
 }
 
 function void
-test_strStartsEnds(void) {
+test_strStartsEnds(void* data) {
+    prb_unused(data);
     prb_assert(prb_strStartsWith(prb_STR("123abc"), prb_STR("123"), prb_StringFindMode_Exact));
     prb_assert(!prb_strStartsWith(prb_STR("123abc"), prb_STR("abc"), prb_StringFindMode_Exact));
     prb_assert(!prb_strEndsWith(prb_STR("123abc"), prb_STR("123"), prb_StringFindMode_Exact));
@@ -1371,7 +1407,8 @@ test_strStartsEnds(void) {
 }
 
 function void
-test_lineIter(void) {
+test_lineIter(void* data) {
+    prb_unused(data);
     prb_String       lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
     prb_LineIterator iter = prb_createLineIter(lines);
 
@@ -1469,7 +1506,8 @@ test_lineIter(void) {
 }
 
 function void
-test_utf8CharIter(void) {
+test_utf8CharIter(void* data) {
+    prb_unused(data);
     prb_String str = prb_STR("abcדזון是太متشاтипуκαι");
     u32        charsUtf32[] = {97, 98, 99, 1491, 1494, 1493, 1503, 26159, 22826, 1605, 1578, 1588, 1575, 1090, 1080, 1087, 1091, 954, 945, 953};
     i32        utf8Bytes[] = {1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
@@ -1494,7 +1532,8 @@ test_utf8CharIter(void) {
 }
 
 function void
-test_getArgArrayFromString(void) {
+test_getArgArrayFromString(void* data) {
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory();
 
     prb_String strings[] = {prb_STR("prg arg1 arg2 arg3"), prb_STR("  prg arg1 arg2  arg3 ")};
@@ -1511,6 +1550,15 @@ test_getArgArrayFromString(void) {
     prb_endTempMemory(temp);
 }
 
+function void
+addTestJob(prb_Job** jobs, prb_JobProc testProc) {
+    prb_Job job = {};
+    job.proc = testProc;
+    prb_Job* jobsCopy = *jobs;
+    arrput(jobsCopy, job);
+    *jobs = jobsCopy;
+}
+
 int
 main() {
     prb_TimeStart testStart = prb_timeStart();
@@ -1518,48 +1566,52 @@ main() {
     void* baseStart = prb_globalArena.base;
     prb_assert(prb_globalArena.tempCount == 0);
 
-    test_memeq();
-    test_getOffsetForAlignment();
-    test_globalArenaAlignFreePtr();
-    test_allocAndZero();
-    test_realloc();
-    test_globalArenaCurrentFreePtr();
-    test_globalArenaCurrentFreeSize();
-    test_globalArenaChangeUsed();
-    test_beginTempMemory();
-    test_endTempMemory();
+    prb_Job* jobs = 0;
 
-    test_pathExists();
-    test_isDirectory();
-    test_isFile();
-    test_directoryIsEmpty();
-    test_createDirIfNotExists();
-    test_removeFileOrDirectoryIfExists();
-    test_removeFileIfExists();
-    test_removeDirectoryIfExists();
-    test_clearDirectory();
-    test_getCurrentWorkingDir();
-    test_pathJoin();
-    test_charIsSep();
-    test_findSepBeforeLastEntry();
-    test_getParentDir();
-    test_getLastEntryInPath();
-    test_replaceExt();
-    test_pathFindIter();
-    test_getLastModifiedFromPath();
-    test_getLastModifiedFromPaths();
-    test_getLastModifiedFromFindSpec();
+    addTestJob(&jobs, test_memeq);
+    test_getOffsetForAlignment(0);
+    test_globalArenaAlignFreePtr(0);
+    test_allocAndZero(0);
+    test_realloc(0);
+    test_globalArenaCurrentFreePtr(0);
+    test_globalArenaCurrentFreeSize(0);
+    test_globalArenaChangeUsed(0);
+    test_beginTempMemory(0);
+    test_endTempMemory(0);
 
-    test_strings();
-    test_fileformat();
-    test_strFind();
-    test_strFindIter();
-    test_strStartsEnds();
-    test_lineIter();
-    test_utf8CharIter();
-    test_getArgArrayFromString();
+    test_pathExists(0);
+    test_isDirectory(0);
+    test_isFile(0);
+    test_directoryIsEmpty(0);
+    test_createDirIfNotExists(0);
+    test_removeFileOrDirectoryIfExists(0);
+    test_removeFileIfExists(0);
+    test_removeDirectoryIfExists(0);
+    test_clearDirectory(0);
+    test_getCurrentWorkingDir(0);
+    test_pathJoin(0);
+    test_charIsSep(0);
+    test_findSepBeforeLastEntry(0);
+    test_getParentDir(0);
+    test_getLastEntryInPath(0);
+    test_replaceExt(0);
+    test_pathFindIter(0);
+    test_getLastModifiedFromPath(0);
+    test_getLastModifiedFromPaths(0);
+    test_getLastModifiedFromFindSpec(0);
 
-    test_printColor();
+    test_strings(0);
+    test_fileformat(0);
+    test_strFind(0);
+    test_strFindIter(0);
+    test_strStartsEnds(0);
+    test_lineIter(0);
+    test_utf8CharIter(0);
+    test_getArgArrayFromString(0);
+
+    test_printColor(0);
+
+    prb_assert(prb_execJobs(jobs, arrlen(jobs)) == prb_Success);
 
     prb_assert(prb_globalArena.tempCount == 0);
     prb_assert(prb_globalArena.base == baseStart);

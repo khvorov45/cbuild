@@ -67,9 +67,7 @@ gitClone(StaticLibInfo lib, prb_String downloadUrl) {
     } else {
         prb_String name = prb_getLastEntryInPath(lib.downloadDir);
         prb_fmtAndPrintln("skip git clone %.*s", prb_LIT(name));
-        handle.valid = true;
-        handle.completed = true;
-        handle.completionStatus = prb_Success;
+        handle.status = prb_ProcessStatus_CompletedSuccess;
     }
     prb_endTempMemory(temp);
     return handle;
@@ -84,8 +82,7 @@ gitReset(StaticLibInfo lib, prb_String commit) {
         prb_assert(prb_setWorkingDir(lib.downloadDir) == prb_Success);
         prb_String        cmd = prb_fmtAndPrintln("git checkout %.*s --", prb_LIT(commit));
         prb_ProcessHandle handle = prb_execCmd(cmd, 0, (prb_String) {});
-        prb_assert(handle.completed);
-        result = handle.completionStatus;
+        prb_assert(handle.status == prb_ProcessStatus_CompletedSuccess);
         prb_assert(prb_setWorkingDir(cwd) == prb_Success);
     }
     prb_endTempMemory(temp);
@@ -258,8 +255,8 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
 #endif
             prb_assert(prb_removeFileIfExists(lib.libFile) == prb_Success);
             prb_ProcessHandle libHandle = prb_execCmd(libCmd, 0, (prb_String) {});
-            prb_assert(libHandle.completed);
-            libStatus = libHandle.completionStatus;
+            prb_assert(libHandle.status == prb_ProcessStatus_CompletedSuccess || libHandle.status == prb_ProcessStatus_CompletedFailed);
+            libStatus = libHandle.status == prb_ProcessStatus_CompletedSuccess ? prb_Success : prb_Failure;
         } else {
             prb_fmtAndPrintln("skip lib %.*s", prb_LIT(lib.name));
         }
@@ -285,17 +282,11 @@ compileAndRunBidiGenTab(ProjectInfo project, prb_String src, prb_String flags, p
         prb_String        packtabPath = prb_pathJoin(prb_getParentDir(src), prb_STR("packtab.c"));
         prb_String        cmd = constructCompileCmd(project, flags, prb_fmt("%.*s %.*s", prb_LIT(packtabPath), prb_LIT(src)), exeFilename, prb_STR(""));
         prb_ProcessHandle handle = prb_execCmd(cmd, 0, (prb_String) {});
-        prb_assert(handle.completed);
-        if (handle.completionStatus != prb_Success) {
-            prb_terminate(1);
-        }
+        prb_assert(handle.status == prb_ProcessStatus_CompletedSuccess);
 
         prb_String        cmdRun = prb_fmtAndPrintln("%.*s %.*s", prb_LIT(exeFilename), prb_LIT(runArgs));
         prb_ProcessHandle handleRun = prb_execCmd(cmdRun, prb_ProcessFlag_RedirectStdout, outpath);
-        prb_assert(handleRun.completed);
-        if (handleRun.completionStatus != prb_Success) {
-            prb_terminate(1);
-        }
+        prb_assert(handleRun.status == prb_ProcessStatus_CompletedSuccess);
     }
     prb_endTempMemory(temp);
 }
@@ -839,7 +830,7 @@ main() {
     );
 
     prb_ProcessHandle mainHandle = prb_execCmd(mainCmd, 0, (prb_String) {});
-    prb_assert(mainHandle.completed && mainHandle.completionStatus == prb_Success);
+    prb_assert(mainHandle.status == prb_ProcessStatus_CompletedSuccess);
 
     prb_fmtAndPrintln("total: %.2fms", prb_getMsFrom(scriptStartTime));
     return 0;
