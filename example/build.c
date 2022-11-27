@@ -65,7 +65,7 @@ gitClone(prb_Arena* arena, StaticLibInfo lib, prb_String downloadUrl) {
     prb_TempMemory    temp = prb_beginTempMemory(arena);
     prb_ProcessHandle handle = {};
     if (lib.notDownloaded) {
-        prb_String cmd = prb_fmtAndPrintln(arena, "git clone --depth 1 %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(lib.downloadDir));
+        prb_String cmd = prb_fmtAndPrintln(arena, "git clone %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(lib.downloadDir));
         handle = prb_execCmd(arena, cmd, prb_ProcessFlag_DontWait, (prb_String) {});
     } else {
         prb_String name = prb_getLastEntryInPath(arena, lib.downloadDir);
