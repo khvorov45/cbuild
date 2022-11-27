@@ -319,20 +319,23 @@ main() {
     prb_init(1 * prb_GIGABYTE);
 
     prb_String* cmdArgs = prb_getCmdArgs();
-    prb_assert(arrlen(cmdArgs) == 2);
-    prb_String buildTypeStr = cmdArgs[1];
+    prb_assert(arrlen(cmdArgs) == 3);
+    prb_String compilerStr = cmdArgs[1];    
+    prb_String buildTypeStr = cmdArgs[2];
     prb_assert(prb_streq(buildTypeStr, prb_STR("debug")) || prb_streq(buildTypeStr, prb_STR("release")));
 
     ProjectInfo project = {};
     project.rootDir = prb_getParentDir(prb_STR(__FILE__));
     project.release = prb_streq(buildTypeStr, prb_STR("release"));
-    project.compileOutDir = prb_pathJoin(project.rootDir, prb_fmt("build-%.*s", prb_LIT(buildTypeStr)));
+    project.compileOutDir = prb_pathJoin(project.rootDir, prb_fmt("build-%.*s-%.*s", prb_LIT(compilerStr), prb_LIT(buildTypeStr)));
     prb_assert(prb_createDirIfNotExists(project.compileOutDir) == prb_Success);
 
 #if prb_PLATFORM_WINDOWS
-    project.compiler = Compiler_Msvc;
+    prb_assert(prb_streq(compilerStr, prb_STR("msvc")) || prb_streq(compilerStr, prb_STR("clang")));
+    project.compiler = prb_streq(compilerStr, prb_STR("msvc")) ? Compiler_Msvc : Compiler_Clang;
 #elif prb_PLATFORM_LINUX
-    project.compiler = Compiler_Gcc;
+    prb_assert(prb_streq(compilerStr, prb_STR("gcc")) || prb_streq(compilerStr, prb_STR("clang")));
+    project.compiler = prb_streq(compilerStr, prb_STR("gcc")) ? Compiler_Gcc : Compiler_Clang;
 #else
 #error unimlemented
 #endif
