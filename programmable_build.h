@@ -203,6 +203,11 @@ typedef struct prb_String {
     int32_t     len;
 } prb_String;
 
+typedef struct prb_GrowingString {
+    prb_Arena* arena;
+    prb_String string;
+} prb_GrowingString;
+
 typedef enum prb_Status {
     prb_Failure,
     prb_Success,
@@ -433,9 +438,9 @@ prb_PUBLICDEC bool                 prb_strStartsWith(prb_Arena* arena, prb_Strin
 prb_PUBLICDEC bool                 prb_strEndsWith(prb_Arena* arena, prb_String str, prb_String pattern, prb_StringFindMode mode);
 prb_PUBLICDEC prb_String           prb_strReplace(prb_StringFindSpec spec, prb_String replacement);
 prb_PUBLICDEC prb_String           prb_stringsJoin(prb_Arena* arena, prb_String* strings, int32_t stringsCount, prb_String sep);
-prb_PUBLICDEC prb_String           prb_arenaBeginString(prb_Arena* arena);
-prb_PUBLICDEC void                 prb_arenaAddStringSegment(prb_Arena* arena, prb_String* str, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
-prb_PUBLICDEC void                 prb_arenaEndString(prb_Arena* arena);
+prb_PUBLICDEC prb_GrowingString    prb_beginString(prb_Arena* arena);
+prb_PUBLICDEC void                 prb_addStringSegment(prb_GrowingString* gstr, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_PUBLICDEC prb_String           prb_endString(prb_GrowingString* gstr);
 prb_PUBLICDEC prb_String           prb_fmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
 prb_PUBLICDEC prb_String           prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args);
 prb_PUBLICDEC prb_String           prb_fmt(prb_Arena* arena, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
@@ -1667,18 +1672,18 @@ prb_binaryToCArray(prb_Arena* arena, prb_String inPath, prb_String outPath, prb_
     prb_Bytes      inContent = prb_readEntireFile(arena, inPath);
     prb_assert(inContent.len > 0);
 
-    prb_String arrayStr = prb_arenaBeginString(arena);
-    prb_arenaAddStringSegment(arena, &arrayStr, "unsigned char %.*s[] = {", arrayName.len, arrayName.ptr);
+    prb_GrowingString arrayGstr = prb_beginString(arena);
+    prb_addStringSegment(&arrayGstr, "unsigned char %.*s[] = {", arrayName.len, arrayName.ptr);
 
     for (int32_t byteIndex = 0; byteIndex < inContent.len; byteIndex++) {
         uint8_t byte = inContent.data[byteIndex];
-        prb_arenaAddStringSegment(arena, &arrayStr, "0x%x", byte);
+        prb_addStringSegment(&arrayGstr, "0x%x", byte);
         if (byteIndex != inContent.len - 1) {
-            prb_arenaAddStringSegment(arena, &arrayStr, ", ");
+            prb_addStringSegment(&arrayGstr, ", ");
         }
     }
-    prb_arenaAddStringSegment(arena, &arrayStr, "};");
-    prb_arenaEndString(arena);
+    prb_addStringSegment(&arrayGstr, "};");
+    prb_String arrayStr = prb_endString(&arrayGstr);
 
     prb_writeEntireFile(arena, outPath, arrayStr.ptr, arrayStr.len);
     prb_endTempMemory(temp);
@@ -1706,10 +1711,7 @@ prb_strSliceForward(prb_String str, int32_t bytes) {
 
 prb_PUBLICDEF const char*
 prb_strGetNullTerminated(prb_Arena* arena, prb_String str) {
-    const char* result = str.ptr;
-    if (str.ptr && str.ptr[str.len] != '\0') {
-        result = prb_fmt(arena, "%.*s", str.len, str.ptr).ptr;
-    }
+    const char* result = prb_fmt(arena, "%.*s", prb_LIT(str)).ptr;
     return result;
 }
 
@@ -1936,42 +1938,46 @@ prb_strReplace(prb_StringFindSpec spec, prb_String replacement) {
 
 prb_PUBLICDEF prb_String
 prb_stringsJoin(prb_Arena* arena, prb_String* strings, int32_t stringsCount, prb_String sep) {
-    prb_String result = prb_arenaBeginString(arena);
+    prb_GrowingString gstr = prb_beginString(arena);
     for (int32_t strIndex = 0; strIndex < stringsCount; strIndex++) {
         prb_String str = strings[strIndex];
-        prb_arenaAddStringSegment(arena, &result, "%.*s", str.len, str.ptr);
+        prb_addStringSegment(&gstr, "%.*s", str.len, str.ptr);
         if (strIndex < stringsCount - 1) {
-            prb_arenaAddStringSegment(arena, &result, "%.*s", sep.len, sep.ptr);
+            prb_addStringSegment(&gstr, "%.*s", sep.len, sep.ptr);
         }
     }
-    prb_arenaEndString(arena);
+    prb_String result = prb_endString(&gstr);
     return result;
 }
 
-prb_PUBLICDEF prb_String
-prb_arenaBeginString(prb_Arena* arena) {
+prb_PUBLICDEF prb_GrowingString
+prb_beginString(prb_Arena* arena) {
     prb_assert(!arena->lockedForString);
     arena->lockedForString = true;
-    prb_String result = {(const char*)prb_arenaFreePtr(arena), 0};
+    prb_String str = {(const char*)prb_arenaFreePtr(arena), 0};
+    prb_GrowingString result = {arena, str};
     return result;
 }
 
 prb_PUBLICDEF void
-prb_arenaAddStringSegment(prb_Arena* arena, prb_String* str, const char* fmt, ...) {
-    prb_assert(arena->lockedForString);
+prb_addStringSegment(prb_GrowingString* gstr, const char* fmt, ...) {
+    prb_assert(gstr->arena->lockedForString);
     va_list args;
     va_start(args, fmt);
-    prb_String seg = prb_vfmtCustomBuffer((uint8_t*)prb_arenaFreePtr(arena), prb_arenaFreeSize(arena), fmt, args);
-    prb_arenaChangeUsed(arena, seg.len);
-    str->len += seg.len;
+    prb_String seg = prb_vfmtCustomBuffer((uint8_t*)prb_arenaFreePtr(gstr->arena), prb_arenaFreeSize(gstr->arena), fmt, args);
+    prb_arenaChangeUsed(gstr->arena, seg.len);
+    gstr->string.len += seg.len;
     va_end(args);
 }
 
-prb_PUBLICDEF void
-prb_arenaEndString(prb_Arena* arena) {
-    prb_assert(arena->lockedForString);
-    arena->lockedForString = false;
-    prb_arenaAllocAndZero(arena, 1, 1);  // NOTE(khvorov) Null terminator
+prb_PUBLICDEF prb_String
+prb_endString(prb_GrowingString* gstr) {
+    prb_assert(gstr->arena->lockedForString);
+    gstr->arena->lockedForString = false;
+    prb_arenaAllocAndZero(gstr->arena, 1, 1);  // NOTE(khvorov) Null terminator
+    prb_String result = gstr->string;
+    *gstr = (prb_GrowingString){};
+    return result;
 }
 
 prb_PUBLICDEF prb_String
@@ -2318,11 +2324,11 @@ prb_wordIterNext(prb_WordIterator* iter) {
 static prb_Bytes
 prb_linux_readFromProcSelf(prb_Arena* arena) {
     int        handle = prb_linux_open(arena, prb_STR("/proc/self/cmdline"), O_RDONLY, 0);
-    prb_String str = prb_arenaBeginString(arena);
-    str.len = read(handle, (void*)str.ptr, prb_arenaFreeSize(arena));
-    prb_assert(str.len > 0);
-    prb_arenaChangeUsed(arena, str.len);
-    prb_arenaEndString(arena);
+    prb_GrowingString gstr = prb_beginString(arena);
+    gstr.string.len = read(handle, (void*)gstr.string.ptr, prb_arenaFreeSize(arena));
+    prb_assert(gstr.string.len > 0);
+    prb_arenaChangeUsed(arena, gstr.string.len);
+    prb_String str = prb_endString(&gstr);
     prb_Bytes result = {(uint8_t*)str.ptr, str.len};
     return result;
 }

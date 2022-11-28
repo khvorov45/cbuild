@@ -92,49 +92,49 @@ gitReset(prb_Arena* arena, StaticLibInfo lib, prb_String commit) {
 
 static prb_String
 constructCompileCmd(ProjectInfo project, prb_String flags, prb_String inputPath, prb_String outputPath, prb_String linkFlags) {
-    prb_String cmd = prb_arenaBeginString(project.arena);
+    prb_GrowingString cmd = prb_beginString(project.arena);
 
     switch (project.compiler) {
-        case Compiler_Gcc: prb_arenaAddStringSegment(project.arena, &cmd, "gcc"); break;
-        case Compiler_Clang: prb_arenaAddStringSegment(project.arena, &cmd, "clang"); break;
-        case Compiler_Msvc: prb_arenaAddStringSegment(project.arena, &cmd, "cl /nologo /diagnostics:column /FC"); break;
+        case Compiler_Gcc: prb_addStringSegment(&cmd, "gcc"); break;
+        case Compiler_Clang: prb_addStringSegment(&cmd, "clang"); break;
+        case Compiler_Msvc: prb_addStringSegment(&cmd, "cl /nologo /diagnostics:column /FC"); break;
     }
 
     if (project.release) {
         switch (project.compiler) {
             case Compiler_Gcc:
-            case Compiler_Clang: prb_arenaAddStringSegment(project.arena, &cmd, " -Ofast"); break;
-            case Compiler_Msvc: prb_arenaAddStringSegment(project.arena, &cmd, " /O2"); break;
+            case Compiler_Clang: prb_addStringSegment(&cmd, " -Ofast"); break;
+            case Compiler_Msvc: prb_addStringSegment(&cmd, " /O2"); break;
         }
     } else {
         switch (project.compiler) {
             case Compiler_Gcc:
-            case Compiler_Clang: prb_arenaAddStringSegment(project.arena, &cmd, " -g"); break;
-            case Compiler_Msvc: prb_arenaAddStringSegment(project.arena, &cmd, " /Zi"); break;
+            case Compiler_Clang: prb_addStringSegment(&cmd, " -g"); break;
+            case Compiler_Msvc: prb_addStringSegment(&cmd, " /Zi"); break;
         }
     }
 
-    prb_arenaAddStringSegment(project.arena, &cmd, " %.*s", prb_LIT(flags));
+    prb_addStringSegment(&cmd, " %.*s", prb_LIT(flags));
     bool isObj = prb_strEndsWith(project.arena, outputPath, prb_STR("obj"), prb_StringFindMode_Exact);
     if (isObj) {
-        prb_arenaAddStringSegment(project.arena, &cmd, " -c");
+        prb_addStringSegment(&cmd, " -c");
     }
 
 #if prb_PLATFORM_WINDOWS
     if (compiler == Compiler_Msvc) {
         prb_String pdbPath = prb_replaceExt(outputPath, prb_STR("pdb"));
-        prb_arenaAddStringSegment(project.arena, &cmd, " /Fd%.s", pdbPath);
+        prb_addStringSegment(&cmd, " /Fd%.s", pdbPath);
     }
 #endif
 
     switch (project.compiler) {
         case Compiler_Gcc:
-        case Compiler_Clang: prb_arenaAddStringSegment(project.arena, &cmd, " %.*s -o %.*s", prb_LIT(inputPath), prb_LIT(outputPath)); break;
+        case Compiler_Clang: prb_addStringSegment(&cmd, " %.*s -o %.*s", prb_LIT(inputPath), prb_LIT(outputPath)); break;
         case Compiler_Msvc: {
             prb_String objPath = isObj ? outputPath : prb_replaceExt(project.arena, outputPath, prb_STR("obj"));
-            prb_arenaAddStringSegment(project.arena, &cmd, " /Fo%.*s", prb_LIT(objPath));
+            prb_addStringSegment(&cmd, " /Fo%.*s", prb_LIT(objPath));
             if (!isObj) {
-                prb_arenaAddStringSegment(project.arena, &cmd, " /Fe%.*s", prb_LIT(outputPath));
+                prb_addStringSegment(&cmd, " /Fe%.*s", prb_LIT(outputPath));
             }
         } break;
     }
@@ -142,15 +142,15 @@ constructCompileCmd(ProjectInfo project, prb_String flags, prb_String inputPath,
     if (linkFlags.ptr && linkFlags.len > 0) {
         switch (project.compiler) {
             case Compiler_Gcc:
-            case Compiler_Clang: prb_arenaAddStringSegment(project.arena, &cmd, " %.*s", prb_LIT(linkFlags)); break;
-            case Compiler_Msvc: prb_arenaAddStringSegment(project.arena, &cmd, "-link -incremental:no %.*s", prb_LIT(linkFlags)); break;
+            case Compiler_Clang: prb_addStringSegment(&cmd, " %.*s", prb_LIT(linkFlags)); break;
+            case Compiler_Msvc: prb_addStringSegment(&cmd, "-link -incremental:no %.*s", prb_LIT(linkFlags)); break;
         }
-        prb_arenaAddStringSegment(project.arena, &cmd, " %.*s", prb_LIT(linkFlags));
+        prb_addStringSegment(&cmd, " %.*s", prb_LIT(linkFlags));
     }
 
-    prb_arenaEndString(project.arena);
-    prb_writelnToStdout(cmd);
-    return cmd;
+    prb_String cmdStr = prb_endString(&cmd);
+    prb_writelnToStdout(cmdStr);
+    return cmdStr;
 }
 
 typedef struct StringFound {

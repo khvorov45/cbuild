@@ -1085,11 +1085,11 @@ test_strings(void* data) {
     prb_Arena*     arena = (prb_Arena*)data;
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_String str = prb_arenaBeginString(arena);
-    prb_arenaAddStringSegment(arena, &str, "%s", "one");
-    prb_arenaAddStringSegment(arena, &str, "%s", " two");
-    prb_arenaAddStringSegment(arena, &str, "%s", " three");
-    prb_arenaEndString(arena);
+    prb_GrowingString gstr = prb_beginString(arena);
+    prb_addStringSegment(&gstr, "%s", "one");
+    prb_addStringSegment(&gstr, "%s", " two");
+    prb_addStringSegment(&gstr, "%s", " three");
+    prb_String str = prb_endString(&gstr);
 
     prb_String target = prb_STR("one two three");
     prb_assert(prb_streq(str, target));
