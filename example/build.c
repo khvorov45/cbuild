@@ -1,7 +1,5 @@
 #include "../programmable_build.h"
 
-// TODO(khvorov) Clean up after stb ds stuff
-
 typedef enum Compiler {
     Compiler_Gcc,
     Compiler_Clang,
@@ -267,6 +265,9 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     }
 
     prb_endTempMemory(temp);
+    arrfree(inputPaths);
+    arrfree(outputFilepaths);
+    arrfree(processes);
     return result;
 }
 
