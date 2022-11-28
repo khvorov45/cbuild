@@ -1,5 +1,8 @@
 #include "../programmable_build.h"
 
+// TODO(khvorov) Scan file dependencies for modifications before recompiling
+// TODO(khvorov) Compare current command with the command used last time before deciding not to recompile
+
 typedef enum Compiler {
     Compiler_Gcc,
     Compiler_Clang,
