@@ -66,7 +66,7 @@ gitClone(prb_Arena* arena, StaticLibInfo lib, prb_String downloadUrl) {
         prb_String cmd = prb_fmtAndPrintln(arena, "git clone %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(lib.downloadDir));
         handle = prb_execCmd(arena, cmd, prb_ProcessFlag_DontWait, (prb_String) {});
     } else {
-        prb_String name = prb_getLastEntryInPath(arena, lib.downloadDir);
+        prb_String name = prb_getLastEntryInPath(lib.downloadDir);
         prb_fmtAndPrintln(arena, "skip git clone %.*s", prb_LIT(name));
         handle.status = prb_ProcessStatus_CompletedSuccess;
     }
@@ -206,7 +206,7 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     prb_ProcessHandle* processes = 0;
     for (int32_t inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
         prb_String inputFilepath = inputPaths[inputPathIndex];
-        prb_String inputFilename = prb_getLastEntryInPath(project.arena, inputFilepath);
+        prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
         prb_String outputFilename = prb_replaceExt(project.arena, inputFilename, prb_STR("obj"));
         prb_String outputFilepath = prb_pathJoin(project.arena, objDir, outputFilename);
         arrput(outputFilepaths, outputFilepath);
@@ -298,13 +298,12 @@ prb_PUBLICDEF void
 textfileReplace(prb_Arena* arena, prb_String path, prb_String pattern, prb_String replacement) {
     prb_Bytes          content = prb_readEntireFile(arena, path);
     prb_StringFindSpec spec = {
-        .arena = arena,
         .str = (prb_String) {(const char*)content.data, content.len},
         .pattern = pattern,
         .mode = prb_StringFindMode_Exact,
         .direction = prb_StringDirection_FromStart,
     };
-    prb_String newContent = prb_strReplace(spec, replacement);
+    prb_String newContent = prb_strReplace(arena, spec, replacement);
     prb_assert(prb_writeEntireFile(arena, path, newContent.ptr, newContent.len) == prb_Success);
 }
 

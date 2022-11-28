@@ -555,77 +555,81 @@ test_charIsSep(void* data) {
 
 function void
 test_findSepBeforeLastEntry(void* data) {
-    prb_Arena* arena = (prb_Arena*)data;
+    prb_Arena*     arena = (prb_Arena*)data;
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("test/path"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == prb_strlen("test"));
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("test/path/"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path/"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == prb_strlen("test"));
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("test/path2/path"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path2/path"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == prb_strlen("test/path2"));
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("test"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test"));
         prb_assert(!res.found);
     }
 
 #if prb_PLATFORM_WINDOWS
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("C:\\\\"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\"));
         prb_assert(!res.found);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("C:\\\\test"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\test"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == 3);
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("C:\\\\test/"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\test/"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == 3);
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("//network"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("//network"));
         prb_assert(!res.found);
     }
 #elif prb_PLATFORM_LINUX
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("/"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("/"));
         prb_assert(!res.found);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("/test"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("/test"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == 0);
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(arena, prb_STR("/test/"));
+        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("/test/"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == 0);
         prb_assert(res.matchLen == 1);
     }
 #endif
+
+    prb_endTempMemory(temp);
 }
 
 function void
@@ -655,19 +659,19 @@ test_getLastEntryInPath(void* data) {
     prb_Arena*     arena = (prb_Arena*)data;
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_assert(prb_streq(prb_getLastEntryInPath(arena, prb_STR("test/path")), prb_STR("path")));
-    prb_assert(prb_streq(prb_getLastEntryInPath(arena, prb_STR("test/path/")), prb_STR("path/")));
-    prb_assert(prb_streq(prb_getLastEntryInPath(arena, prb_STR("test/path2/path")), prb_STR("path")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path")), prb_STR("path")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path/")), prb_STR("path/")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path2/path")), prb_STR("path")));
 
-    prb_assert(prb_streq(prb_getLastEntryInPath(arena, prb_STR("test")), prb_STR("test")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test")), prb_STR("test")));
 
 #if prb_PLATFORM_WINDOWS
-    prb_assert(prb_streq(prb_getLastEntryInPath(arena, prb_STR("C:\\\\test")), prb_STR("C:\\\\")));
-    prb_assert(prb_streq(prb_getLastEntryInPath(arena, prb_STR("C:\\\\test/")), prb_STR("C:\\\\")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("C:\\\\test")), prb_STR("C:\\\\")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("C:\\\\test/")), prb_STR("C:\\\\")));
 #elif prb_PLATFORM_LINUX
-    prb_assert(prb_streq(prb_getLastEntryInPath(arena, prb_STR("/test")), prb_STR("test")));
-    prb_assert(prb_streq(prb_getLastEntryInPath(arena, prb_STR("/test/")), prb_STR("test/")));
-    prb_assert(prb_streq(prb_getLastEntryInPath(arena, prb_STR("/")), prb_STR("/")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/test")), prb_STR("test")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/test/")), prb_STR("test/")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/")), prb_STR("/")));
 #endif
 
     prb_endTempMemory(temp);
@@ -1101,14 +1105,13 @@ test_strings(void* data) {
 function void
 test_strFindIter(void* data) {
     prb_Arena*         arena = (prb_Arena*)data;
+    prb_TempMemory     temp = prb_beginTempMemory(arena);
     prb_String         str = prb_STR("prog arg1:val1 arg2:val2 arg3:val3");
-    prb_StringFindSpec spec = {
-        .arena = arena,
-        .str = str,
-        .pattern = prb_STR(":"),
-        .mode = prb_StringFindMode_Exact,
-        .direction = prb_StringDirection_FromStart,
-    };
+    prb_StringFindSpec spec = {};
+    spec.str = str;
+    spec.pattern = prb_STR(":");
+    spec.mode = prb_StringFindMode_Exact;
+    spec.direction = prb_StringDirection_FromStart;
 
     {
         prb_StrFindIterator iter = prb_createStrFindIter(spec);
@@ -1170,6 +1173,8 @@ test_strFindIter(void* data) {
 
         spec.direction = prb_StringDirection_FromStart;
     }
+
+    prb_endTempMemory(temp);
 }
 
 function prb_String*
@@ -1208,22 +1213,18 @@ test_fileformat(void* data) {
             prb_String name = prb_fmt(arena, "%.*s", lineIter.curLine.len, lineIter.curLine.ptr);
             arrput(headerNames, name);
         } else if (prb_strStartsWith(arena, lineIter.curLine, prb_STR("prb_PUBLICDEC"), prb_StringFindMode_Exact)) {
-            prb_StringFindResult onePastNameEndRes = prb_strFind((prb_StringFindSpec) {
-                .arena = arena,
-                .str = lineIter.curLine,
-                .pattern = prb_STR("("),
-                .mode = prb_StringFindMode_AnyChar,
-                .direction = prb_StringDirection_FromStart,
-            });
+            prb_StringFindSpec spec = {};
+            spec.str = lineIter.curLine;
+            spec.pattern = prb_STR("(");
+            spec.mode = prb_StringFindMode_AnyChar;
+            spec.direction = prb_StringDirection_FromStart;
+            prb_StringFindResult onePastNameEndRes = prb_strFind(spec);
             prb_assert(onePastNameEndRes.found);
-            prb_String           win = {lineIter.curLine.ptr, onePastNameEndRes.matchByteIndex};
-            prb_StringFindResult nameStartRes = prb_strFind((prb_StringFindSpec) {
-                .arena = arena,
-                .str = win,
-                .pattern = prb_STR(" "),
-                .mode = prb_StringFindMode_AnyChar,
-                .direction = prb_StringDirection_FromEnd,
-            });
+            prb_String win = {lineIter.curLine.ptr, onePastNameEndRes.matchByteIndex};
+            spec.str = win;
+            spec.pattern = prb_STR(" ");
+            spec.direction = prb_StringDirection_FromEnd;
+            prb_StringFindResult nameStartRes = prb_strFind(spec);
             prb_assert(nameStartRes.found);
             win = prb_strSliceForward(win, nameStartRes.matchByteIndex + 1);
             prb_String name = prb_fmt(arena, "%.*s", win.len, win.ptr);
@@ -1238,27 +1239,24 @@ test_fileformat(void* data) {
         prb_assert(!prb_strStartsWith(arena, lineIter.curLine, prb_STR("prb_PUBLICDEC"), prb_StringFindMode_Exact));
 
         if (prb_strStartsWith(arena, lineIter.curLine, prb_STR("// SECTION"), prb_StringFindMode_Exact)) {
-            prb_StringFindResult implementationRes = prb_strFind((prb_StringFindSpec) {
-                .arena = arena,
-                .str = lineIter.curLine,
-                .pattern = prb_STR(" (implementation)"),
-                .mode = prb_StringFindMode_Exact,
-                .direction = prb_StringDirection_FromStart,
-            }
-            );
+            prb_StringFindSpec spec = {};
+            spec.str = lineIter.curLine;
+            spec.pattern = prb_STR(" (implementation)");
+            spec.mode = prb_StringFindMode_Exact;
+            spec.direction = prb_StringDirection_FromStart;
+            prb_StringFindResult implementationRes = prb_strFind(spec);
             prb_assert(implementationRes.found);
             prb_String name = prb_fmt(arena, "%.*s", implementationRes.matchByteIndex, lineIter.curLine.ptr);
             arrput(implNames, name);
         } else if (prb_strStartsWith(arena, lineIter.curLine, prb_STR("prb_PUBLICDEF"), prb_StringFindMode_Exact)) {
             prb_assert(prb_lineIterNext(&lineIter) == prb_Success);
             prb_assert(prb_strStartsWith(arena, lineIter.curLine, prb_STR("prb_"), prb_StringFindMode_Exact));
-            prb_StringFindResult nameLenRes = prb_strFind((prb_StringFindSpec) {
-                .arena = arena,
-                .str = lineIter.curLine,
-                .pattern = prb_STR("("),
-                .mode = prb_StringFindMode_AnyChar,
-                .direction = prb_StringDirection_FromStart,
-            });
+            prb_StringFindSpec spec = {};
+            spec.str = lineIter.curLine;
+            spec.pattern = prb_STR("(");
+            spec.mode = prb_StringFindMode_AnyChar;
+            spec.direction = prb_StringDirection_FromStart;
+            prb_StringFindResult nameLenRes = prb_strFind(spec);
             prb_assert(nameLenRes.found);
             prb_String name = prb_fmt(arena, "%.*s", nameLenRes.matchByteIndex, lineIter.curLine.ptr);
             arrput(implNames, name);
@@ -1288,7 +1286,7 @@ test_fileformat(void* data) {
     }
     prb_assert(arrlen(implNotInHeader) == 0);
     arrfree(implNotInHeader);
-    
+
     arrfree(headerNames);
     arrfree(implNames);
 
@@ -1306,13 +1304,11 @@ test_strFind(void* data) {
     prb_Arena*     arena = (prb_Arena*)data;
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_StringFindSpec spec = {
-        .arena = arena,
-        .str = prb_STR("p1at4pattern1 pattern2 pattern3p2a.t"),
-        .pattern = prb_STR("pattern"),
-        .mode = prb_StringFindMode_Exact,
-        .direction = prb_StringDirection_FromStart,
-    };
+    prb_StringFindSpec spec = {};
+    spec.str = prb_STR("p1at4pattern1 pattern2 pattern3p2a.t");
+    spec.pattern = prb_STR("pattern");
+    spec.mode = prb_StringFindMode_Exact;
+    spec.direction = prb_StringDirection_FromStart;
 
     {
         prb_StringFindResult res = prb_strFind(spec);
@@ -1364,6 +1360,7 @@ test_strFind(void* data) {
     spec.str = prb_STR("prb_PUBLICDEC prb_StringWindow prb_createStringWindow(void* ptr, i32 len)");
     spec.pattern = prb_STR("prb_[^[:space:]]*\\(");
     spec.mode = prb_StringFindMode_RegexPosix;
+    spec.regexPosix.arena = arena;
     {
         prb_StringFindResult res = prb_strFind(spec);
         prb_assert(
