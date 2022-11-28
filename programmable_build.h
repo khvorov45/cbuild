@@ -247,7 +247,7 @@ typedef struct prb_ProcessHandle {
 #if prb_PLATFORM_WINDOWS
 #error unimplemented
 #elif prb_PLATFORM_LINUX
-    pid_t pid;
+    pid_t     pid;
 #else
 #error unimplemented
 #endif
@@ -346,18 +346,25 @@ typedef struct prb_PathFindSpec {
     };
 } prb_PathFindSpec;
 
-typedef struct prb_PathFindIterator {
-    prb_PathFindSpec spec;
-    prb_String       curPath;
-    int32_t          curMatchCount;
+typedef struct prb_PathFindIterator_DirHandle {
+    prb_String path;
 
 #if prb_PLATFORM_WINDOWS
 #error unimplemented
 #elif prb_PLATFORM_LINUX
+    DIR*      handle;
+#else
+#error unimplemented
+#endif
+} prb_PathFindIterator_DirHandle;
+
+typedef struct prb_PathFindIterator {
+    prb_PathFindSpec spec;
+    prb_String       curPath;
+    int32_t          curMatchCount;
     union {
         struct {
-            prb_String* parents;
-            DIR**       handles;
+            prb_PathFindIterator_DirHandle* parents;
         } allEntriesInDir;
         struct {
             int     returnVal;
@@ -365,9 +372,6 @@ typedef struct prb_PathFindIterator {
             glob_t  result;
         } glob;
     };
-#else
-#error unimplemented
-#endif
 } prb_PathFindIterator;
 
 typedef enum prb_LastModKind {
@@ -1432,8 +1436,8 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
             const char* dirNull = prb_strGetNullTerminated(spec.arena, spec.dir);
             DIR*        handle = opendir(dirNull);
             prb_assert(handle);
-            arrput(iter.allEntriesInDir.handles, handle);
-            arrput(iter.allEntriesInDir.parents, spec.dir);
+            prb_PathFindIterator_DirHandle firstParent = {spec.dir, handle};
+            arrput(iter.allEntriesInDir.parents, firstParent);
         } break;
 
         case prb_PathFindMode_Glob: {
@@ -1479,30 +1483,27 @@ prb_pathFindIterNext(prb_PathFindIterator* iter) {
 
     switch (iter->spec.mode) {
         case prb_PathFindMode_AllEntriesInDir: {
-            DIR*       handle = iter->allEntriesInDir.handles[arrlen(iter->allEntriesInDir.handles) - 1];
-            prb_String parent = iter->allEntriesInDir.parents[arrlen(iter->allEntriesInDir.parents) - 1];
-            for (struct dirent* entry = readdir(handle); entry; entry = readdir(handle)) {
+            prb_PathFindIterator_DirHandle parent = iter->allEntriesInDir.parents[arrlen(iter->allEntriesInDir.parents) - 1];
+            for (struct dirent* entry = readdir(parent.handle); entry; entry = readdir(parent.handle)) {
                 bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
                 bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
                 if (!isDot && !isDoubleDot) {
                     result = prb_Success;
-                    iter->curPath = prb_pathJoin(iter->spec.arena, parent, prb_STR(entry->d_name));
+                    iter->curPath = prb_pathJoin(iter->spec.arena, parent.path, prb_STR(entry->d_name));
                     iter->curMatchCount += 1;
                     if (iter->spec.recursive && prb_isDirectory(iter->spec.arena, iter->curPath)) {
                         DIR* newHandle = opendir(iter->curPath.ptr);
                         prb_assert(newHandle);
-                        arrput(iter->allEntriesInDir.handles, newHandle);
-                        arrput(iter->allEntriesInDir.parents, iter->curPath);
+                        prb_PathFindIterator_DirHandle newParent = {iter->curPath, newHandle};
+                        arrput(iter->allEntriesInDir.parents, newParent);
                     }
                     break;
                 }
             }
 
-            if (result == prb_Failure && arrlen(iter->allEntriesInDir.handles) > 1) {
-                prb_String doneDirPath = arrpop(iter->allEntriesInDir.parents);
-                prb_unused(doneDirPath);
-                DIR* doneDir = arrpop(iter->allEntriesInDir.handles);
-                closedir(doneDir);
+            if (result == prb_Failure && arrlen(iter->allEntriesInDir.parents) > 1) {
+                prb_PathFindIterator_DirHandle doneParent = arrpop(iter->allEntriesInDir.parents);
+                closedir(doneParent.handle);
                 result = prb_pathFindIterNext(iter);
             }
         } break;
@@ -1535,10 +1536,9 @@ prb_destroyPathFindIter(prb_PathFindIterator* iter) {
 
     switch (iter->spec.mode) {
         case prb_PathFindMode_AllEntriesInDir:
-            for (int32_t handleIndex = 0; handleIndex < arrlen(iter->allEntriesInDir.handles); handleIndex++) {
-                closedir(iter->allEntriesInDir.handles[handleIndex]);
+            for (int32_t parentIndex = 0; parentIndex < arrlen(iter->allEntriesInDir.parents); parentIndex++) {
+                closedir(iter->allEntriesInDir.parents[parentIndex].handle);
             }
-            arrfree(iter->allEntriesInDir.handles);
             arrfree(iter->allEntriesInDir.parents);
             break;
         case prb_PathFindMode_Glob: globfree(&iter->glob.result); break;
