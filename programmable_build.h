@@ -33,6 +33,8 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) File search by regex
 // TODO(khvorov) Multithreading api
 // TODO(khvorov) Run sanitizers
+// TODO(khvorov) prb_fmt should fail if locked for string
+// TODO(khvorov) Better assert message
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -3897,6 +3899,7 @@ stbsp__count_clamp_callback(const char* buf, void* user, int len) {
 
 STBSP__PUBLICDEF int
 STB_SPRINTF_DECORATE(vsnprintf)(char* buf, int count, char const* fmt, va_list va) {
+    prb_assert(count >= 0);
     stbsp__context c;
 
     if ((count == 0) && !buf) {
@@ -5047,6 +5050,7 @@ stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
             if ((size_t)i + 1 > stbds_arrcap(a))
                 *(void**)&a = stbds_arrgrowf(a, elemsize, 1, 0);
             raw_a = STBDS_ARR_TO_HASH(a, elemsize);
+            prb_unused(raw_a);
 
             STBDS_ASSERT((size_t)i + 1 <= stbds_arrcap(a));
             stbds_header(a)->length = i + 1;
@@ -5247,3 +5251,5 @@ stbds_strreset(stbds_string_arena* a) {
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
+
+// NOLINTEND(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
