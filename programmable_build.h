@@ -36,6 +36,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) prb_fmt should fail if locked for string
 // TODO(khvorov) Better assert message
 // TODO(khvorov) Automatic -lpthread probably
+// TODO(khvorov) Avoid accidentally recursing in printing in assert
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
