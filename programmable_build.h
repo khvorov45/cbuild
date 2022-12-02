@@ -31,7 +31,6 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 
 // TODO(khvorov) Make sure utf8 paths work on windows
 // TODO(khvorov) File search by regex
-// TODO(khvorov) Multithreading api
 // TODO(khvorov) Run sanitizers
 // TODO(khvorov) prb_fmt should fail if locked for string
 // TODO(khvorov) Better assert message
@@ -394,9 +393,10 @@ typedef struct prb_Multitime {
     prb_MultitimeKind kind;
 } prb_Multitime;
 
-typedef void (*prb_JobProc)(void* data);
+typedef void (*prb_JobProc)(prb_Arena* arena, void* data);
 
 typedef struct prb_Job {
+    prb_Arena         arena;
     prb_JobProc       proc;
     void*             data;
     prb_ProcessStatus status;
@@ -420,6 +420,7 @@ prb_PUBLICDEC bool           prb_memeq(const void* ptr1, const void* ptr2, int32
 prb_PUBLICDEC int32_t        prb_getOffsetForAlignment(void* ptr, int32_t align);
 prb_PUBLICDEC void*          prb_vmemAlloc(int32_t bytes);
 prb_PUBLICDEC prb_Arena      prb_createArenaFromVmem(int32_t bytes);
+prb_PUBLICDEC prb_Arena      prb_createArenaFromArena(prb_Arena* arena, int32_t bytes);
 prb_PUBLICDEC void*          prb_arenaAllocAndZero(prb_Arena* arena, int32_t size, int32_t align);
 prb_PUBLICDEC void           prb_arenaAlignFreePtr(prb_Arena* arena, int32_t align);
 prb_PUBLICDEC void*          prb_arenaFreePtr(prb_Arena* arena);
@@ -497,6 +498,7 @@ prb_PUBLICDEC prb_TimeStart prb_timeStart(void);
 prb_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
 
 // SECTION Multithreading
+prb_PUBLICDEC prb_Job    prb_createJob(prb_JobProc proc, void* data, prb_Arena* arena, int32_t arenaBytes);
 prb_PUBLICDEC prb_Status prb_execJobs(prb_Job* jobs, int32_t jobsCount);
 
 //
@@ -972,6 +974,15 @@ prb_createArenaFromVmem(int32_t bytes) {
     prb_Arena arena = {};
     arena.base = prb_vmemAlloc(bytes);
     arena.size = bytes;
+    return arena;
+}
+
+prb_PUBLICDEF prb_Arena
+prb_createArenaFromArena(prb_Arena* parent, int32_t bytes) {
+    prb_Arena arena = {};
+    arena.base = prb_arenaFreePtr(parent);
+    arena.size = bytes;
+    prb_arenaChangeUsed(parent, bytes);
     return arena;
 }
 
@@ -2565,11 +2576,20 @@ prb_linux_pthreadProc(void* data) {
     prb_Job* job = (prb_Job*)data;
     prb_assert(job->status == prb_ProcessStatus_NotLaunched);
     job->status = prb_ProcessStatus_Launched;
-    job->proc(job->data);
+    job->proc(&job->arena, job->data);
     return 0;
 }
 
 #endif
+
+prb_PUBLICDEF prb_Job
+prb_createJob(prb_JobProc proc, void* data, prb_Arena* arena, int32_t arenaBytes) {
+    prb_Job job = {};
+    job.proc = proc;
+    job.data = data;
+    job.arena = prb_createArenaFromArena(arena, arenaBytes);
+    return job;
+}
 
 prb_PUBLICDEF prb_Status
 prb_execJobs(prb_Job* jobs, int32_t jobsCount) {

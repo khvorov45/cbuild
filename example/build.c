@@ -2,6 +2,7 @@
 
 // TODO(khvorov) Scan file dependencies for modifications before recompiling
 // TODO(khvorov) Compare current command with the command used last time before deciding not to recompile
+// TODO(khvorov) See if multithreading api is applicable anywhere
 
 typedef int32_t i32;
 
