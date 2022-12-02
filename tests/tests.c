@@ -509,8 +509,9 @@ test_getCurrentWorkingDir(void* data) {
     prb_assert(prb_isDirectory(arena, cwd));
     prb_String filename = prb_STR(__FUNCTION__);
     prb_assert(prb_writeEntireFile(arena, filename, filename.ptr, filename.len) == prb_Success);
-    prb_Bytes fileContent = prb_readEntireFile(arena, prb_pathJoin(arena, cwd, filename));
-    prb_assert(prb_streq((prb_String) {(const char*)fileContent.data, fileContent.len}, filename));
+    prb_ReadEntireFileResult fileContent = prb_readEntireFile(arena, prb_pathJoin(arena, cwd, filename));
+    prb_assert(fileContent.success);
+    prb_assert(prb_streq((prb_String) {(const char*)fileContent.content.data, fileContent.content.len}, filename));
     prb_assert(prb_removeFileIfExists(arena, filename) == prb_Success);
 
     prb_endTempMemory(temp);
@@ -1148,8 +1149,9 @@ test_fileformat(void* data) {
     prb_Arena*     arena = (prb_Arena*)data;
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Bytes        fileContents = prb_readEntireFile(arena, prb_STR("programmable_build.h"));
-    prb_LineIterator lineIter = prb_createLineIter((prb_String) {(const char*)fileContents.data, fileContents.len});
+    prb_ReadEntireFileResult fileContents = prb_readEntireFile(arena, prb_STR("programmable_build.h"));
+    prb_assert(fileContents.success);
+    prb_LineIterator lineIter = prb_createLineIter((prb_String) {(const char*)fileContents.content.data, fileContents.content.len});
 
     prb_String* headerNames = 0;
     while (prb_lineIterNext(&lineIter) == prb_Success) {

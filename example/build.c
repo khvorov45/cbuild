@@ -317,9 +317,10 @@ compileAndRunBidiGenTab(ProjectInfo project, prb_String src, prb_String flags, p
 
 prb_PUBLICDEF void
 textfileReplace(prb_Arena* arena, prb_String path, prb_String pattern, prb_String replacement) {
-    prb_Bytes          content = prb_readEntireFile(arena, path);
+    prb_ReadEntireFileResult content = prb_readEntireFile(arena, path);
+    prb_assert(content.success);
     prb_StringFindSpec spec = {
-        .str = (prb_String) {(const char*)content.data, content.len},
+        .str = (prb_String) {(const char*)content.content.data, content.content.len},
         .pattern = pattern,
         .mode = prb_StringFindMode_Exact,
         .direction = prb_StringDirection_FromStart,
