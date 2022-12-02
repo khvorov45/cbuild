@@ -1637,12 +1637,13 @@ prb_readEntireFile(prb_Arena* arena, prb_String path) {
     prb_linux_OpenResult handle = prb_linux_open(arena, path, O_RDONLY, 0);
     if (handle.success) {
         struct stat statBuf = {};
-        prb_assert(fstat(handle.handle, &statBuf) == 0);
-        uint8_t* buf = (uint8_t*)prb_arenaAllocAndZero(arena, statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
-        int32_t  readResult = read(handle.handle, buf, statBuf.st_size);
-        if (readResult == statBuf.st_size) {
-            result.success = true;
-            result.content = (prb_Bytes) {buf, readResult};
+        if (fstat(handle.handle, &statBuf) == 0) {
+            uint8_t* buf = (uint8_t*)prb_arenaAllocAndZero(arena, statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
+            int32_t  readResult = read(handle.handle, buf, statBuf.st_size);
+            if (readResult == statBuf.st_size) {
+                result.success = true;
+                result.content = (prb_Bytes) {buf, readResult};
+            }
         }
         close(handle.handle);
     }
