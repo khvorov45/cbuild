@@ -379,15 +379,20 @@ typedef struct prb_PathFindIterator {
     };
 } prb_PathFindIterator;
 
-typedef enum prb_LastModKind {
-    prb_LastModKind_Earliest,
-    prb_LastModKind_Latest,
-} prb_LastModKind;
-
-typedef struct prb_LastModResult {
-    bool     success;
+typedef struct prb_FileTimestamp {
+    bool     valid;
     uint64_t timestamp;
-} prb_LastModResult;
+} prb_FileTimestamp;
+
+typedef enum prb_MultitimeKind {
+    prb_MultiTimeKind_Earliest,
+    prb_MultiTimeKind_Latest,
+} prb_MultitimeKind;
+
+typedef struct prb_Multitime {
+    prb_FileTimestamp timestamp;
+    prb_MultitimeKind kind;
+} prb_Multitime;
 
 typedef void (*prb_JobProc)(void* data);
 
@@ -439,9 +444,9 @@ prb_PUBLICDEC prb_String           prb_replaceExt(prb_Arena* arena, prb_String p
 prb_PUBLICDEC prb_PathFindIterator prb_createPathFindIter(prb_PathFindSpec spec);
 prb_PUBLICDEC prb_Status           prb_pathFindIterNext(prb_PathFindIterator* iter);
 prb_PUBLICDEC void                 prb_destroyPathFindIter(prb_PathFindIterator* iter);
-prb_PUBLICDEC prb_LastModResult    prb_getLastModifiedFromPath(prb_Arena* arena, prb_String path);
-prb_PUBLICDEC prb_LastModResult    prb_getLastModifiedFromPaths(prb_Arena* arena, prb_String* path, int32_t pathCount, prb_LastModKind kind);
-prb_PUBLICDEC prb_LastModResult    prb_getLastModifiedFromFindSpec(prb_PathFindSpec spec, prb_LastModKind kind);
+prb_PUBLICDEC prb_Multitime        prb_createMultitime(prb_MultitimeKind kind);
+prb_PUBLICDEC prb_FileTimestamp    prb_getLastModified(prb_Arena* arena, prb_String path);
+prb_PUBLICDEC void                 prb_multitimeAdd(prb_Multitime* multitime, prb_FileTimestamp newTimestamp);
 prb_PUBLICDEC prb_Bytes            prb_readEntireFile(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC prb_Status           prb_writeEntireFile(prb_Arena* arena, prb_String path, const void* content, int32_t contentLen);
 prb_PUBLICDEC void                 prb_binaryToCArray(prb_Arena* arena, prb_String inPath, prb_String outPath, prb_String arrayName);
@@ -1546,9 +1551,20 @@ prb_destroyPathFindIter(prb_PathFindIterator* iter) {
     *iter = (prb_PathFindIterator) {};
 }
 
-prb_PUBLICDEF prb_LastModResult
-prb_getLastModifiedFromPath(prb_Arena* arena, prb_String path) {
-    prb_LastModResult result = {};
+prb_PUBLICDEF prb_Multitime
+prb_createMultitime(prb_MultitimeKind kind) {
+    prb_Multitime result = {};
+    result.kind = kind;
+    result.timestamp = (prb_FileTimestamp) {.valid = true, .timestamp = 0};
+    if (kind == prb_MultiTimeKind_Earliest) {
+        result.timestamp.timestamp = UINT64_MAX;
+    }
+    return result;
+}
+
+prb_PUBLICDEF prb_FileTimestamp
+prb_getLastModified(prb_Arena* arena, prb_String path) {
+    prb_FileTimestamp result = {};
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1570,8 +1586,8 @@ prb_getLastModifiedFromPath(prb_Arena* arena, prb_String path) {
 
     prb_linux_GetFileStatResult statResult = prb_linux_getFileStat(arena, path);
     if (statResult.success) {
-        result = (prb_LastModResult) {
-            .success = true,
+        result = (prb_FileTimestamp) {
+            .valid = true,
             .timestamp = (uint64_t)statResult.stat.st_mtim.tv_sec * 1000 * 1000 * 1000 + (uint64_t)statResult.stat.st_mtim.tv_nsec,
         };
     }
@@ -1583,40 +1599,18 @@ prb_getLastModifiedFromPath(prb_Arena* arena, prb_String path) {
     return result;
 }
 
-prb_PUBLICDEF prb_LastModResult
-prb_getLastModifiedFromPaths(prb_Arena* arena, prb_String* paths, int32_t pathCount, prb_LastModKind kind) {
-    prb_LastModResult result = {.success = true, .timestamp = 0};
-    if (kind == prb_LastModKind_Earliest) {
-        result.timestamp = UINT64_MAX;
-    }
-    for (int32_t pathIndex = 0; pathIndex < pathCount && result.success; pathIndex++) {
-        prb_String        path = paths[pathIndex];
-        prb_LastModResult thisLastMod = prb_getLastModifiedFromPath(arena, path);
-        if (thisLastMod.success) {
-            switch (kind) {
-                case prb_LastModKind_Earliest: result.timestamp = prb_min(result.timestamp, thisLastMod.timestamp); break;
-                case prb_LastModKind_Latest: result.timestamp = prb_max(result.timestamp, thisLastMod.timestamp); break;
+prb_PUBLICDEF void
+prb_multitimeAdd(prb_Multitime* multitime, prb_FileTimestamp newTimestamp) {
+    if (multitime->timestamp.valid) {
+        if (newTimestamp.valid) {
+            switch (multitime->kind) {
+                case prb_MultiTimeKind_Earliest: multitime->timestamp.timestamp = prb_min(multitime->timestamp.timestamp, newTimestamp.timestamp); break;
+                case prb_MultiTimeKind_Latest: multitime->timestamp.timestamp = prb_max(multitime->timestamp.timestamp, newTimestamp.timestamp); break;
             }
         } else {
-            result = (prb_LastModResult) {.success = false, .timestamp = 0};
+            multitime->timestamp.valid = false;
         }
     }
-    return result;
-}
-
-prb_PUBLICDEF prb_LastModResult
-prb_getLastModifiedFromFindSpec(prb_PathFindSpec spec, prb_LastModKind kind) {
-    prb_TempMemory       temp = prb_beginTempMemory(spec.arena);
-    prb_String*          paths = 0;
-    prb_PathFindIterator iter = prb_createPathFindIter(spec);
-    while (prb_pathFindIterNext(&iter) == prb_Success) {
-        arrput(paths, iter.curPath);
-    }
-    prb_destroyPathFindIter(&iter);
-    prb_LastModResult result = prb_getLastModifiedFromPaths(spec.arena, paths, arrlen(paths), kind);
-    prb_endTempMemory(temp);
-    arrfree(paths);
-    return result;
 }
 
 prb_PUBLICDEF prb_Bytes
@@ -1995,7 +1989,7 @@ prb_fmt(prb_Arena* arena, const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     prb_String result = prb_vfmtCustomBuffer(prb_arenaFreePtr(arena), prb_arenaFreeSize(arena), fmt, args);
-    prb_arenaChangeUsed(arena, result.len);  
+    prb_arenaChangeUsed(arena, result.len);
     prb_arenaAllocAndZero(arena, 1, 1);  // NOTE(khvorov) Null terminator
     va_end(args);
     return result;

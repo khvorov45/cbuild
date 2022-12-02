@@ -965,100 +965,28 @@ test_pathFindIter(void* data) {
 }
 
 function void
-test_getLastModifiedFromPath(void* data) {
+test_getLastModified(void* data) {
     prb_Arena*     arena = (prb_Arena*)data;
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_String     dir = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
     prb_assert(prb_clearDirectory(arena, dir) == prb_Success);
     prb_String file = prb_pathJoin(arena, dir, prb_STR("f1.c"));
 
-    prb_LastModResult lastMod = prb_getLastModifiedFromPath(arena, file);
-    prb_assert(!lastMod.success && lastMod.timestamp == 0);
+    prb_FileTimestamp lastMod = prb_getLastModified(arena, file);
+    prb_assert(!lastMod.valid && lastMod.timestamp == 0);
     prb_assert(prb_writeEntireFile(arena, file, file.ptr, file.len) == prb_Success);
-    lastMod = prb_getLastModifiedFromPath(arena, file);
-    prb_assert(lastMod.success);
+    lastMod = prb_getLastModified(arena, file);
+    prb_assert(lastMod.valid);
 
     u64 t1 = lastMod.timestamp;
     prb_sleep(10.0f);
 
     prb_assert(prb_writeEntireFile(arena, file, file.ptr, file.len) == prb_Success);
-    lastMod = prb_getLastModifiedFromPath(arena, file);
-    prb_assert(lastMod.success);
+    lastMod = prb_getLastModified(arena, file);
+    prb_assert(lastMod.valid);
 
     u64 t2 = lastMod.timestamp;
     prb_assert(t2 > t1);
-
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
-    prb_endTempMemory(temp);
-}
-
-function void
-test_getLastModifiedFromPaths(void* data) {
-    prb_Arena*     arena = (prb_Arena*)data;
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_String     dir = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
-    prb_assert(prb_clearDirectory(arena, dir) == prb_Success);
-
-    prb_String f1 = prb_pathJoin(arena, dir, prb_STR("f1.c"));
-    prb_assert(prb_writeEntireFile(arena, f1, f1.ptr, f1.len) == prb_Success);
-    prb_LastModResult lastModf1 = prb_getLastModifiedFromPath(arena, f1);
-    prb_assert(lastModf1.success);
-
-    prb_String        f2 = prb_pathJoin(arena, dir, prb_STR("f2.c"));
-    prb_String        both[] = {f1, f2};
-    prb_LastModResult lastModBoth = prb_getLastModifiedFromPaths(arena, both, prb_arrayLength(both), prb_LastModKind_Earliest);
-    prb_assert(!lastModBoth.success && lastModBoth.timestamp == 0);
-
-    prb_sleep(10.0f);
-
-    prb_assert(prb_writeEntireFile(arena, f2, f2.ptr, f2.len) == prb_Success);
-    prb_LastModResult lastModf2 = prb_getLastModifiedFromPath(arena, f2);
-    prb_assert(lastModf2.success);
-    prb_assert(lastModf2.timestamp > lastModf1.timestamp);
-
-    lastModBoth = prb_getLastModifiedFromPaths(arena, both, prb_arrayLength(both), prb_LastModKind_Earliest);
-    prb_assert(lastModBoth.success);
-    prb_assert(lastModBoth.timestamp == lastModf1.timestamp);
-
-    lastModBoth = prb_getLastModifiedFromPaths(arena, both, prb_arrayLength(both), prb_LastModKind_Latest);
-    prb_assert(lastModBoth.success);
-    prb_assert(lastModBoth.timestamp == lastModf2.timestamp);
-
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
-    prb_endTempMemory(temp);
-}
-
-function void
-test_getLastModifiedFromFindSpec(void* data) {
-    prb_Arena*     arena = (prb_Arena*)data;
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_String     dir = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
-    prb_assert(prb_clearDirectory(arena, dir) == prb_Success);
-
-    prb_String f1 = prb_pathJoin(arena, dir, prb_STR("f1.c"));
-    prb_assert(prb_writeEntireFile(arena, f1, f1.ptr, f1.len) == prb_Success);
-    prb_LastModResult lastModf1 = prb_getLastModifiedFromPath(arena, f1);
-    prb_assert(lastModf1.success);
-
-    prb_sleep(10.0f);
-
-    prb_String f2 = prb_pathJoin(arena, dir, prb_STR("f2.h"));
-    prb_assert(prb_writeEntireFile(arena, f2, f2.ptr, f2.len) == prb_Success);
-    prb_LastModResult lastModf2 = prb_getLastModifiedFromPath(arena, f2);
-    prb_assert(lastModf2.success);
-    prb_assert(lastModf2.timestamp > lastModf1.timestamp);
-
-    prb_PathFindSpec spec = {};
-    spec.arena = arena;
-    spec.dir = dir;
-    spec.mode = prb_PathFindMode_Glob;
-    spec.glob.pattern = prb_STR("*.c");
-    prb_LastModResult lastMod = prb_getLastModifiedFromFindSpec(spec, prb_LastModKind_Earliest);
-    prb_assert(lastMod.success && lastMod.timestamp == lastModf1.timestamp);
-
-    spec.glob.pattern = prb_STR("*.h");
-    lastMod = prb_getLastModifiedFromFindSpec(spec, prb_LastModKind_Earliest);
-    prb_assert(lastMod.success && lastMod.timestamp == lastModf2.timestamp);
 
     prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
@@ -1602,9 +1530,7 @@ main() {
     test_getLastEntryInPath(&arena);
     test_replaceExt(&arena);
     test_pathFindIter(&arena);
-    test_getLastModifiedFromPath(&arena);
-    test_getLastModifiedFromPaths(&arena);
-    test_getLastModifiedFromFindSpec(&arena);
+    test_getLastModified(&arena);
 
     test_strings(&arena);
     test_fileformat(&arena);

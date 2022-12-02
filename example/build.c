@@ -3,6 +3,8 @@
 // TODO(khvorov) Scan file dependencies for modifications before recompiling
 // TODO(khvorov) Compare current command with the command used last time before deciding not to recompile
 
+typedef int32_t i32;
+
 typedef enum Compiler {
     Compiler_Gcc,
     Compiler_Clang,
@@ -25,7 +27,7 @@ typedef struct StaticLibInfo {
     prb_String  libFile;
     prb_String  compileFlags;
     prb_String* sourcesRelToDownload;
-    int32_t     sourcesCount;
+    i32         sourcesCount;
     bool        notDownloaded;
 } StaticLibInfo;
 
@@ -36,7 +38,7 @@ getStaticLibInfo(
     prb_String  includeDirRelToDownload,
     prb_String  compileFlags,
     prb_String* sourcesRelToDownload,
-    int32_t     sourcesCount
+    i32         sourcesCount
 ) {
     StaticLibInfo result = {
         .name = name,
@@ -173,7 +175,7 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     prb_assert(prb_createDirIfNotExists(project.arena, objDir) == prb_Success);
 
     prb_String* inputPaths = 0;
-    for (int32_t srcIndex = 0; srcIndex < lib.sourcesCount; srcIndex++) {
+    for (i32 srcIndex = 0; srcIndex < lib.sourcesCount; srcIndex++) {
         prb_String           srcRelToDownload = lib.sourcesRelToDownload[srcIndex];
         prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {project.arena, lib.downloadDir, prb_PathFindMode_Glob, .glob.pattern = srcRelToDownload});
         while (prb_pathFindIterNext(&iter)) {
@@ -186,17 +188,19 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     // NOTE(khvorov) Recompile everything whenever any .h file changes
     uint64_t latestHFileChange = 0;
     {
-        prb_PathFindSpec  spec = {project.arena, lib.downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")};
-        prb_LastModResult lmh = prb_getLastModifiedFromFindSpec(spec, prb_LastModKind_Latest);
-        spec.glob.pattern = prb_STR("*.hh");
-        prb_LastModResult lmhh = prb_getLastModifiedFromFindSpec(spec, prb_LastModKind_Latest);
-        if (lmh.success && lmhh.success) {
-            latestHFileChange = prb_max(lmh.timestamp, lmhh.timestamp);
-        } else if (lmh.success) {
-            latestHFileChange = lmh.timestamp;
-        } else if (lmhh.success) {
-            latestHFileChange = lmhh.timestamp;
+        prb_Multitime        multitime = prb_createMultitime(prb_MultiTimeKind_Latest);
+        prb_PathFindSpec     spec = {project.arena, lib.downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")};
+        prb_PathFindIterator iter = prb_createPathFindIter(spec);
+        while (prb_pathFindIterNext(&iter) == prb_Success) {
+            prb_multitimeAdd(&multitime, prb_getLastModified(project.arena, iter.curPath));
         }
+        spec.glob.pattern = prb_STR("*.hh");
+        iter = prb_createPathFindIter(spec);
+        while (prb_pathFindIterNext(&iter) == prb_Success) {
+            prb_multitimeAdd(&multitime, prb_getLastModified(project.arena, iter.curPath));
+        }
+        prb_assert(multitime.timestamp.valid);
+        latestHFileChange = multitime.timestamp.timestamp;
     }
 
     StringFound* existingObjs = 0;
@@ -210,7 +214,7 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
 
     prb_String*        outputFilepaths = 0;
     prb_ProcessHandle* processes = 0;
-    for (int32_t inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
+    for (i32 inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
         prb_String inputFilepath = inputPaths[inputPathIndex];
         prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
         prb_String outputFilename = prb_replaceExt(project.arena, inputFilename, prb_STR("obj"));
@@ -220,12 +224,12 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
             shput(existingObjs, (char*)outputFilepath.ptr, true);
         }
 
-        prb_LastModResult sourceLastMod = prb_getLastModifiedFromPath(project.arena, inputFilepath);
-        prb_assert(sourceLastMod.success);
+        prb_FileTimestamp sourceLastMod = prb_getLastModified(project.arena, inputFilepath);
+        prb_assert(sourceLastMod.valid);
 
-        prb_LastModResult outputLastMod = prb_getLastModifiedFromPath(project.arena, outputFilepath);
+        prb_FileTimestamp outputLastMod = prb_getLastModified(project.arena, outputFilepath);
 
-        if (!outputLastMod.success || sourceLastMod.timestamp > outputLastMod.timestamp || latestHFileChange > outputLastMod.timestamp) {
+        if (!outputLastMod.valid || sourceLastMod.timestamp > outputLastMod.timestamp || latestHFileChange > outputLastMod.timestamp) {
             prb_String        cmd = constructCompileCmd(project, lib.compileFlags, inputFilepath, outputFilepath, prb_STR(""));
             prb_ProcessHandle process = prb_execCmd(project.arena, cmd, prb_ProcessFlag_DontWait, (prb_String) {});
             arrput(processes, process);
@@ -233,7 +237,7 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     }
 
     // NOTE(khvorov) Remove all objs that don't correspond to any inputs
-    for (int32_t existingObjIndex = 0; existingObjIndex < shlen(existingObjs); existingObjIndex++) {
+    for (i32 existingObjIndex = 0; existingObjIndex < shlen(existingObjs); existingObjIndex++) {
         StringFound existingObj = existingObjs[existingObjIndex];
         if (!existingObj.value) {
             prb_assert(prb_removeFileIfExists(project.arena, prb_STR(existingObj.key)) == prb_Success);
@@ -250,11 +254,18 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     if (compileStatus == prb_Success) {
         prb_String objsPathsString = prb_stringsJoin(project.arena, outputFilepaths, arrlen(outputFilepaths), prb_STR(" "));
 
-        prb_LastModResult sourceLastMod = prb_getLastModifiedFromPaths(project.arena, outputFilepaths, arrlen(outputFilepaths), prb_LastModKind_Latest);
-        prb_assert(sourceLastMod.success);
-        prb_LastModResult outputLastMod = prb_getLastModifiedFromPath(project.arena, lib.libFile);
+        prb_FileTimestamp sourceLastMod = {};
+        {
+            prb_Multitime multitime = prb_createMultitime(prb_MultiTimeKind_Latest);
+            for (i32 pathIndex = 0; pathIndex < arrlen(outputFilepaths); pathIndex++) {
+                prb_multitimeAdd(&multitime, prb_getLastModified(project.arena, outputFilepaths[pathIndex]));
+            }
+            prb_assert(multitime.timestamp.valid);
+            sourceLastMod = multitime.timestamp;
+        }
+        prb_FileTimestamp outputLastMod = prb_getLastModified(project.arena, lib.libFile);
         prb_Status        libStatus = prb_Success;
-        if (!outputLastMod.success || (sourceLastMod.timestamp > outputLastMod.timestamp)) {
+        if (!outputLastMod.valid || (sourceLastMod.timestamp > outputLastMod.timestamp)) {
 #if prb_PLATFORM_WINDOWS
             prb_String libCmd = prb_fmt("lib /nologo -out:%.*s %.*s", libFile, objsPattern);
 #elif prb_PLATFORM_LINUX
@@ -682,7 +693,7 @@ main() {
         prb_String unidat = prb_pathJoin(project.arena, datadir, prb_STR("UnicodeData.txt"));
 
         // NOTE(khvorov) This max-depth is also known as compression and is set to 2 in makefiles
-        int32_t maxDepth = 2;
+        i32 maxDepth = 2;
 
         prb_String bracketsPath = prb_pathJoin(project.arena, datadir, prb_STR("BidiBrackets.txt"));
         compileAndRunBidiGenTab(
