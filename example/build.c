@@ -66,11 +66,13 @@ gitClone(prb_Arena* arena, StaticLibInfo lib, prb_String downloadUrl) {
     prb_TempMemory    temp = prb_beginTempMemory(arena);
     prb_ProcessHandle handle = {};
     if (lib.notDownloaded) {
-        prb_String cmd = prb_fmtAndPrintln(arena, "git clone %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(lib.downloadDir));
+        prb_String cmd = prb_fmt(arena, "git clone %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(lib.downloadDir));
+        prb_writelnToStdout(cmd);
         handle = prb_execCmd(arena, cmd, prb_ProcessFlag_DontWait, (prb_String) {});
     } else {
         prb_String name = prb_getLastEntryInPath(lib.downloadDir);
-        prb_fmtAndPrintln(arena, "skip git clone %.*s", prb_LIT(name));
+        prb_String msg = prb_fmt(arena, "skip git clone %.*s", prb_LIT(name));
+        prb_writelnToStdout(msg);
         handle.status = prb_ProcessStatus_CompletedSuccess;
     }
     prb_endTempMemory(temp);
@@ -84,7 +86,8 @@ gitReset(prb_Arena* arena, StaticLibInfo lib, prb_String commit) {
     if (lib.notDownloaded) {
         prb_String cwd = prb_getWorkingDir(arena);
         prb_assert(prb_setWorkingDir(arena, lib.downloadDir) == prb_Success);
-        prb_String        cmd = prb_fmtAndPrintln(arena, "git checkout %.*s --", prb_LIT(commit));
+        prb_String cmd = prb_fmt(arena, "git checkout %.*s --", prb_LIT(commit));
+        prb_writelnToStdout(cmd);
         prb_ProcessHandle handle = prb_execCmd(arena, cmd, 0, (prb_String) {});
         prb_assert(handle.status == prb_ProcessStatus_CompletedSuccess);
         prb_assert(prb_setWorkingDir(arena, cwd) == prb_Success);
@@ -238,7 +241,8 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     }
 
     if (arrlen(processes) == 0) {
-        prb_fmtAndPrintln(project.arena, "skip compile %.*s", prb_LIT(lib.name));
+        prb_String msg = prb_fmt(project.arena, "skip compile %.*s", prb_LIT(lib.name));
+        prb_writelnToStdout(msg);
     }
 
     prb_Status compileStatus = prb_waitForProcesses(processes, arrlen(processes));
@@ -252,16 +256,18 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
         prb_Status        libStatus = prb_Success;
         if (!outputLastMod.success || (sourceLastMod.timestamp > outputLastMod.timestamp)) {
 #if prb_PLATFORM_WINDOWS
-            prb_String libCmd = prb_fmtAndPrintln("lib /nologo -out:%.*s %.*s", libFile, objsPattern);
+            prb_String libCmd = prb_fmt("lib /nologo -out:%.*s %.*s", libFile, objsPattern);
 #elif prb_PLATFORM_LINUX
-            prb_String libCmd = prb_fmtAndPrintln(project.arena, "ar rcs %.*s %.*s", prb_LIT(lib.libFile), prb_LIT(objsPathsString));
+            prb_String libCmd = prb_fmt(project.arena, "ar rcs %.*s %.*s", prb_LIT(lib.libFile), prb_LIT(objsPathsString));
 #endif
+            prb_writelnToStdout(libCmd);
             prb_assert(prb_removeFileIfExists(project.arena, lib.libFile) == prb_Success);
             prb_ProcessHandle libHandle = prb_execCmd(project.arena, libCmd, 0, (prb_String) {});
             prb_assert(libHandle.status == prb_ProcessStatus_CompletedSuccess || libHandle.status == prb_ProcessStatus_CompletedFailed);
             libStatus = libHandle.status == prb_ProcessStatus_CompletedSuccess ? prb_Success : prb_Failure;
         } else {
-            prb_fmtAndPrintln(project.arena, "skip lib %.*s", prb_LIT(lib.name));
+            prb_String msg = prb_fmt(project.arena, "skip lib %.*s", prb_LIT(lib.name));
+            prb_writelnToStdout(msg);
         }
 
         result = libStatus;
@@ -290,7 +296,8 @@ compileAndRunBidiGenTab(ProjectInfo project, prb_String src, prb_String flags, p
         prb_ProcessHandle handle = prb_execCmd(project.arena, cmd, 0, (prb_String) {});
         prb_assert(handle.status == prb_ProcessStatus_CompletedSuccess);
 
-        prb_String        cmdRun = prb_fmtAndPrintln(project.arena, "%.*s %.*s", prb_LIT(exeFilename), prb_LIT(runArgs));
+        prb_String cmdRun = prb_fmt(project.arena, "%.*s %.*s", prb_LIT(exeFilename), prb_LIT(runArgs));
+        prb_writelnToStdout(cmdRun);
         prb_ProcessHandle handleRun = prb_execCmd(project.arena, cmdRun, prb_ProcessFlag_RedirectStdout, outpath);
         prb_assert(handleRun.status == prb_ProcessStatus_CompletedSuccess);
     }
@@ -843,6 +850,10 @@ main() {
     prb_ProcessHandle mainHandle = prb_execCmd(project.arena, mainCmd, 0, (prb_String) {});
     prb_assert(mainHandle.status == prb_ProcessStatus_CompletedSuccess);
 
-    prb_fmtAndPrintln(project.arena, "total: %.2fms", prb_getMsFrom(scriptStartTime));
+    {
+        prb_String msg = prb_fmt(project.arena, "total: %.2fms", prb_getMsFrom(scriptStartTime));
+        prb_writelnToStdout(msg);
+    }
+
     return 0;
 }

@@ -460,18 +460,8 @@ prb_PUBLICDEC prb_String           prb_stringsJoin(prb_Arena* arena, prb_String*
 prb_PUBLICDEC prb_GrowingString    prb_beginString(prb_Arena* arena);
 prb_PUBLICDEC void                 prb_addStringSegment(prb_GrowingString* gstr, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
 prb_PUBLICDEC prb_String           prb_endString(prb_GrowingString* gstr);
-prb_PUBLICDEC prb_String           prb_fmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
 prb_PUBLICDEC prb_String           prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args);
 prb_PUBLICDEC prb_String           prb_fmt(prb_Arena* arena, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC prb_String           prb_vfmt(prb_Arena* arena, const char* fmt, va_list args);
-prb_PUBLICDEC prb_String           prb_fmtAndPrint(prb_Arena* arena, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC prb_String           prb_fmtAndPrintColor(prb_Arena* arena, prb_ColorID color, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
-prb_PUBLICDEC prb_String           prb_vfmtAndPrint(prb_Arena* arena, const char* fmt, va_list args);
-prb_PUBLICDEC prb_String           prb_vfmtAndPrintColor(prb_Arena* arena, prb_ColorID color, const char* fmt, va_list args);
-prb_PUBLICDEC prb_String           prb_fmtAndPrintln(prb_Arena* arena, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC prb_String           prb_fmtAndPrintlnColor(prb_Arena* arena, prb_ColorID color, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(3, 4);
-prb_PUBLICDEC prb_String           prb_vfmtAndPrintln(prb_Arena* arena, const char* fmt, va_list args);
-prb_PUBLICDEC prb_String           prb_vfmtAndPrintlnColor(prb_Arena* arena, prb_ColorID color, const char* fmt, va_list args);
 prb_PUBLICDEC void                 prb_writeToStdout(prb_String str);
 prb_PUBLICDEC void                 prb_writelnToStdout(prb_String str);
 prb_PUBLICDEC void                 prb_setPrintColor(prb_ColorID color);
@@ -1994,15 +1984,6 @@ prb_endString(prb_GrowingString* gstr) {
 }
 
 prb_PUBLICDEF prb_String
-prb_fmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    prb_String result = prb_vfmtCustomBuffer(buf, bufSize, fmt, args);
-    va_end(args);
-    return result;
-}
-
-prb_PUBLICDEF prb_String
 prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args) {
     int32_t    len = stbsp_vsnprintf((char*)buf, bufSize, fmt, args);
     prb_String result = {(const char*)buf, len};
@@ -2013,82 +1994,10 @@ prb_PUBLICDEF prb_String
 prb_fmt(prb_Arena* arena, const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    prb_String result = prb_vfmt(arena, fmt, args);
+    prb_String result = prb_vfmtCustomBuffer(prb_arenaFreePtr(arena), prb_arenaFreeSize(arena), fmt, args);
+    prb_arenaChangeUsed(arena, result.len);  
+    prb_arenaAllocAndZero(arena, 1, 1);  // NOTE(khvorov) Null terminator
     va_end(args);
-    return result;
-}
-
-prb_PUBLICDEF prb_String
-prb_vfmt(prb_Arena* arena, const char* fmt, va_list args) {
-    prb_String result =
-        prb_vfmtCustomBuffer(prb_arenaFreePtr(arena), prb_arenaFreeSize(arena), fmt, args);
-    prb_arenaChangeUsed(arena, result.len + 1);  // NOTE(khvorov) Null terminator
-    return result;
-}
-
-prb_PUBLICDEF prb_String
-prb_fmtAndPrint(prb_Arena* arena, const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    prb_String result = prb_vfmtAndPrint(arena, fmt, args);
-    va_end(args);
-    return result;
-}
-
-prb_PUBLICDEF prb_String
-prb_fmtAndPrintColor(prb_Arena* arena, prb_ColorID color, const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    prb_String result = prb_vfmtAndPrintColor(arena, color, fmt, args);
-    va_end(args);
-    return result;
-}
-
-prb_PUBLICDEF prb_String
-prb_vfmtAndPrint(prb_Arena* arena, const char* fmt, va_list args) {
-    prb_String result = prb_vfmt(arena, fmt, args);
-    prb_writeToStdout(result);
-    return result;
-}
-
-prb_PUBLICDEF prb_String
-prb_vfmtAndPrintColor(prb_Arena* arena, prb_ColorID color, const char* fmt, va_list args) {
-    prb_setPrintColor(color);
-    prb_String result = prb_vfmtAndPrint(arena, fmt, args);
-    prb_resetPrintColor();
-    return result;
-}
-
-prb_PUBLICDEF prb_String
-prb_fmtAndPrintln(prb_Arena* arena, const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    prb_String result = prb_vfmtAndPrintln(arena, fmt, args);
-    va_end(args);
-    return result;
-}
-
-prb_PUBLICDEF prb_String
-prb_fmtAndPrintlnColor(prb_Arena* arena, prb_ColorID color, const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    prb_String result = prb_vfmtAndPrintlnColor(arena, color, fmt, args);
-    va_end(args);
-    return result;
-}
-
-prb_PUBLICDEF prb_String
-prb_vfmtAndPrintln(prb_Arena* arena, const char* fmt, va_list args) {
-    prb_String result = prb_vfmtAndPrint(arena, fmt, args);
-    prb_fmtAndPrint(arena, "\n");
-    return result;
-}
-
-prb_PUBLICDEF prb_String
-prb_vfmtAndPrintlnColor(prb_Arena* arena, prb_ColorID color, const char* fmt, va_list args) {
-    prb_setPrintColor(color);
-    prb_String result = prb_vfmtAndPrintln(arena, fmt, args);
-    prb_resetPrintColor();
     return result;
 }
 

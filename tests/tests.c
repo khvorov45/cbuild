@@ -1072,15 +1072,33 @@ function void
 test_printColor(void* data) {
     prb_Arena*     arena = (prb_Arena*)data;
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_fmtAndPrintln(arena, "color printing:");
-    prb_fmtAndPrintlnColor(arena, prb_ColorID_Blue, "blue");
-    prb_fmtAndPrintlnColor(arena, prb_ColorID_Cyan, "cyan");
-    prb_fmtAndPrintlnColor(arena, prb_ColorID_Magenta, "magenta");
-    prb_fmtAndPrintlnColor(arena, prb_ColorID_Yellow, "yellow");
-    prb_fmtAndPrintlnColor(arena, prb_ColorID_Red, "red");
-    prb_fmtAndPrintlnColor(arena, prb_ColorID_Green, "green");
-    prb_fmtAndPrintlnColor(arena, prb_ColorID_Black, "black");
-    prb_fmtAndPrintlnColor(arena, prb_ColorID_White, "white");
+
+    prb_writelnToStdout(prb_STR("color printing:"));
+
+    prb_setPrintColor(prb_ColorID_Blue);
+    prb_writelnToStdout(prb_STR("blue"));
+
+    prb_setPrintColor(prb_ColorID_Cyan);
+    prb_writelnToStdout(prb_STR("cyan"));
+
+    prb_setPrintColor(prb_ColorID_Magenta);
+    prb_writelnToStdout(prb_STR("magenta"));
+
+    prb_setPrintColor(prb_ColorID_Yellow);
+    prb_writelnToStdout(prb_STR("yellow"));
+
+    prb_setPrintColor(prb_ColorID_Red);
+    prb_writelnToStdout(prb_STR("red"));
+
+    prb_setPrintColor(prb_ColorID_Green);
+    prb_writelnToStdout(prb_STR("green"));
+
+    prb_setPrintColor(prb_ColorID_Black);
+    prb_writelnToStdout(prb_STR("black"));
+
+    prb_setPrintColor(prb_ColorID_White);
+    prb_writelnToStdout(prb_STR("white"));
+
     prb_endTempMemory(temp);
 }
 
@@ -1265,7 +1283,7 @@ test_fileformat(void* data) {
 
     prb_String* headerNotInImpl = setdiff(headerNames, implNames);
     if (arrlen(headerNotInImpl) > 0) {
-        prb_fmtAndPrintln(arena, "names in header but not in impl:");
+        prb_writelnToStdout(prb_STR("names in header but not in impl:"));
         for (i32 index = 0; index < arrlen(headerNotInImpl); index++) {
             prb_String str = headerNotInImpl[index];
             prb_writeToStdout(str);
@@ -1277,7 +1295,7 @@ test_fileformat(void* data) {
 
     prb_String* implNotInHeader = setdiff(implNames, headerNames);
     if (arrlen(implNotInHeader) > 0) {
-        prb_fmtAndPrintln(arena, "names in impl but not in header:");
+        prb_writelnToStdout(prb_STR("names in impl but not in header:"));
         for (i32 index = 0; index < arrlen(implNotInHeader); index++) {
             prb_String str = implNotInHeader[index];
             prb_writeToStdout(str);
@@ -1604,7 +1622,9 @@ main() {
     prb_assert(arena.tempCount == 0);
     prb_assert(arena.base == baseStart);
 
-    prb_fmtAndPrintln(&arena, "tests took %.2fms", prb_getMsFrom(testStart));
+    prb_String msg = prb_fmt(&arena, "tests took %.2fms", prb_getMsFrom(testStart));
+    prb_writelnToStdout(msg);
+
     prb_terminate(0);
     prb_assert(!"unreachable");
     return 0;
