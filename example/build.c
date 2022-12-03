@@ -1,7 +1,7 @@
 #include "../programmable_build.h"
 
 // TODO(khvorov) Compare current command with the command used last time before deciding not to recompile
-// TODO(khvorov) Preprocess files and dump them somewhere. Use that preproccessed file checksum to decide if we need to recompile
+// TODO(khvorov) Use preproccessed file checksum to decide if we need to recompile
 
 typedef int32_t  i32;
 typedef uint64_t u64;
@@ -30,12 +30,19 @@ typedef struct StaticLibInfo {
     prb_String* sourcesRelToDownload;
     i32         sourcesCount;
     bool        notDownloaded;
+    bool        cpp;
 } StaticLibInfo;
+
+typedef enum Lang {
+    Lang_C,
+    Lang_Cpp,
+} Lang;
 
 static StaticLibInfo
 getStaticLibInfo(
     ProjectInfo project,
     prb_String  name,
+    Lang        lang,
     prb_String  includeDirRelToDownload,
     prb_String  compileFlags,
     prb_String* sourcesRelToDownload,
@@ -43,6 +50,7 @@ getStaticLibInfo(
 ) {
     StaticLibInfo result = {
         .name = name,
+        .cpp = lang == Lang_Cpp,
         .downloadDir = prb_pathJoin(project.arena, project.rootDir, name),
         .sourcesRelToDownload = sourcesRelToDownload,
         .sourcesCount = sourcesCount,
@@ -99,6 +107,12 @@ gitReset(prb_Arena* arena, StaticLibInfo lib, prb_String commit) {
     return result;
 }
 
+static bool
+fileIsPreprocessed(prb_Arena* arena, prb_String name) {
+    bool result = prb_strEndsWith(arena, name, prb_STR(".i"), prb_StringFindMode_Exact) || prb_strEndsWith(arena, name, prb_STR(".ii"), prb_StringFindMode_Exact);
+    return result;
+}
+
 static prb_String
 constructCompileCmd(ProjectInfo project, prb_String flags, prb_String inputPath, prb_String outputPath, prb_String linkFlags) {
     prb_GrowingString cmd = prb_beginString(project.arena);
@@ -120,6 +134,25 @@ constructCompileCmd(ProjectInfo project, prb_String flags, prb_String inputPath,
             case Compiler_Gcc:
             case Compiler_Clang: prb_addStringSegment(&cmd, " -g"); break;
             case Compiler_Msvc: prb_addStringSegment(&cmd, " /Zi"); break;
+        }
+    }
+
+    bool inIsPreprocessed = fileIsPreprocessed(project.arena, inputPath);
+    bool outIsPreprocess = fileIsPreprocessed(project.arena, outputPath);
+    if (outIsPreprocess) {
+        prb_assert(!inIsPreprocessed);
+        switch (project.compiler) {
+            case Compiler_Gcc:
+            case Compiler_Clang: prb_addStringSegment(&cmd, " -E"); break;
+            case Compiler_Msvc: prb_addStringSegment(&cmd, " /P /Fi%.*s", prb_LIT(outputPath)); break;
+        }
+    }
+    if (inIsPreprocessed) {
+        prb_assert(!outIsPreprocess);
+        switch (project.compiler) {
+            case Compiler_Gcc: prb_addStringSegment(&cmd, " -fpreprocessed"); break;
+            case Compiler_Clang: break;
+            case Compiler_Msvc: prb_addStringSegment(&cmd, " /Yc"); break;
         }
     }
 
@@ -158,7 +191,9 @@ constructCompileCmd(ProjectInfo project, prb_String flags, prb_String inputPath,
     }
 
     prb_String cmdStr = prb_endString(&cmd);
-    prb_writelnToStdout(cmdStr);
+    if (!outIsPreprocess) {
+        prb_writelnToStdout(cmdStr);
+    }
     return cmdStr;
 }
 
@@ -203,34 +238,67 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
         latestHFileChange = multitime.timeLatest;
     }
 
+    StringFound* existingPreprocess = 0;
     StringFound* existingObjs = 0;
     {
         prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {project.arena, objDir, prb_PathFindMode_AllEntriesInDir, .recursive = false});
         while (prb_pathFindIterNext(&iter)) {
-            shput(existingObjs, iter.curPath.ptr, false);
+            if (fileIsPreprocessed(project.arena, iter.curPath)) {
+                shput(existingPreprocess, iter.curPath.ptr, false);
+            } else if (prb_strEndsWith(project.arena, iter.curPath, prb_STR(".obj"), prb_StringFindMode_Exact)) {
+                shput(existingObjs, iter.curPath.ptr, false);
+            } else {
+                prb_removeFileIfExists(project.arena, iter.curPath);
+            }
         }
         prb_destroyPathFindIter(&iter);
     }
 
-    prb_String*        outputFilepaths = 0;
-    prb_ProcessHandle* processes = 0;
+    // NOTE(khvorov) Preprocess
+    prb_String         preprocessExt = lib.cpp ? prb_STR("ii") : prb_STR("i");
+    prb_String*        outputPreprocess = 0;
+    prb_ProcessHandle* processesPreprocess = 0;
     for (i32 inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
         prb_String inputFilepath = inputPaths[inputPathIndex];
         prb_String inputFilename = prb_getLastEntryInPath(inputFilepath);
-        prb_String outputFilename = prb_replaceExt(project.arena, inputFilename, prb_STR("obj"));
-        prb_String outputFilepath = prb_pathJoin(project.arena, objDir, outputFilename);
-        arrput(outputFilepaths, outputFilepath);
-        if (shgeti(existingObjs, (char*)outputFilepath.ptr) != -1) {
-            shput(existingObjs, (char*)outputFilepath.ptr, true);
+
+        prb_String outputPreprocessFilename = prb_replaceExt(project.arena, inputFilename, preprocessExt);
+        prb_String outputPreprocessFilepath = prb_pathJoin(project.arena, objDir, outputPreprocessFilename);
+        arrput(outputPreprocess, outputPreprocessFilepath);
+        if (shgeti(existingPreprocess, (char*)outputPreprocessFilepath.ptr) != -1) {
+            shput(existingPreprocess, (char*)outputPreprocessFilepath.ptr, true);
+        }
+
+        prb_String        preprocessCmd = constructCompileCmd(project, lib.compileFlags, inputFilepath, outputPreprocessFilepath, prb_STR(""));
+        prb_ProcessHandle proc = prb_execCmd(project.arena, preprocessCmd, prb_ProcessFlag_DontWait, (prb_String) {});
+        prb_assert(proc.status == prb_ProcessStatus_Launched);
+        arrput(processesPreprocess, proc);
+    }
+    prb_assert(prb_waitForProcesses(processesPreprocess, arrlen(processesPreprocess)) == prb_Success);
+
+    // NOTE(khvorov) Compile
+    prb_String*        outputObjs = 0;
+    prb_ProcessHandle* processesCompile = 0;
+    for (i32 inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
+        prb_String inputNotPreprocessedFilepath = inputPaths[inputPathIndex];
+        // NOTE(khvorov) I found that giving the compiler preprocessed output generates less useful warnings
+        // prb_String inputPreprocessedFilepath = outputPreprocess[inputPathIndex];
+        prb_String inputNotPreprocessedFilename = prb_getLastEntryInPath(inputNotPreprocessedFilepath);
+
+        prb_String outputObjFilename = prb_replaceExt(project.arena, inputNotPreprocessedFilename, prb_STR("obj"));
+        prb_String outputObjFilepath = prb_pathJoin(project.arena, objDir, outputObjFilename);
+        arrput(outputObjs, outputObjFilepath);
+        if (shgeti(existingObjs, (char*)outputObjFilepath.ptr) != -1) {
+            shput(existingObjs, (char*)outputObjFilepath.ptr, true);
         }
 
         // NOTE(khvorov) Figure out if we should recompile this file
-        prb_FileTimestamp outputLastMod = prb_getLastModified(project.arena, outputFilepath);
+        prb_FileTimestamp outputLastMod = prb_getLastModified(project.arena, outputObjFilepath);
         bool              shouldRecompile = !outputLastMod.valid;  // NOTE(khvorov) Output exists
 
         // NOTE(khvorov) Output older than input
         if (!shouldRecompile) {
-            prb_FileTimestamp sourceLastMod = prb_getLastModified(project.arena, inputFilepath);
+            prb_FileTimestamp sourceLastMod = prb_getLastModified(project.arena, inputNotPreprocessedFilepath);
             prb_assert(sourceLastMod.valid);
             shouldRecompile = sourceLastMod.timestamp > outputLastMod.timestamp;
         }
@@ -241,9 +309,9 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
         }
 
         if (shouldRecompile) {
-            prb_String        cmd = constructCompileCmd(project, lib.compileFlags, inputFilepath, outputFilepath, prb_STR(""));
+            prb_String        cmd = constructCompileCmd(project, lib.compileFlags, inputNotPreprocessedFilepath, outputObjFilepath, prb_STR(""));
             prb_ProcessHandle process = prb_execCmd(project.arena, cmd, prb_ProcessFlag_DontWait, (prb_String) {});
-            arrput(processes, process);
+            arrput(processesCompile, process);
         }
     }
 
@@ -255,21 +323,29 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
         }
     }
 
-    if (arrlen(processes) == 0) {
+    // NOTE(khvorov) Remove all preprocessed that don't correspond to any inputs
+    for (i32 existingPreprocessIndex = 0; existingPreprocessIndex < shlen(existingPreprocess); existingPreprocessIndex++) {
+        StringFound existingI = existingPreprocess[existingPreprocessIndex];
+        if (!existingI.value) {
+            prb_assert(prb_removeFileIfExists(project.arena, prb_STR(existingI.key)) == prb_Success);
+        }
+    }
+
+    if (arrlen(processesCompile) == 0) {
         prb_String msg = prb_fmt(project.arena, "skip compile %.*s", prb_LIT(lib.name));
         prb_writelnToStdout(msg);
     }
 
-    prb_Status compileStatus = prb_waitForProcesses(processes, arrlen(processes));
+    prb_Status compileStatus = prb_waitForProcesses(processesCompile, arrlen(processesCompile));
     result = compileStatus;
     if (compileStatus == prb_Success) {
-        prb_String objsPathsString = prb_stringsJoin(project.arena, outputFilepaths, arrlen(outputFilepaths), prb_STR(" "));
+        prb_String objsPathsString = prb_stringsJoin(project.arena, outputObjs, arrlen(outputObjs), prb_STR(" "));
 
         u64 sourceLastMod = 0;
         {
             prb_Multitime multitime = prb_createMultitime();
-            for (i32 pathIndex = 0; pathIndex < arrlen(outputFilepaths); pathIndex++) {
-                prb_String        path = outputFilepaths[pathIndex];
+            for (i32 pathIndex = 0; pathIndex < arrlen(outputObjs); pathIndex++) {
+                prb_String        path = outputObjs[pathIndex];
                 prb_FileTimestamp lastMod = prb_getLastModified(project.arena, path);
                 prb_assert(lastMod.valid);
                 prb_multitimeAdd(&multitime, lastMod);
@@ -300,8 +376,11 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
 
     prb_endTempMemory(temp);
     arrfree(inputPaths);
-    arrfree(outputFilepaths);
-    arrfree(processes);
+    shfree(existingPreprocess);
+    shfree(existingObjs);
+    arrfree(outputPreprocess);
+    arrfree(outputObjs);
+    arrfree(processesCompile);
     return result;
 }
 
@@ -383,6 +462,7 @@ main() {
     StaticLibInfo fribidi = getStaticLibInfo(
         project,
         prb_STR("fribidi"),
+        Lang_C,
         prb_STR("lib"),
         prb_fmt(project.arena, "%.*s -Dfribidi_malloc=fribidiCustomMalloc -Dfribidi_free=fribidiCustomFree -DHAVE_STRING_H=1 -DHAVE_STRINGIZE=1", prb_LIT(fribidiNoConfigFlag)),
         fribidiCompileSouces,
@@ -452,6 +532,7 @@ main() {
     StaticLibInfo icu = getStaticLibInfo(
         project,
         prb_STR("icu"),
+        Lang_Cpp,
         prb_STR("icu4c/source/common"),
         prb_STR("-DU_COMMON_IMPLEMENTATION=1 -DU_COMBINED_IMPLEMENTATION=1 -DU_STATIC_IMPLEMENTATION=1"),
         icuCompileSources,
@@ -521,6 +602,7 @@ main() {
     StaticLibInfo freetype = getStaticLibInfo(
         project,
         prb_STR("freetype"),
+        Lang_C,
         prb_STR("include"),
         prb_fmt(project.arena, "-DFT2_BUILD_LIBRARY -DFT_CONFIG_OPTION_DISABLE_STREAM_SUPPORT -DFT_CONFIG_OPTION_USE_HARFBUZZ"),
         freetypeCompileSources,
@@ -592,6 +674,7 @@ main() {
     StaticLibInfo harfbuzz = getStaticLibInfo(
         project,
         prb_STR("harfbuzz"),
+        Lang_Cpp,
         prb_STR("src"),
         prb_fmt(project.arena, "%.*s %.*s -DHAVE_ICU=1 -DHAVE_FREETYPE=1 -DHB_CUSTOM_MALLOC=1", prb_LIT(icu.includeFlag), prb_LIT(freetype.includeFlag)),
         harfbuzzCompileSources,
@@ -671,6 +754,7 @@ main() {
     StaticLibInfo sdl = getStaticLibInfo(
         project,
         prb_STR("sdl"),
+        Lang_C,
         prb_STR("include"),
         prb_stringsJoin(project.arena, sdlCompileFlags, prb_arrayLength(sdlCompileFlags), prb_STR(" ")),
         sdlCompileSources,
@@ -848,33 +932,38 @@ main() {
         prb_STR("-Wall -Wextra -Werror"),
     };
 
-    prb_String mainFiles[] = {
-        prb_pathJoin(project.arena, project.rootDir, prb_STR("example.c")),
-        freetype.libFile,
-        sdl.libFile,
-        harfbuzz.libFile,
-        icu.libFile,
-        fribidi.libFile,
-    };
+    prb_String mainNotPreprocessedName = prb_STR("example.c");
+    prb_String mainNotPreprocessedPath = prb_pathJoin(project.arena, project.rootDir, mainNotPreprocessedName);
+    prb_String mainPreprocessedName = prb_replaceExt(project.arena, mainNotPreprocessedName, prb_STR("i"));
+    prb_String mainPreprocessedPath = prb_pathJoin(project.arena, project.compileOutDir, mainPreprocessedName);
+    prb_String mainObjPath = prb_replaceExt(project.arena, mainPreprocessedPath, prb_STR("obj"));
+
+    prb_String mainFlagsStr = prb_stringsJoin(project.arena, mainFlags, prb_arrayLength(mainFlags), prb_STR(" "));
+
+    prb_String mainCmdPreprocess = constructCompileCmd(project, mainFlagsStr, mainNotPreprocessedPath, mainPreprocessedPath, prb_STR(""));
+    prb_writelnToStdout(mainCmdPreprocess);
+
+    prb_ProcessHandle mainHandlePre = prb_execCmd(project.arena, mainCmdPreprocess, 0, (prb_String) {});
+    prb_assert(mainHandlePre.status == prb_ProcessStatus_CompletedSuccess);
+
+    prb_String        mainCmdObj = constructCompileCmd(project, mainFlagsStr, mainNotPreprocessedPath, mainObjPath, prb_STR(""));
+    prb_ProcessHandle mainHandleObj = prb_execCmd(project.arena, mainCmdObj, 0, (prb_String) {});
+    prb_assert(mainHandleObj.status == prb_ProcessStatus_CompletedSuccess);
+
+    prb_String mainObjs[] = {mainObjPath, freetype.libFile, sdl.libFile, harfbuzz.libFile, icu.libFile, fribidi.libFile};
+    prb_String mainObjsStr = prb_stringsJoin(project.arena, mainObjs, prb_arrayLength(mainObjs), prb_STR(" "));
 
 #if prb_PLATFORM_WINDOWS
-    prb_String mainOutName = prb_STR("example.exe");
+    prb_String mainOutPath = prb_replaceExt(mainPreprocessedPath, prb_STR("exe"));
     prb_String mainLinkFlags = prb_STR("-subsystem:windows User32.lib");
 #elif prb_PLATFORM_LINUX
-    prb_String mainOutName = prb_STR("example.bin");
+    prb_String mainOutPath = prb_replaceExt(project.arena, mainPreprocessedPath, prb_STR("bin"));
     prb_String mainLinkFlags = prb_STR("-lX11 -lm -lstdc++ -ldl -lfontconfig");
 #endif
 
-    prb_String mainCmd = constructCompileCmd(
-        project,
-        prb_stringsJoin(project.arena, mainFlags, prb_arrayLength(mainFlags), prb_STR(" ")),
-        prb_stringsJoin(project.arena, mainFiles, prb_arrayLength(mainFiles), prb_STR(" ")),
-        prb_pathJoin(project.arena, project.compileOutDir, mainOutName),
-        mainLinkFlags
-    );
-
-    prb_ProcessHandle mainHandle = prb_execCmd(project.arena, mainCmd, 0, (prb_String) {});
-    prb_assert(mainHandle.status == prb_ProcessStatus_CompletedSuccess);
+    prb_String        mainCmdExe = constructCompileCmd(project, mainFlagsStr, mainObjsStr, mainOutPath, mainLinkFlags);
+    prb_ProcessHandle mainHandleExe = prb_execCmd(project.arena, mainCmdExe, 0, (prb_String) {});
+    prb_assert(mainHandleExe.status == prb_ProcessStatus_CompletedSuccess);
 
     {
         prb_String msg = prb_fmt(project.arena, "total: %.2fms", prb_getMsFrom(scriptStartTime));
