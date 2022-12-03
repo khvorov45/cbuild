@@ -1,10 +1,10 @@
 #include "../programmable_build.h"
 
-// TODO(khvorov) Scan file dependencies for modifications before recompiling
 // TODO(khvorov) Compare current command with the command used last time before deciding not to recompile
-// TODO(khvorov) See if multithreading api is applicable anywhere
+// TODO(khvorov) Preprocess files and dump them somewhere. Use that preproccessed file checksum to decide if we need to recompile
 
-typedef int32_t i32;
+typedef int32_t  i32;
+typedef uint64_t u64;
 
 typedef enum Compiler {
     Compiler_Gcc,
@@ -189,7 +189,7 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     // NOTE(khvorov) Recompile everything whenever any .h file changes
     uint64_t latestHFileChange = 0;
     {
-        prb_Multitime        multitime = prb_createMultitime(prb_MultiTimeKind_Latest);
+        prb_Multitime        multitime = prb_createMultitime();
         prb_PathFindSpec     spec = {project.arena, lib.downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")};
         prb_PathFindIterator iter = prb_createPathFindIter(spec);
         while (prb_pathFindIterNext(&iter) == prb_Success) {
@@ -200,8 +200,7 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
         while (prb_pathFindIterNext(&iter) == prb_Success) {
             prb_multitimeAdd(&multitime, prb_getLastModified(project.arena, iter.curPath));
         }
-        prb_assert(multitime.timestamp.valid);
-        latestHFileChange = multitime.timestamp.timestamp;
+        latestHFileChange = multitime.timeLatest;
     }
 
     StringFound* existingObjs = 0;
@@ -225,12 +224,23 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
             shput(existingObjs, (char*)outputFilepath.ptr, true);
         }
 
-        prb_FileTimestamp sourceLastMod = prb_getLastModified(project.arena, inputFilepath);
-        prb_assert(sourceLastMod.valid);
-
+        // NOTE(khvorov) Figure out if we should recompile this file
         prb_FileTimestamp outputLastMod = prb_getLastModified(project.arena, outputFilepath);
+        bool              shouldRecompile = !outputLastMod.valid;  // NOTE(khvorov) Output exists
 
-        if (!outputLastMod.valid || sourceLastMod.timestamp > outputLastMod.timestamp || latestHFileChange > outputLastMod.timestamp) {
+        // NOTE(khvorov) Output older than input
+        if (!shouldRecompile) {
+            prb_FileTimestamp sourceLastMod = prb_getLastModified(project.arena, inputFilepath);
+            prb_assert(sourceLastMod.valid);
+            shouldRecompile = sourceLastMod.timestamp > outputLastMod.timestamp;
+        }
+
+        // NOTE(khvorov) Output older than one of h files we found
+        if (!shouldRecompile) {
+            shouldRecompile = latestHFileChange > outputLastMod.timestamp;
+        }
+
+        if (shouldRecompile) {
             prb_String        cmd = constructCompileCmd(project, lib.compileFlags, inputFilepath, outputFilepath, prb_STR(""));
             prb_ProcessHandle process = prb_execCmd(project.arena, cmd, prb_ProcessFlag_DontWait, (prb_String) {});
             arrput(processes, process);
@@ -255,18 +265,21 @@ compileStaticLib(ProjectInfo project, StaticLibInfo lib) {
     if (compileStatus == prb_Success) {
         prb_String objsPathsString = prb_stringsJoin(project.arena, outputFilepaths, arrlen(outputFilepaths), prb_STR(" "));
 
-        prb_FileTimestamp sourceLastMod = {};
+        u64 sourceLastMod = 0;
         {
-            prb_Multitime multitime = prb_createMultitime(prb_MultiTimeKind_Latest);
+            prb_Multitime multitime = prb_createMultitime();
             for (i32 pathIndex = 0; pathIndex < arrlen(outputFilepaths); pathIndex++) {
-                prb_multitimeAdd(&multitime, prb_getLastModified(project.arena, outputFilepaths[pathIndex]));
+                prb_String        path = outputFilepaths[pathIndex];
+                prb_FileTimestamp lastMod = prb_getLastModified(project.arena, path);
+                prb_assert(lastMod.valid);
+                prb_multitimeAdd(&multitime, lastMod);
             }
-            prb_assert(multitime.timestamp.valid);
-            sourceLastMod = multitime.timestamp;
+            prb_assert(multitime.validAddedTimestampsCount > 0 && multitime.invalidAddedTimestampsCount == 0);
+            sourceLastMod = multitime.timeLatest;
         }
         prb_FileTimestamp outputLastMod = prb_getLastModified(project.arena, lib.libFile);
         prb_Status        libStatus = prb_Success;
-        if (!outputLastMod.valid || (sourceLastMod.timestamp > outputLastMod.timestamp)) {
+        if (!outputLastMod.valid || (sourceLastMod > outputLastMod.timestamp)) {
 #if prb_PLATFORM_WINDOWS
             prb_String libCmd = prb_fmt("lib /nologo -out:%.*s %.*s", libFile, objsPattern);
 #elif prb_PLATFORM_LINUX

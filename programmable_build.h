@@ -37,6 +37,8 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Automatic -lpthread probably
 // TODO(khvorov) Avoid accidentally recursing in printing in assert
 // TODO(khvorov) Test macros do the right thing
+// TODO(khvorov) Consistent string/str iterator/iter naming
+// TODO(khvorov) Access color escape codes as strings
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -383,14 +385,11 @@ typedef struct prb_FileTimestamp {
     uint64_t timestamp;
 } prb_FileTimestamp;
 
-typedef enum prb_MultitimeKind {
-    prb_MultiTimeKind_Earliest,
-    prb_MultiTimeKind_Latest,
-} prb_MultitimeKind;
-
 typedef struct prb_Multitime {
-    prb_FileTimestamp timestamp;
-    prb_MultitimeKind kind;
+    int32_t  validAddedTimestampsCount;
+    int32_t  invalidAddedTimestampsCount;
+    uint64_t timeLatest;
+    uint64_t timeEarliest;
 } prb_Multitime;
 
 typedef void (*prb_JobProc)(prb_Arena* arena, void* data);
@@ -450,7 +449,7 @@ prb_PUBLICDEC prb_String               prb_replaceExt(prb_Arena* arena, prb_Stri
 prb_PUBLICDEC prb_PathFindIterator     prb_createPathFindIter(prb_PathFindSpec spec);
 prb_PUBLICDEC prb_Status               prb_pathFindIterNext(prb_PathFindIterator* iter);
 prb_PUBLICDEC void                     prb_destroyPathFindIter(prb_PathFindIterator* iter);
-prb_PUBLICDEC prb_Multitime            prb_createMultitime(prb_MultitimeKind kind);
+prb_PUBLICDEC prb_Multitime            prb_createMultitime(void);
 prb_PUBLICDEC prb_FileTimestamp        prb_getLastModified(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC void                     prb_multitimeAdd(prb_Multitime* multitime, prb_FileTimestamp newTimestamp);
 prb_PUBLICDEC prb_ReadEntireFileResult prb_readEntireFile(prb_Arena* arena, prb_String path);
@@ -461,6 +460,8 @@ prb_PUBLICDEC prb_Status               prb_binaryToCArray(prb_Arena* arena, prb_
 prb_PUBLICDEC bool                 prb_streq(prb_String str1, prb_String str2);
 prb_PUBLICDEC prb_String           prb_strSliceForward(prb_String str, int32_t bytes);
 prb_PUBLICDEC const char*          prb_strGetNullTerminated(prb_Arena* arena, prb_String str);
+prb_PUBLICDEC prb_String           prb_strTrimSide(prb_String str, prb_StringDirection dir);
+prb_PUBLICDEC prb_String           prb_strTrim(prb_String str);
 prb_PUBLICDEC prb_StringFindResult prb_strFind(prb_StringFindSpec spec);
 prb_PUBLICDEC prb_StrFindIterator  prb_createStrFindIter(prb_StringFindSpec spec);
 prb_PUBLICDEC prb_Status           prb_strFindIterNext(prb_StrFindIterator* iter);
@@ -1574,13 +1575,9 @@ prb_destroyPathFindIter(prb_PathFindIterator* iter) {
 }
 
 prb_PUBLICDEF prb_Multitime
-prb_createMultitime(prb_MultitimeKind kind) {
+prb_createMultitime(void) {
     prb_Multitime result = {};
-    result.kind = kind;
-    result.timestamp = (prb_FileTimestamp) {.valid = true, .timestamp = 0};
-    if (kind == prb_MultiTimeKind_Earliest) {
-        result.timestamp.timestamp = UINT64_MAX;
-    }
+    result.timeEarliest = UINT64_MAX;
     return result;
 }
 
@@ -1623,15 +1620,12 @@ prb_getLastModified(prb_Arena* arena, prb_String path) {
 
 prb_PUBLICDEF void
 prb_multitimeAdd(prb_Multitime* multitime, prb_FileTimestamp newTimestamp) {
-    if (multitime->timestamp.valid) {
-        if (newTimestamp.valid) {
-            switch (multitime->kind) {
-                case prb_MultiTimeKind_Earliest: multitime->timestamp.timestamp = prb_min(multitime->timestamp.timestamp, newTimestamp.timestamp); break;
-                case prb_MultiTimeKind_Latest: multitime->timestamp.timestamp = prb_max(multitime->timestamp.timestamp, newTimestamp.timestamp); break;
-            }
-        } else {
-            multitime->timestamp.valid = false;
-        }
+    if (newTimestamp.valid) {
+        multitime->validAddedTimestampsCount += 1;
+        multitime->timeEarliest = prb_min(multitime->timeEarliest, newTimestamp.timestamp);
+        multitime->timeLatest = prb_max(multitime->timeLatest, newTimestamp.timestamp);
+    } else {
+        multitime->invalidAddedTimestampsCount += 1;
     }
 }
 
@@ -1739,6 +1733,48 @@ prb_strSliceForward(prb_String str, int32_t bytes) {
 prb_PUBLICDEF const char*
 prb_strGetNullTerminated(prb_Arena* arena, prb_String str) {
     const char* result = prb_fmt(arena, "%.*s", prb_LIT(str)).ptr;
+    return result;
+}
+
+prb_PUBLICDEF prb_String
+prb_strTrimSide(prb_String str, prb_StringDirection dir) {
+    prb_String result = str;
+
+    bool    found = false;
+    int32_t index = 0;
+    int32_t byteStart = 0;
+    int32_t onePastEnd = str.len;
+    int32_t delta = 1;
+    if (dir == prb_StringDirection_FromEnd) {
+        byteStart = str.len - 1;
+        onePastEnd = -1;
+        delta = -1;
+    }
+
+    for (int32_t byteIndex = byteStart; byteIndex != onePastEnd && !found; byteIndex += delta) {
+        char ch = str.ptr[byteIndex];
+        if (ch != ' ' && ch != '\n' && ch != '\r' && ch != '\t' && ch != '\v' && ch != '\f') {
+            found = true;
+            index = byteIndex;
+        }
+    }
+
+    if (found) {
+        switch (dir) {
+            case prb_StringDirection_FromStart: result = prb_strSliceForward(str, index); break;
+            case prb_StringDirection_FromEnd: result.len = index + 1; break;
+        }
+    } else {
+        result.len = 0;
+    }
+
+    return result;
+}
+
+prb_PUBLICDEF prb_String
+prb_strTrim(prb_String str) {
+    prb_String result = prb_strTrimSide(str, prb_StringDirection_FromStart);
+    result = prb_strTrimSide(result, prb_StringDirection_FromEnd);
     return result;
 }
 
