@@ -245,15 +245,11 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         latestHFileChange = multitime.timeLatest;
     }
 
-    // TODO(khvorov) Just remove everything that's not obj
-    StringFound* existingPreprocess = 0;
     StringFound* existingObjs = 0;
     {
         prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {arena, lib->objDir, prb_PathFindMode_AllEntriesInDir, .recursive = false});
         while (prb_pathFindIterNext(&iter)) {
-            if (fileIsPreprocessed(arena, iter.curPath)) {
-                shput(existingPreprocess, iter.curPath.ptr, false);
-            } else if (prb_strEndsWith(arena, iter.curPath, prb_STR(".obj"), prb_StringFindMode_Exact)) {
+            if (prb_strEndsWith(arena, iter.curPath, prb_STR(".obj"), prb_StringFindMode_Exact)) {
                 shput(existingObjs, iter.curPath.ptr, false);
             } else {
                 prb_removeFileIfExists(arena, iter.curPath);
@@ -273,9 +269,6 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         prb_String outputPreprocessFilename = prb_replaceExt(arena, inputFilename, preprocessExt);
         prb_String outputPreprocessFilepath = prb_pathJoin(arena, lib->objDir, outputPreprocessFilename);
         arrput(outputPreprocess, outputPreprocessFilepath);
-        if (shgeti(existingPreprocess, (char*)outputPreprocessFilepath.ptr) != -1) {
-            shput(existingPreprocess, (char*)outputPreprocessFilepath.ptr, true);
-        }
 
         prb_String        preprocessCmd = constructCompileCmd(arena, lib->project, lib->compileFlags, inputFilepath, outputPreprocessFilepath, prb_STR(""));
         prb_ProcessHandle proc = prb_execCmd(arena, preprocessCmd, prb_ProcessFlag_DontWait, (prb_String) {});
@@ -332,14 +325,6 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             }
         }
 
-        // NOTE(khvorov) Remove all preprocessed that don't correspond to any inputs
-        for (i32 existingPreprocessIndex = 0; existingPreprocessIndex < shlen(existingPreprocess); existingPreprocessIndex++) {
-            StringFound existingI = existingPreprocess[existingPreprocessIndex];
-            if (!existingI.value) {
-                prb_assert(prb_removeFileIfExists(arena, prb_STR(existingI.key)) == prb_Success);
-            }
-        }
-
         if (arrlen(processesCompile) == 0) {
             prb_writelnToStdout(prb_fmt(arena, "skip compile %.*s", prb_LIT(lib->name)));
         }
@@ -391,7 +376,6 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         lib->compileStatus = prb_ProcessStatus_CompletedFailed;
     }
     arrfree(inputPaths);
-    shfree(existingPreprocess);
     shfree(existingObjs);
     arrfree(outputPreprocess);
 
