@@ -1,8 +1,5 @@
 #include "../programmable_build.h"
 
-// TODO(khvorov) Compare current command with the command used last time before deciding not to recompile
-// TODO(khvorov) Use preproccessed file checksum to decide if we need to recompile
-
 typedef int32_t  i32;
 typedef uint64_t u64;
 
@@ -12,11 +9,23 @@ typedef enum Compiler {
     Compiler_Msvc,
 } Compiler;
 
+typedef struct ObjInfo {
+    prb_String compileCmd;
+    uint64_t   preprocessedHash;
+} ObjInfo;
+
+typedef struct CompileLogEntry {
+    char*   key;
+    ObjInfo value;
+} CompileLogEntry;
+
 typedef struct ProjectInfo {
-    prb_String rootDir;
-    prb_String compileOutDir;
-    Compiler   compiler;
-    bool       release;
+    CompileLogEntry* prevCompileLog;
+    CompileLogEntry* thisCompileLog;
+    prb_String       rootDir;
+    prb_String       compileOutDir;
+    Compiler         compiler;
+    bool             release;
 } ProjectInfo;
 
 typedef struct StaticLibInfo {
@@ -196,9 +205,6 @@ constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_String flags, pr
     }
 
     prb_String cmdStr = prb_endString(&cmd);
-    if (!outIsPreprocess) {
-        prb_writelnToStdout(cmdStr);
-    }
     return cmdStr;
 }
 
@@ -209,7 +215,7 @@ typedef struct StringFound {
 
 static void
 compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
-    prb_TimeStart compileStart = prb_timeStart();
+    prb_TimeStart  compileStart = prb_timeStart();
     StaticLibInfo* lib = (StaticLibInfo*)staticLibInfo;
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_assert(lib->compileStatus == prb_ProcessStatus_NotLaunched);
@@ -227,23 +233,6 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         prb_destroyPathFindIter(&iter);
     }
     prb_assert(arrlen(inputPaths) > 0);
-
-    // NOTE(khvorov) Recompile everything whenever any .h file changes
-    uint64_t latestHFileChange = 0;
-    {
-        prb_Multitime        multitime = prb_createMultitime();
-        prb_PathFindSpec     spec = {arena, lib->downloadDir, prb_PathFindMode_Glob, .recursive = true, .glob.pattern = prb_STR("*.h")};
-        prb_PathFindIterator iter = prb_createPathFindIter(spec);
-        while (prb_pathFindIterNext(&iter) == prb_Success) {
-            prb_multitimeAdd(&multitime, prb_getLastModified(arena, iter.curPath));
-        }
-        spec.glob.pattern = prb_STR("*.hh");
-        iter = prb_createPathFindIter(spec);
-        while (prb_pathFindIterNext(&iter) == prb_Success) {
-            prb_multitimeAdd(&multitime, prb_getLastModified(arena, iter.curPath));
-        }
-        latestHFileChange = multitime.timeLatest;
-    }
 
     StringFound* existingObjs = 0;
     {
@@ -276,15 +265,13 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         arrput(processesPreprocess, proc);
     }
 
+    // NOTE(khvorov) Compile
     prb_Status preprocessStatus = prb_waitForProcesses(processesPreprocess, arrlen(processesPreprocess));
     if (preprocessStatus == prb_Success) {
-        // NOTE(khvorov) Compile
         prb_String*        outputObjs = 0;
         prb_ProcessHandle* processesCompile = 0;
         for (i32 inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
             prb_String inputNotPreprocessedFilepath = inputPaths[inputPathIndex];
-            // NOTE(khvorov) I found that giving the compiler preprocessed output generates less useful warnings
-            // prb_String inputPreprocessedFilepath = outputPreprocess[inputPathIndex];
             prb_String inputNotPreprocessedFilename = prb_getLastEntryInPath(inputNotPreprocessedFilepath);
 
             prb_String outputObjFilename = prb_replaceExt(arena, inputNotPreprocessedFilename, prb_STR("obj"));
@@ -294,26 +281,37 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
                 shput(existingObjs, (char*)outputObjFilepath.ptr, true);
             }
 
+            // NOTE(khvorov) Using not preprocessed input.
+            // I found that giving the compiler preprocessed file generates less useful warnings.
+            prb_String compileCmd = constructCompileCmd(arena, lib->project, lib->compileFlags, inputNotPreprocessedFilepath, outputObjFilepath, prb_STR(""));
+
             // NOTE(khvorov) Figure out if we should recompile this file
-            prb_FileTimestamp outputLastMod = prb_getLastModified(arena, outputObjFilepath);
-            bool              shouldRecompile = !outputLastMod.valid;  // NOTE(khvorov) Output exists
-
-            // NOTE(khvorov) Output older than input
-            if (!shouldRecompile) {
-                prb_FileTimestamp sourceLastMod = prb_getLastModified(arena, inputNotPreprocessedFilepath);
-                prb_assert(sourceLastMod.valid);
-                shouldRecompile = sourceLastMod.timestamp > outputLastMod.timestamp;
-            }
-
-            // NOTE(khvorov) Output older than one of h files we found
-            if (!shouldRecompile) {
-                shouldRecompile = latestHFileChange > outputLastMod.timestamp;
+            bool     shouldRecompile = true;
+            uint64_t preprocessedHash = prb_getFileHash(arena, outputPreprocess[inputPathIndex]);
+            if (lib->project->prevCompileLog != 0 && prb_isFile(arena, outputObjFilepath)) {
+                int32_t logEntryIndex = shgeti(lib->project->prevCompileLog, outputObjFilepath.ptr);
+                if (logEntryIndex != -1) {
+                    ObjInfo info = lib->project->prevCompileLog[logEntryIndex].value;
+                    if (preprocessedHash == info.preprocessedHash) {
+                        if (prb_streq(compileCmd, info.compileCmd)) {
+                            shouldRecompile = false;
+                        }
+                    }
+                }
             }
 
             if (shouldRecompile) {
-                prb_String        cmd = constructCompileCmd(arena, lib->project, lib->compileFlags, inputNotPreprocessedFilepath, outputObjFilepath, prb_STR(""));
-                prb_ProcessHandle process = prb_execCmd(arena, cmd, prb_ProcessFlag_DontWait, (prb_String) {});
+                prb_writelnToStdout(compileCmd);
+                prb_ProcessHandle process = prb_execCmd(arena, compileCmd, prb_ProcessFlag_DontWait, (prb_String) {});
                 arrput(processesCompile, process);
+            }
+
+            // NOTE(khvorov) Update compile log
+            {
+                prb_String outputObjFilepathCopy = prb_strMallocCopy(outputObjFilepath);
+                prb_String compileCmdCopy = prb_strMallocCopy(compileCmd);
+                ObjInfo    thisObjInfo = {compileCmdCopy, preprocessedHash};
+                shput(lib->project->thisCompileLog, outputObjFilepathCopy.ptr, thisObjInfo);
             }
         }
 
@@ -379,7 +377,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
     shfree(existingObjs);
     arrfree(outputPreprocess);
 
-    prb_writelnToStdout(prb_fmt(arena, "compile %.*s: %.2fms", prb_LIT(lib->name), prb_getMsFrom(compileStart)));
+    prb_writelnToStdout(prb_fmt(arena, "%.*s compile step: %.2fms", prb_LIT(lib->name), prb_getMsFrom(compileStart)));
     prb_endTempMemory(temp);
 }
 
@@ -407,7 +405,7 @@ compileAndRunBidiGenTab(prb_Arena* arena, ProjectInfo* project, prb_String src, 
     prb_endTempMemory(temp);
 }
 
-prb_PUBLICDEF void
+static void
 textfileReplace(prb_Arena* arena, prb_String path, prb_String pattern, prb_String replacement) {
     prb_ReadEntireFileResult content = prb_readEntireFile(arena, path);
     prb_assert(content.success);
@@ -419,6 +417,127 @@ textfileReplace(prb_Arena* arena, prb_String path, prb_String pattern, prb_Strin
     };
     prb_String newContent = prb_strReplace(arena, spec, replacement);
     prb_assert(prb_writeEntireFile(arena, path, newContent.ptr, newContent.len) == prb_Success);
+}
+
+typedef struct GetStrInQuotesResult {
+    bool       success;
+    prb_String inquotes;
+    prb_String past;
+} GetStrInQuotesResult;
+
+static GetStrInQuotesResult
+getStrInQuotes(prb_String str) {
+    GetStrInQuotesResult result = {};
+    prb_StringFindSpec   quoteFindSpec = {.str = str, .pattern = prb_STR("\""), .mode = prb_StringFindMode_AnyChar};
+    prb_StringFindResult quoteFindResult = prb_strFind(quoteFindSpec);
+    if (quoteFindResult.found) {
+        quoteFindSpec.str = prb_strSliceForward(str, quoteFindResult.matchByteIndex + 1);
+        quoteFindResult = prb_strFind(quoteFindSpec);
+        if (quoteFindResult.found) {
+            result.success = true;
+            result.inquotes = (prb_String) {quoteFindSpec.str.ptr, quoteFindResult.matchByteIndex};
+            result.past = prb_strSliceForward(quoteFindSpec.str, quoteFindResult.matchByteIndex + 1);
+        }
+    }
+    return result;
+}
+
+typedef struct String3 {
+    bool       success;
+    prb_String strings[3];
+} String3;
+
+static String3
+get3StrInQuotes(prb_String str) {
+    String3 result = {.success = true};
+    for (i32 index = 0; index < prb_arrayLength(result.strings) && result.success; index++) {
+        GetStrInQuotesResult get1 = getStrInQuotes(str);
+        if (get1.success) {
+            result.strings[index] = get1.inquotes;
+            str = get1.past;
+        } else {
+            result.success = false;
+        }
+    }
+    return result;
+}
+
+typedef enum LogColumn {
+    LogColumn_ObjPath,
+    LogColumn_CompileCmd,
+    LogColumn_PreprocessedHash,
+    LogColumn_Count,
+} LogColumn;
+
+typedef struct ParseLogResult {
+    CompileLogEntry* log;
+    bool             success;
+} ParseLogResult;
+
+static ParseLogResult
+parseLog(prb_Arena* arena, prb_String str, prb_String* columnNames) {
+    prb_unused(str);
+    ParseLogResult   result = {};
+    prb_LineIterator lineIter = prb_createLineIter(str);
+    if (prb_lineIterNext(&lineIter) == prb_Success) {
+        String3 headers = get3StrInQuotes(lineIter.curLine);
+        if (headers.success) {
+            bool expectedHeaders = prb_streq(headers.strings[LogColumn_ObjPath], columnNames[LogColumn_ObjPath])
+                && prb_streq(headers.strings[LogColumn_CompileCmd], columnNames[LogColumn_CompileCmd])
+                && prb_streq(headers.strings[LogColumn_PreprocessedHash], columnNames[LogColumn_PreprocessedHash]);
+            if (expectedHeaders) {
+                result.success = true;
+                while (prb_lineIterNext(&lineIter) && result.success) {
+                    String3 row = get3StrInQuotes(lineIter.curLine);
+                    if (row.success) {
+                        prb_ParsedNumber hashResult = prb_parseNumber(arena, row.strings[LogColumn_PreprocessedHash]);
+                        if (hashResult.kind == prb_ParsedNumberKind_U64) {
+                            ObjInfo info = {row.strings[LogColumn_CompileCmd], hashResult.parsedU64};
+                            shput(result.log, prb_strGetNullTerminated(arena, row.strings[LogColumn_ObjPath]), info);
+                        }
+                    } else {
+                        result.success = false;
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
+
+static void
+addLogRow(prb_GrowingString* gstr, prb_String* strings) {
+    for (i32 colIndex = 0; colIndex < LogColumn_Count; colIndex++) {
+        prb_addStringSegment(gstr, "\"%.*s\"", prb_LIT(strings[colIndex]));
+        if (colIndex == LogColumn_Count - 1) {
+            prb_addStringSegment(gstr, "\n");
+        } else {
+            prb_addStringSegment(gstr, ",");
+        }
+    }
+}
+
+static void
+writeLog(prb_Arena* arena, CompileLogEntry* log, prb_String path, prb_String* columnNames) {
+    prb_TempMemory    temp = prb_beginTempMemory(arena);
+    prb_Arena         numberFmtArena = prb_createArenaFromArena(arena, 100);
+    prb_GrowingString gstr = prb_beginString(arena);
+    addLogRow(&gstr, columnNames);
+    for (i32 entryIndex = 0; entryIndex < shlen(log); entryIndex++) {
+        CompileLogEntry entry = log[entryIndex];
+        prb_TempMemory  tempNumber = prb_beginTempMemory(&numberFmtArena);
+
+        prb_String strings[] = {
+            [LogColumn_ObjPath] = prb_STR(entry.key),
+            [LogColumn_CompileCmd] = entry.value.compileCmd,
+            [LogColumn_PreprocessedHash] = prb_fmt(&numberFmtArena, "0x%lX", entry.value.preprocessedHash),
+        };
+        addLogRow(&gstr, strings);
+        prb_endTempMemory(tempNumber);
+    }
+    prb_String str = prb_endString(&gstr);
+    prb_assert(prb_writeEntireFile(arena, path, str.ptr, str.len) == prb_Success);
+    prb_endTempMemory(temp);
 }
 
 int
@@ -439,6 +558,25 @@ main() {
     project->release = prb_streq(buildTypeStr, prb_STR("release"));
     project->compileOutDir = prb_pathJoin(arena, project->rootDir, prb_fmt(arena, "build-%.*s-%.*s", prb_LIT(compilerStr), prb_LIT(buildTypeStr)));
     prb_assert(prb_createDirIfNotExists(arena, project->compileOutDir) == prb_Success);
+
+    // NOTE(khvorov) Log file from previous compilation
+
+    prb_String logColumnNames[] = {
+        [LogColumn_ObjPath] = prb_STR("objPath"),
+        [LogColumn_CompileCmd] = prb_STR("compileCmd"),
+        [LogColumn_PreprocessedHash] = prb_STR("preprocessedHash"),
+    };
+    prb_String buildLogPath = prb_pathJoin(arena, project->compileOutDir, prb_STR("log.csv"));
+    {
+        prb_ReadEntireFileResult prevLogRead = prb_readEntireFile(arena, buildLogPath);
+        if (prevLogRead.success) {
+            prb_String     prevLog = (prb_String) {(const char*)prevLogRead.content.data, prevLogRead.content.len};
+            ParseLogResult prevLogParsed = parseLog(arena, prevLog, logColumnNames);
+            if (prevLogParsed.success) {
+                project->prevCompileLog = prevLogParsed.log;
+            }
+        }
+    }
 
 #if prb_PLATFORM_WINDOWS
     prb_assert(prb_streq(compilerStr, prb_STR("msvc")) || prb_streq(compilerStr, prb_STR("clang")));
@@ -909,6 +1047,8 @@ main() {
     // SECTION Compile
     //
 
+    prb_TimeStart compileStart = prb_timeStart();
+
     // NOTE(khvorov) Force clean
     // prb_assert(prb_clearDirectory(arena, fribidi.objDir) == prb_Success);
     // prb_assert(prb_clearDirectory(arena, icu.objDir) == prb_Success);
@@ -922,7 +1062,16 @@ main() {
     arrput(compileJobs, prb_createJob(compileStaticLib, &freetype, arena, 50 * prb_MEGABYTE));
     arrput(compileJobs, prb_createJob(compileStaticLib, &harfbuzz, arena, 50 * prb_MEGABYTE));
     arrput(compileJobs, prb_createJob(compileStaticLib, &sdl, arena, 50 * prb_MEGABYTE));
-    prb_execJobs(compileJobs, arrlen(compileJobs));
+    {
+        prb_ThreadMode mode = prb_ThreadMode_Multi;
+        // NOTE(khvorov) Buggy debuggers can't always handle threads
+        if (prb_debuggerPresent(arena)) {
+            mode = prb_ThreadMode_Single;
+        }
+        prb_execJobs(compileJobs, arrlen(compileJobs), mode);
+    }
+
+    prb_writelnToStdout(prb_fmt(arena, "total deps compile: %.2fms", prb_getMsFrom(compileStart)));
 
     //
     // SECTION Main program
@@ -949,10 +1098,10 @@ main() {
     prb_String mainCmdPreprocess = constructCompileCmd(arena, project, mainFlagsStr, mainNotPreprocessedPath, mainPreprocessedPath, prb_STR(""));
     prb_writelnToStdout(mainCmdPreprocess);
 
-    prb_ProcessHandle mainHandlePre = prb_execCmd(arena, mainCmdPreprocess, 0, (prb_String) {});
-    prb_assert(mainHandlePre.status == prb_ProcessStatus_CompletedSuccess);
+    prb_ProcessHandle mainHandlePre = prb_execCmd(arena, mainCmdPreprocess, prb_ProcessFlag_DontWait, (prb_String) {});
 
-    prb_String        mainCmdObj = constructCompileCmd(arena, project, mainFlagsStr, mainNotPreprocessedPath, mainObjPath, prb_STR(""));
+    prb_String mainCmdObj = constructCompileCmd(arena, project, mainFlagsStr, mainNotPreprocessedPath, mainObjPath, prb_STR(""));
+    prb_writelnToStdout(mainCmdObj);
     prb_ProcessHandle mainHandleObj = prb_execCmd(arena, mainCmdObj, 0, (prb_String) {});
     prb_assert(mainHandleObj.status == prb_ProcessStatus_CompletedSuccess);
 
@@ -967,14 +1116,13 @@ main() {
     prb_String mainLinkFlags = prb_STR("-lX11 -lm -lstdc++ -ldl -lfontconfig");
 #endif
 
-    prb_String        mainCmdExe = constructCompileCmd(arena, project, mainFlagsStr, mainObjsStr, mainOutPath, mainLinkFlags);
+    prb_String mainCmdExe = constructCompileCmd(arena, project, mainFlagsStr, mainObjsStr, mainOutPath, mainLinkFlags);
+    prb_writelnToStdout(mainCmdExe);
     prb_ProcessHandle mainHandleExe = prb_execCmd(arena, mainCmdExe, 0, (prb_String) {});
     prb_assert(mainHandleExe.status == prb_ProcessStatus_CompletedSuccess);
+    prb_assert(prb_waitForProcesses(&mainHandlePre, 1) == prb_Success);
 
-    {
-        prb_String msg = prb_fmt(arena, "total: %.2fms", prb_getMsFrom(scriptStartTime));
-        prb_writelnToStdout(msg);
-    }
-
+    writeLog(arena, project->thisCompileLog, buildLogPath, logColumnNames);
+    prb_writelnToStdout(prb_fmt(arena, "total: %.2fms", prb_getMsFrom(scriptStartTime)));
     return 0;
 }
