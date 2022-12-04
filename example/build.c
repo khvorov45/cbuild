@@ -1071,6 +1071,12 @@ main() {
         prb_execJobs(compileJobs, arrlen(compileJobs), mode);
     }
 
+    prb_assert(fribidi.compileStatus == prb_ProcessStatus_CompletedSuccess);
+    prb_assert(icu.compileStatus == prb_ProcessStatus_CompletedSuccess);
+    prb_assert(freetype.compileStatus == prb_ProcessStatus_CompletedSuccess);
+    prb_assert(harfbuzz.compileStatus == prb_ProcessStatus_CompletedSuccess);
+    prb_assert(sdl.compileStatus == prb_ProcessStatus_CompletedSuccess);
+
     prb_writelnToStdout(prb_fmt(arena, "total deps compile: %.2fms", prb_getMsFrom(compileStart)));
 
     //
