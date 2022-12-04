@@ -1071,7 +1071,7 @@ main() {
         } else {
             prb_writelnToStdout(prb_STR("multi-threaded compile"));
         }
-        prb_execJobs(compileJobs, arrlen(compileJobs), mode);
+        prb_assert(prb_execJobs(compileJobs, arrlen(compileJobs), mode) == prb_Success);
     }
 
     prb_assert(fribidi.compileStatus == prb_ProcessStatus_CompletedSuccess);
