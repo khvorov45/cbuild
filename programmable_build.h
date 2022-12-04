@@ -2724,8 +2724,7 @@ prb_getMsFrom(prb_TimeStart timeStart) {
 static void*
 prb_linux_pthreadProc(void* data) {
     prb_Job* job = (prb_Job*)data;
-    prb_assert(job->status == prb_ProcessStatus_NotLaunched);
-    job->status = prb_ProcessStatus_Launched;
+    prb_assert(job->status == prb_ProcessStatus_Launched);
     job->proc(&job->arena, job->data);
     return 0;
 }
@@ -2756,17 +2755,17 @@ prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
             for (int32_t jobIndex = 0; jobIndex < jobsCount && result == prb_Success; jobIndex++) {
                 prb_Job* job = jobs + jobIndex;
                 if (job->status == prb_ProcessStatus_NotLaunched) {
+                    job->status = prb_ProcessStatus_Launched;
                     prb_linux_pthreadProc(job);
                 }
             }
-
         } break;
 
         case prb_ThreadMode_Multi: {
             for (int32_t jobIndex = 0; jobIndex < jobsCount && result == prb_Success; jobIndex++) {
                 prb_Job* job = jobs + jobIndex;
                 if (job->status == prb_ProcessStatus_NotLaunched) {
-                    prb_writelnToStdout(prb_STR("starting job"));
+                    job->status = prb_ProcessStatus_Launched;
                     if (pthread_create(&job->threadid, 0, prb_linux_pthreadProc, job) != 0) {
                         result = prb_Failure;
                     }
@@ -2777,15 +2776,12 @@ prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
                 prb_Job* job = jobs + jobIndex;
                 if (job->status == prb_ProcessStatus_Launched) {
                     if (pthread_join(job->threadid, 0) == 0) {
-                        prb_writelnToStdout(prb_STR("job joined"));
                         job->status = prb_ProcessStatus_CompletedSuccess;
                     } else {
-                        prb_writelnToStdout(prb_STR("job failed to join"));
                         result = prb_Failure;
                     }
                 }
             }
-
         } break;
     }
 
