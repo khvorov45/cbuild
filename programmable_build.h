@@ -163,9 +163,16 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
     #define prb_ATTRIBUTE_FORMAT(fmt, va)
 #endif
 
+#define prb_STRINGIZE(x) prb_STRINGIZE2(x)
+#define prb_STRINGIZE2(x) #x
+#define prb_LINE_STRING prb_STRINGIZE(__LINE__)
+
 #ifndef prb_assertAction
 #define prb_assertAction() do {\
-    prb_writelnToStdout(prb_STR("assertion failure"));\
+    prb_writeToStdout(prb_STR("assertion failure at "));\
+    prb_writeToStdout(prb_STR(__FILE__));\
+    prb_writeToStdout(prb_STR(":"));\
+    prb_writelnToStdout(prb_STR(prb_LINE_STRING));\
     prb_debugbreak();\
     prb_terminate(1);\
 } while (0)
