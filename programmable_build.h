@@ -2766,11 +2766,10 @@ prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
             for (int32_t jobIndex = 0; jobIndex < jobsCount && result == prb_Success; jobIndex++) {
                 prb_Job* job = jobs + jobIndex;
                 if (job->status == prb_ProcessStatus_NotLaunched) {
+                    prb_writelnToStdout(prb_STR("starting job"));
                     if (pthread_create(&job->threadid, 0, prb_linux_pthreadProc, job) != 0) {
                         result = prb_Failure;
                     }
-                } else {
-                    prb_assert(!"temp assert");
                 }
             }
 
@@ -2778,8 +2777,10 @@ prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
                 prb_Job* job = jobs + jobIndex;
                 if (job->status == prb_ProcessStatus_Launched) {
                     if (pthread_join(job->threadid, 0) == 0) {
+                        prb_writelnToStdout(prb_STR("job joined"));
                         job->status = prb_ProcessStatus_CompletedSuccess;
                     } else {
+                        prb_writelnToStdout(prb_STR("job failed to join"));
                         result = prb_Failure;
                     }
                 }
