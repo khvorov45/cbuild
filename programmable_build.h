@@ -2769,6 +2769,8 @@ prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
                     if (pthread_create(&job->threadid, 0, prb_linux_pthreadProc, job) != 0) {
                         result = prb_Failure;
                     }
+                } else {
+                    prb_assert(!"temp assert");
                 }
             }
 
