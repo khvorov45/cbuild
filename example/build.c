@@ -1066,7 +1066,10 @@ main() {
         prb_ThreadMode mode = prb_ThreadMode_Multi;
         // NOTE(khvorov) Buggy debuggers can't always handle threads
         if (prb_debuggerPresent(arena)) {
+            prb_writelnToStdout(prb_STR("single-threaded compile"));
             mode = prb_ThreadMode_Single;
+        } else {
+            prb_writelnToStdout(prb_STR("multi-threaded compile"));
         }
         prb_execJobs(compileJobs, arrlen(compileJobs), mode);
     }
