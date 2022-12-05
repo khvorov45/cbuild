@@ -455,6 +455,7 @@ prb_PUBLICDEC void           prb_endTempMemory(prb_TempMemory temp);
 
 // SECTION Filesystem
 prb_PUBLICDEC bool                     prb_pathExists(prb_Arena* arena, prb_String path);
+prb_PUBLICDEC prb_String               prb_getAbsolutePath(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC bool                     prb_isDirectory(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC bool                     prb_isFile(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC bool                     prb_directoryIsEmpty(prb_Arena* arena, prb_String path);
@@ -474,8 +475,8 @@ prb_PUBLICDEC prb_String               prb_replaceExt(prb_Arena* arena, prb_Stri
 prb_PUBLICDEC prb_PathFindIterator     prb_createPathFindIter(prb_PathFindSpec spec);
 prb_PUBLICDEC prb_Status               prb_pathFindIterNext(prb_PathFindIterator* iter);
 prb_PUBLICDEC void                     prb_destroyPathFindIter(prb_PathFindIterator* iter);
-prb_PUBLICDEC prb_Multitime            prb_createMultitime(void);
 prb_PUBLICDEC prb_FileTimestamp        prb_getLastModified(prb_Arena* arena, prb_String path);
+prb_PUBLICDEC prb_Multitime            prb_createMultitime(void);
 prb_PUBLICDEC void                     prb_multitimeAdd(prb_Multitime* multitime, prb_FileTimestamp newTimestamp);
 prb_PUBLICDEC prb_ReadEntireFileResult prb_readEntireFile(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC prb_Status               prb_writeEntireFile(prb_Arena* arena, prb_String path, const void* content, int32_t contentLen);
@@ -485,15 +486,17 @@ prb_PUBLICDEC uint64_t                 prb_getFileHash(prb_Arena* arena, prb_Str
 // SECTION Strings
 prb_PUBLICDEC bool                 prb_streq(prb_String str1, prb_String str2);
 prb_PUBLICDEC prb_String           prb_strSliceForward(prb_String str, int32_t bytes);
+prb_PUBLICDEC prb_String           prb_strSliceBetween(prb_String str, int32_t start, int32_t onePastEnd);
 prb_PUBLICDEC const char*          prb_strGetNullTerminated(prb_Arena* arena, prb_String str);
 prb_PUBLICDEC prb_String           prb_strMallocCopy(prb_String str);
+prb_PUBLICDEC prb_String           prb_strFromBytes(prb_Bytes bytes);
 prb_PUBLICDEC prb_String           prb_strTrimSide(prb_String str, prb_StringDirection dir);
 prb_PUBLICDEC prb_String           prb_strTrim(prb_String str);
 prb_PUBLICDEC prb_StringFindResult prb_strFind(prb_StringFindSpec spec);
 prb_PUBLICDEC prb_StrFindIterator  prb_createStrFindIter(prb_StringFindSpec spec);
 prb_PUBLICDEC prb_Status           prb_strFindIterNext(prb_StrFindIterator* iter);
-prb_PUBLICDEC bool                 prb_strStartsWith(prb_Arena* arena, prb_String str, prb_String pattern, prb_StringFindMode mode);
-prb_PUBLICDEC bool                 prb_strEndsWith(prb_Arena* arena, prb_String str, prb_String pattern, prb_StringFindMode mode);
+prb_PUBLICDEC bool                 prb_strStartsWith(prb_String str, prb_String pattern);
+prb_PUBLICDEC bool                 prb_strEndsWith(prb_String str, prb_String pattern);
 prb_PUBLICDEC prb_String           prb_strReplace(prb_Arena* arena, prb_StringFindSpec spec, prb_String replacement);
 prb_PUBLICDEC prb_String           prb_stringsJoin(prb_Arena* arena, prb_String* strings, int32_t stringsCount, prb_String sep);
 prb_PUBLICDEC prb_GrowingString    prb_beginString(prb_Arena* arena);
@@ -511,7 +514,7 @@ prb_PUBLICDEC prb_LineIterator     prb_createLineIter(prb_String str);
 prb_PUBLICDEC prb_Status           prb_lineIterNext(prb_LineIterator* iter);
 prb_PUBLICDEC prb_WordIterator     prb_createWordIter(prb_String str);
 prb_PUBLICDEC prb_Status           prb_wordIterNext(prb_WordIterator* iter);
-prb_PUBLICDEC prb_ParsedNumber     prb_parseNumber(prb_Arena* arena, prb_String str);
+prb_PUBLICDEC prb_ParsedNumber     prb_parseNumber(prb_String str);
 
 // SECTION Processes
 prb_PUBLICDEC void              prb_terminate(int32_t code);
@@ -1126,6 +1129,31 @@ prb_pathExists(prb_Arena* arena, prb_String path) {
     return result;
 }
 
+prb_PUBLICDEF prb_String               
+prb_getAbsolutePath(prb_Arena* arena, prb_String path) {
+    prb_String result = {};
+    prb_String pathNull = prb_strMallocCopy(path);
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    prb_assert(prb_arenaFreeSize(arena) >= PATH_MAX);
+    char* str = (char*)prb_arenaFreePtr(arena);
+    realpath(pathNull.ptr, str);
+    result = prb_STR(str);
+    prb_arenaChangeUsed(arena, result.len + 1); // NOTE(khvorov) Null terminator
+
+#else
+#error unimplemented
+#endif
+
+    prb_free((void*)pathNull.ptr);
+    return result;
+}
+
 prb_PUBLICDEF bool
 prb_isDirectory(prb_Arena* arena, prb_String path) {
     bool result = false;
@@ -1603,13 +1631,6 @@ prb_destroyPathFindIter(prb_PathFindIterator* iter) {
     *iter = (prb_PathFindIterator) {};
 }
 
-prb_PUBLICDEF prb_Multitime
-prb_createMultitime(void) {
-    prb_Multitime result = {};
-    result.timeEarliest = UINT64_MAX;
-    return result;
-}
-
 prb_PUBLICDEF prb_FileTimestamp
 prb_getLastModified(prb_Arena* arena, prb_String path) {
     prb_FileTimestamp result = {};
@@ -1644,6 +1665,13 @@ prb_getLastModified(prb_Arena* arena, prb_String path) {
 #error unimplemented
 #endif
 
+    return result;
+}
+
+prb_PUBLICDEF prb_Multitime
+prb_createMultitime(void) {
+    prb_Multitime result = {};
+    result.timeEarliest = UINT64_MAX;
     return result;
 }
 
@@ -1770,6 +1798,13 @@ prb_strSliceForward(prb_String str, int32_t bytes) {
     return result;
 }
 
+prb_PUBLICDEF prb_String
+prb_strSliceBetween(prb_String str, int32_t start, int32_t onePastEnd) {
+    prb_assert(onePastEnd > start);
+    prb_String result = {str.ptr + start, onePastEnd - start};
+    return result;
+}
+
 prb_PUBLICDEF const char*
 prb_strGetNullTerminated(prb_Arena* arena, prb_String str) {
     const char* result = prb_fmt(arena, "%.*s", prb_LIT(str)).ptr;
@@ -1784,6 +1819,12 @@ prb_strMallocCopy(prb_String str) {
     prb_memcpy((char*)copy.ptr, str.ptr, str.len);
     ((char*)copy.ptr)[copy.len] = '\0';
     return copy;
+}
+
+prb_PUBLICDEF prb_String
+prb_strFromBytes(prb_Bytes bytes) {
+    prb_String result = {(const char*)bytes.data, bytes.len};
+    return result;
 }
 
 prb_PUBLICDEF prb_String
@@ -2007,27 +2048,20 @@ prb_strFindIterNext(prb_StrFindIterator* iter) {
 }
 
 prb_PUBLICDEF bool
-prb_strStartsWith(prb_Arena* arena, prb_String str, prb_String pattern, prb_StringFindMode mode) {
-    str.len = prb_min(str.len, pattern.len);
-    prb_StringFindSpec spec = {};
-    spec.str = str;
-    spec.pattern = pattern;
-    spec.mode = mode;
-    spec.direction = prb_StringDirection_FromStart;
-    if (mode == prb_StringFindMode_RegexPosix) {
-        spec.regexPosix.arena = arena;
+prb_strStartsWith(prb_String str, prb_String pattern) {
+    bool result = false;
+    if (pattern.len <= str.len) {
+        result = prb_memeq(str.ptr, pattern.ptr, pattern.len);
     }
-    prb_StringFindResult find = prb_strFind(spec);
-    bool                 result = find.found && find.matchByteIndex == 0;
     return result;
 }
 
 prb_PUBLICDEF bool
-prb_strEndsWith(prb_Arena* arena, prb_String str, prb_String pattern, prb_StringFindMode mode) {
+prb_strEndsWith(prb_String str, prb_String pattern) {
+    bool result = false;
     if (str.len > pattern.len) {
-        str = prb_strSliceForward(str, str.len - pattern.len);
+        result = prb_memeq(str.ptr + str.len - pattern.len, pattern.ptr, pattern.len);
     }
-    bool result = prb_strStartsWith(arena, str, pattern, mode);
     return result;
 }
 
@@ -2347,12 +2381,12 @@ prb_wordIterNext(prb_WordIterator* iter) {
 }
 
 prb_PUBLICDEF prb_ParsedNumber
-prb_parseNumber(prb_Arena* arena, prb_String str) {
+prb_parseNumber(prb_String str) {
     prb_unused(str);
     prb_ParsedNumber number = {};
     if (str.len > 0) {
         // NOTE(khvorov) Hex 0xabc123
-        if (prb_strStartsWith(arena, str, prb_STR("0x"), prb_StringFindMode_Exact)) {
+        if (prb_strStartsWith(str, prb_STR("0x"))) {
             prb_String digits = prb_strSliceForward(str, 2);
             if (digits.len > 0) {
                 number.kind = prb_ParsedNumberKind_U64;
@@ -2661,7 +2695,7 @@ prb_debuggerPresent(prb_Arena* arena) {
     prb_LineIterator iter = prb_createLineIter(str);
     while (prb_lineIterNext(&iter)) {
         prb_String search = prb_STR("TracerPid:");
-        if (prb_strStartsWith(arena, iter.curLine, search, prb_StringFindMode_Exact)) {
+        if (prb_strStartsWith(iter.curLine, search)) {
             prb_String number = prb_strTrim(prb_strSliceForward(iter.curLine, search.len));
             result = number.len > 1 || number.ptr[0] != '0';
             break;

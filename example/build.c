@@ -122,8 +122,8 @@ gitReset(prb_Arena* arena, StaticLibInfo lib, prb_String commit) {
 }
 
 static bool
-fileIsPreprocessed(prb_Arena* arena, prb_String name) {
-    bool result = prb_strEndsWith(arena, name, prb_STR(".i"), prb_StringFindMode_Exact) || prb_strEndsWith(arena, name, prb_STR(".ii"), prb_StringFindMode_Exact);
+fileIsPreprocessed(prb_String name) {
+    bool result = prb_strEndsWith(name, prb_STR(".i")) || prb_strEndsWith(name, prb_STR(".ii"));
     return result;
 }
 
@@ -151,8 +151,8 @@ constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_String flags, pr
         }
     }
 
-    bool inIsPreprocessed = fileIsPreprocessed(arena, inputPath);
-    bool outIsPreprocess = fileIsPreprocessed(arena, outputPath);
+    bool inIsPreprocessed = fileIsPreprocessed(inputPath);
+    bool outIsPreprocess = fileIsPreprocessed(outputPath);
     if (outIsPreprocess) {
         prb_assert(!inIsPreprocessed);
         switch (project->compiler) {
@@ -171,7 +171,7 @@ constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_String flags, pr
     }
 
     prb_addStringSegment(&cmd, " %.*s", prb_LIT(flags));
-    bool isObj = prb_strEndsWith(arena, outputPath, prb_STR("obj"), prb_StringFindMode_Exact);
+    bool isObj = prb_strEndsWith(outputPath, prb_STR("obj"));
     if (isObj) {
         prb_addStringSegment(&cmd, " -c");
     }
@@ -238,7 +238,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
     {
         prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {arena, lib->objDir, prb_PathFindMode_AllEntriesInDir, .recursive = false});
         while (prb_pathFindIterNext(&iter)) {
-            if (prb_strEndsWith(arena, iter.curPath, prb_STR(".obj"), prb_StringFindMode_Exact)) {
+            if (prb_strEndsWith(iter.curPath, prb_STR(".obj"))) {
                 shput(existingObjs, iter.curPath.ptr, false);
             } else {
                 prb_removeFileIfExists(arena, iter.curPath);
@@ -490,7 +490,7 @@ parseLog(prb_Arena* arena, prb_String str, prb_String* columnNames) {
                 while (prb_lineIterNext(&lineIter) && result.success) {
                     String3 row = get3StrInQuotes(lineIter.curLine);
                     if (row.success) {
-                        prb_ParsedNumber hashResult = prb_parseNumber(arena, row.strings[LogColumn_PreprocessedHash]);
+                        prb_ParsedNumber hashResult = prb_parseNumber(row.strings[LogColumn_PreprocessedHash]);
                         if (hashResult.kind == prb_ParsedNumberKind_U64) {
                             ObjInfo info = {row.strings[LogColumn_CompileCmd], hashResult.parsedU64};
                             shput(result.log, prb_strGetNullTerminated(arena, row.strings[LogColumn_ObjPath]), info);

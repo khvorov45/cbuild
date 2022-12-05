@@ -1,7 +1,5 @@
 #include "../programmable_build.h"
 
-// TODO(khvorov) Check test function presence/order
-
 #define function static
 
 typedef uint8_t  u8;
@@ -9,6 +7,50 @@ typedef uint64_t u64;
 typedef int32_t  i32;
 typedef uint32_t u32;
 typedef size_t   usize;
+
+function prb_String*
+setdiff(prb_String* arr1, prb_String* arr2) {
+    prb_String* result = 0;
+    for (i32 arr1Index = 0; arr1Index < arrlen(arr1); arr1Index++) {
+        prb_String str1 = arr1[arr1Index];
+        bool       foundIn2 = false;
+        for (i32 arr2Index = 0; arr2Index < arrlen(arr2); arr2Index++) {
+            prb_String str2 = arr2[arr2Index];
+            if (prb_streq(str1, str2)) {
+                foundIn2 = true;
+                break;
+            }
+        }
+        if (!foundIn2) {
+            arrput(result, str1);
+        }
+    }
+    return result;
+}
+
+function void
+testNameToPrbName(prb_Arena* arena, prb_String testName, prb_String** prbNames) {
+    if (prb_streq(testName, prb_STR("pathFindIter"))) {
+        arrput(*prbNames, prb_STR("prb_createPathFindIter"));
+        arrput(*prbNames, prb_STR("prb_pathFindIterNext"));
+        arrput(*prbNames, prb_STR("prb_destroyPathFindIter"));
+    } else if (prb_streq(testName, prb_STR("strFindIter"))) {
+        arrput(*prbNames, prb_STR("prb_createStrFindIter"));
+        arrput(*prbNames, prb_STR("prb_strFindIterNext"));
+    } else if (prb_streq(testName, prb_STR("utf8CharIter"))) {
+        arrput(*prbNames, prb_STR("prb_createUtf8CharIter"));
+        arrput(*prbNames, prb_STR("prb_utf8CharIterNext"));
+    } else if (prb_streq(testName, prb_STR("lineIter"))) {
+        arrput(*prbNames, prb_STR("prb_createLineIter"));
+        arrput(*prbNames, prb_STR("prb_lineIterNext"));
+    } else if (prb_streq(testName, prb_STR("wordIter"))) {
+        arrput(*prbNames, prb_STR("prb_createWordIter"));
+        arrput(*prbNames, prb_STR("prb_wordIterNext"));
+    } else {
+        prb_String nameWithPrefix = prb_fmt(arena, "prb_%.*s", prb_LIT(testName));
+        arrput(*prbNames, nameWithPrefix);
+    }
+}
 
 //
 // SECTION Memory
@@ -41,19 +83,24 @@ test_getOffsetForAlignment(prb_Arena* arena, void* data) {
 }
 
 function void
-test_arenaAlignFreePtr(prb_Arena* arena, void* data) {
+test_vmemAlloc(prb_Arena* arena, void* data) {
     prb_unused(data);
-    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_unused(arena);
+    // TODO(khvorov) Implement
+}
 
-    i32 arbitraryAlignment = 16;
-    prb_arenaAlignFreePtr(arena, arbitraryAlignment);
-    prb_assert(prb_getOffsetForAlignment(prb_arenaFreePtr(arena), arbitraryAlignment) == 0);
-    prb_arenaChangeUsed(arena, 1);
-    prb_assert(prb_getOffsetForAlignment(prb_arenaFreePtr(arena), arbitraryAlignment) == arbitraryAlignment - 1);
-    prb_arenaAlignFreePtr(arena, arbitraryAlignment);
-    prb_assert(prb_getOffsetForAlignment(prb_arenaFreePtr(arena), arbitraryAlignment) == 0);
+function void
+test_createArenaFromVmem(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Implement
+}
 
-    prb_endTempMemory(temp);
+function void
+test_createArenaFromArena(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Implement
 }
 
 function void
@@ -77,7 +124,23 @@ test_arenaAllocAndZero(prb_Arena* arena, void* data) {
 }
 
 function void
-test_globalArenaCurrentFreePtr(prb_Arena* arena, void* data) {
+test_arenaAlignFreePtr(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+
+    i32 arbitraryAlignment = 16;
+    prb_arenaAlignFreePtr(arena, arbitraryAlignment);
+    prb_assert(prb_getOffsetForAlignment(prb_arenaFreePtr(arena), arbitraryAlignment) == 0);
+    prb_arenaChangeUsed(arena, 1);
+    prb_assert(prb_getOffsetForAlignment(prb_arenaFreePtr(arena), arbitraryAlignment) == arbitraryAlignment - 1);
+    prb_arenaAlignFreePtr(arena, arbitraryAlignment);
+    prb_assert(prb_getOffsetForAlignment(prb_arenaFreePtr(arena), arbitraryAlignment) == 0);
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_arenaFreePtr(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
@@ -90,7 +153,7 @@ test_globalArenaCurrentFreePtr(prb_Arena* arena, void* data) {
 }
 
 function void
-test_globalArenaCurrentFreeSize(prb_Arena* arena, void* data) {
+test_arenaFreeSize(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
@@ -103,7 +166,7 @@ test_globalArenaCurrentFreeSize(prb_Arena* arena, void* data) {
 }
 
 function void
-test_globalArenaChangeUsed(prb_Arena* arena, void* data) {
+test_arenaChangeUsed(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
@@ -204,6 +267,13 @@ test_pathExists(prb_Arena* arena, void* data) {
     prb_assert(prb_pathExists(arena, prb_STR(__FILE__)));
 
     prb_endTempMemory(temp);
+}
+
+function void
+test_getAbsolutePath(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
 }
 
 function void
@@ -504,7 +574,7 @@ test_clearDirectory(prb_Arena* arena, void* data) {
 }
 
 function void
-test_getCurrentWorkingDir(prb_Arena* arena, void* data) {
+test_getWorkingDir(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
@@ -517,6 +587,31 @@ test_getCurrentWorkingDir(prb_Arena* arena, void* data) {
     prb_assert(prb_streq((prb_String) {(const char*)fileContent.content.data, fileContent.content.len}, filename));
     prb_assert(prb_removeFileIfExists(arena, filename) == prb_Success);
 
+    prb_endTempMemory(temp);
+}
+
+function void
+test_setWorkingDir(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+
+    prb_String cwdInit = prb_getWorkingDir(arena);
+    prb_String newWd = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_String newWdAbsolute = prb_getAbsolutePath(arena, newWd);
+    prb_assert(prb_setWorkingDir(arena, newWd) == prb_Failure);
+    prb_assert(prb_createDirIfNotExists(arena, newWd) == prb_Success);
+    prb_assert(prb_setWorkingDir(arena, newWd) == prb_Success);
+    prb_assert(prb_streq(prb_getWorkingDir(arena), newWdAbsolute));
+    prb_String filename = prb_STR("test.txt");
+    prb_assert(prb_writeEntireFile(arena, filename, filename.ptr, filename.len) == prb_Success);
+    prb_ReadEntireFileResult fileRead = prb_readEntireFile(arena, prb_pathJoin(arena, newWd, filename));
+    prb_assert(!fileRead.success);
+    prb_setWorkingDir(arena, cwdInit);
+    fileRead = prb_readEntireFile(arena, prb_pathJoin(arena, newWd, filename));
+    prb_assert(fileRead.success);
+    prb_assert(prb_streq(prb_strFromBytes(fileRead.content), filename));
+
+    prb_removeDirectoryIfExists(arena, newWd);
     prb_endTempMemory(temp);
 }
 
@@ -997,258 +1092,106 @@ test_getLastModified(prb_Arena* arena, void* data) {
     prb_endTempMemory(temp);
 }
 
+function void
+test_createMultitime(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_multitimeAdd(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_readEntireFile(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_writeEntireFile(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_binaryToCArray(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_getFileHash(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
 //
+// SECTION Strings
 //
-//
 
 function void
-test_printColor(prb_Arena* arena, void* data) {
+test_streq(prb_Arena* arena, void* data) {
+    prb_unused(arena);
     prb_unused(data);
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-
-    prb_writelnToStdout(prb_STR("color printing:"));
-
-    prb_setPrintColor(prb_ColorID_Blue);
-    prb_writelnToStdout(prb_STR("blue"));
-
-    prb_setPrintColor(prb_ColorID_Cyan);
-    prb_writelnToStdout(prb_STR("cyan"));
-
-    prb_setPrintColor(prb_ColorID_Magenta);
-    prb_writelnToStdout(prb_STR("magenta"));
-
-    prb_setPrintColor(prb_ColorID_Yellow);
-    prb_writelnToStdout(prb_STR("yellow"));
-
-    prb_setPrintColor(prb_ColorID_Red);
-    prb_writelnToStdout(prb_STR("red"));
-
-    prb_setPrintColor(prb_ColorID_Green);
-    prb_writelnToStdout(prb_STR("green"));
-
-    prb_setPrintColor(prb_ColorID_Black);
-    prb_writelnToStdout(prb_STR("black"));
-
-    prb_setPrintColor(prb_ColorID_White);
-    prb_writelnToStdout(prb_STR("white"));
-
-    prb_endTempMemory(temp);
+    // TODO(khvorov) Write
 }
 
 function void
-test_strings(prb_Arena* arena, void* data) {
+test_strSliceForward(prb_Arena* arena, void* data) {
+    prb_unused(arena);
     prb_unused(data);
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-
-    prb_GrowingString gstr = prb_beginString(arena);
-    prb_addStringSegment(&gstr, "%s", "one");
-    prb_addStringSegment(&gstr, "%s", " two");
-    prb_addStringSegment(&gstr, "%s", " three");
-    prb_String str = prb_endString(&gstr);
-
-    prb_String target = prb_STR("one two three");
-    prb_assert(prb_streq(str, target));
-    prb_assert(arena->used == temp.usedAtBegin + target.len + 1);
-
-    prb_endTempMemory(temp);
+    // TODO(khvorov) Write
 }
 
 function void
-test_strFindIter(prb_Arena* arena, void* data) {
+test_strSliceBetween(prb_Arena* arena, void* data) {
+    prb_unused(arena);
     prb_unused(data);
-    prb_TempMemory     temp = prb_beginTempMemory(arena);
-    prb_String         str = prb_STR("prog arg1:val1 arg2:val2 arg3:val3");
-    prb_StringFindSpec spec = {};
-    spec.str = str;
-    spec.pattern = prb_STR(":");
-    spec.mode = prb_StringFindMode_Exact;
-    spec.direction = prb_StringDirection_FromStart;
-
-    {
-        prb_StrFindIterator iter = prb_createStrFindIter(spec);
-        prb_assert(iter.curMatchCount == 0);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 1);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 2);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 3);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Failure);
-        prb_assert(!iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == 0);
-        prb_assert(iter.curResult.matchLen == 0);
-        prb_assert(iter.curMatchCount == 3);
-    }
-
-    {
-        spec.direction = prb_StringDirection_FromEnd;
-        prb_StrFindIterator iter = prb_createStrFindIter(spec);
-        prb_assert(iter.curMatchCount == 0);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 1);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 2);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 3);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Failure);
-        prb_assert(!iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == 0);
-        prb_assert(iter.curResult.matchLen == 0);
-        prb_assert(iter.curMatchCount == 3);
-
-        spec.direction = prb_StringDirection_FromStart;
-    }
-
-    prb_endTempMemory(temp);
-}
-
-function prb_String*
-setdiff(prb_String* arr1, prb_String* arr2) {
-    prb_String* result = 0;
-    for (i32 arr1Index = 0; arr1Index < arrlen(arr1); arr1Index++) {
-        prb_String str1 = arr1[arr1Index];
-        bool       foundIn2 = false;
-        for (i32 arr2Index = 0; arr2Index < arrlen(arr2); arr2Index++) {
-            prb_String str2 = arr2[arr2Index];
-            if (prb_streq(str1, str2)) {
-                foundIn2 = true;
-                break;
-            }
-        }
-        if (!foundIn2) {
-            arrput(result, str1);
-        }
-    }
-    return result;
+    // TODO(khvorov) Write
 }
 
 function void
-test_fileformat(prb_Arena* arena, void* data) {
+test_strGetNullTerminated(prb_Arena* arena, void* data) {
+    prb_unused(arena);
     prb_unused(data);
-    prb_TempMemory temp = prb_beginTempMemory(arena);
+    // TODO(khvorov) Write
+}
 
-    prb_ReadEntireFileResult fileContents = prb_readEntireFile(arena, prb_STR("programmable_build.h"));
-    prb_assert(fileContents.success);
-    prb_LineIterator lineIter = prb_createLineIter((prb_String) {(const char*)fileContents.content.data, fileContents.content.len});
+function void
+test_strMallocCopy(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_String* headerNames = 0;
-    while (prb_lineIterNext(&lineIter) == prb_Success) {
-        prb_assert(!prb_strStartsWith(arena, lineIter.curLine, prb_STR("prb_PUBLICDEF"), prb_StringFindMode_Exact));
+function void
+test_strFromBytes(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-        if (prb_strStartsWith(arena, lineIter.curLine, prb_STR("// SECTION"), prb_StringFindMode_Exact)) {
-            prb_String name = prb_fmt(arena, "%.*s", lineIter.curLine.len, lineIter.curLine.ptr);
-            arrput(headerNames, name);
-        } else if (prb_strStartsWith(arena, lineIter.curLine, prb_STR("prb_PUBLICDEC"), prb_StringFindMode_Exact)) {
-            prb_StringFindSpec spec = {};
-            spec.str = lineIter.curLine;
-            spec.pattern = prb_STR("(");
-            spec.mode = prb_StringFindMode_AnyChar;
-            spec.direction = prb_StringDirection_FromStart;
-            prb_StringFindResult onePastNameEndRes = prb_strFind(spec);
-            prb_assert(onePastNameEndRes.found);
-            prb_String win = {lineIter.curLine.ptr, onePastNameEndRes.matchByteIndex};
-            spec.str = win;
-            spec.pattern = prb_STR(" ");
-            spec.direction = prb_StringDirection_FromEnd;
-            prb_StringFindResult nameStartRes = prb_strFind(spec);
-            prb_assert(nameStartRes.found);
-            win = prb_strSliceForward(win, nameStartRes.matchByteIndex + 1);
-            prb_String name = prb_fmt(arena, "%.*s", win.len, win.ptr);
-            arrput(headerNames, name);
-        } else if (prb_strStartsWith(arena, lineIter.curLine, prb_STR("#ifndef prb_NO_IMPLEMENTATION"), prb_StringFindMode_Exact)) {
-            break;
-        }
-    }
+function void
+test_strTrimSide(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_String* implNames = 0;
-    while (prb_lineIterNext(&lineIter) == prb_Success) {
-        prb_assert(!prb_strStartsWith(arena, lineIter.curLine, prb_STR("prb_PUBLICDEC"), prb_StringFindMode_Exact));
-
-        if (prb_strStartsWith(arena, lineIter.curLine, prb_STR("// SECTION"), prb_StringFindMode_Exact)) {
-            prb_StringFindSpec spec = {};
-            spec.str = lineIter.curLine;
-            spec.pattern = prb_STR(" (implementation)");
-            spec.mode = prb_StringFindMode_Exact;
-            spec.direction = prb_StringDirection_FromStart;
-            prb_StringFindResult implementationRes = prb_strFind(spec);
-            prb_assert(implementationRes.found);
-            prb_String name = prb_fmt(arena, "%.*s", implementationRes.matchByteIndex, lineIter.curLine.ptr);
-            arrput(implNames, name);
-        } else if (prb_strStartsWith(arena, lineIter.curLine, prb_STR("prb_PUBLICDEF"), prb_StringFindMode_Exact)) {
-            prb_assert(prb_lineIterNext(&lineIter) == prb_Success);
-            prb_assert(prb_strStartsWith(arena, lineIter.curLine, prb_STR("prb_"), prb_StringFindMode_Exact));
-            prb_StringFindSpec spec = {};
-            spec.str = lineIter.curLine;
-            spec.pattern = prb_STR("(");
-            spec.mode = prb_StringFindMode_AnyChar;
-            spec.direction = prb_StringDirection_FromStart;
-            prb_StringFindResult nameLenRes = prb_strFind(spec);
-            prb_assert(nameLenRes.found);
-            prb_String name = prb_fmt(arena, "%.*s", nameLenRes.matchByteIndex, lineIter.curLine.ptr);
-            arrput(implNames, name);
-        }
-    }
-
-    prb_String* headerNotInImpl = setdiff(headerNames, implNames);
-    if (arrlen(headerNotInImpl) > 0) {
-        prb_writelnToStdout(prb_STR("names in header but not in impl:"));
-        for (i32 index = 0; index < arrlen(headerNotInImpl); index++) {
-            prb_String str = headerNotInImpl[index];
-            prb_writeToStdout(str);
-            prb_writeToStdout(prb_STR("\n"));
-        }
-    }
-    prb_assert(arrlen(headerNotInImpl) == 0);
-    arrfree(headerNotInImpl);
-
-    prb_String* implNotInHeader = setdiff(implNames, headerNames);
-    if (arrlen(implNotInHeader) > 0) {
-        prb_writelnToStdout(prb_STR("names in impl but not in header:"));
-        for (i32 index = 0; index < arrlen(implNotInHeader); index++) {
-            prb_String str = implNotInHeader[index];
-            prb_writeToStdout(str);
-            prb_writeToStdout(prb_STR("\n"));
-        }
-    }
-    prb_assert(arrlen(implNotInHeader) == 0);
-    arrfree(implNotInHeader);
-
-    arrfree(headerNames);
-    arrfree(implNames);
-
-    for (i32 index = 0; index < arrlen(headerNames); index++) {
-        prb_String headerName = headerNames[index];
-        prb_String implName = implNames[index];
-        prb_assert(prb_streq(headerName, implName));
-    }
-
-    prb_endTempMemory(temp);
+function void
+test_strTrim(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
 }
 
 function void
@@ -1338,111 +1281,201 @@ test_strFind(prb_Arena* arena, void* data) {
 }
 
 function void
-test_strStartsEnds(prb_Arena* arena, void* data) {
+test_strFindIter(prb_Arena* arena, void* data) {
     prb_unused(data);
-    prb_assert(prb_strStartsWith(arena, prb_STR("123abc"), prb_STR("123"), prb_StringFindMode_Exact));
-    prb_assert(!prb_strStartsWith(arena, prb_STR("123abc"), prb_STR("abc"), prb_StringFindMode_Exact));
-    prb_assert(!prb_strEndsWith(arena, prb_STR("123abc"), prb_STR("123"), prb_StringFindMode_Exact));
-    prb_assert(prb_strEndsWith(arena, prb_STR("123abc"), prb_STR("abc"), prb_StringFindMode_Exact));
+    prb_TempMemory     temp = prb_beginTempMemory(arena);
+    prb_String         str = prb_STR("prog arg1:val1 arg2:val2 arg3:val3");
+    prb_StringFindSpec spec = {};
+    spec.str = str;
+    spec.pattern = prb_STR(":");
+    spec.mode = prb_StringFindMode_Exact;
+    spec.direction = prb_StringDirection_FromStart;
+
+    {
+        prb_StrFindIterator iter = prb_createStrFindIter(spec);
+        prb_assert(iter.curMatchCount == 0);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
+        prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 1);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2"));
+        prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 2);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
+        prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 3);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Failure);
+        prb_assert(!iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == 0);
+        prb_assert(iter.curResult.matchLen == 0);
+        prb_assert(iter.curMatchCount == 3);
+    }
+
+    {
+        spec.direction = prb_StringDirection_FromEnd;
+        prb_StrFindIterator iter = prb_createStrFindIter(spec);
+        prb_assert(iter.curMatchCount == 0);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
+        prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 1);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2"));
+        prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 2);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
+        prb_assert(iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
+        prb_assert(iter.curResult.matchLen == 1);
+        prb_assert(iter.curMatchCount == 3);
+
+        prb_assert(prb_strFindIterNext(&iter) == prb_Failure);
+        prb_assert(!iter.curResult.found);
+        prb_assert(iter.curResult.matchByteIndex == 0);
+        prb_assert(iter.curResult.matchLen == 0);
+        prb_assert(iter.curMatchCount == 3);
+
+        spec.direction = prb_StringDirection_FromStart;
+    }
+
+    prb_endTempMemory(temp);
 }
 
 function void
-test_lineIter(prb_Arena* arena, void* data) {
+test_strStartsWith(prb_Arena* arena, void* data) {
     prb_unused(data);
-    prb_String       lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
-    prb_LineIterator iter = prb_createLineIter(lines);
+    prb_unused(arena);
+    prb_assert(prb_strStartsWith(prb_STR("123abc"), prb_STR("123")));
+    prb_assert(!prb_strStartsWith(prb_STR("123abc"), prb_STR("abc")));
+}
 
-    prb_assert(iter.curLineCount == 0);
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(arena, iter.curLine, prb_STR("line1"), prb_StringFindMode_Exact));
-    prb_assert(iter.curLine.len == 5);
-    prb_assert(iter.curLineEndLen == 2);
-    prb_assert(iter.curLineCount == 1);
+function void
+test_strEndsWith(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_unused(arena);
+    prb_assert(!prb_strEndsWith(prb_STR("123abc"), prb_STR("123")));
+    prb_assert(prb_strEndsWith(prb_STR("123abc"), prb_STR("abc")));
+}
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(arena, iter.curLine, prb_STR("line2"), prb_StringFindMode_Exact));
-    prb_assert(iter.curLine.len == 5);
-    prb_assert(iter.curLineEndLen == 1);
-    prb_assert(iter.curLineCount == 2);
+function void
+test_strReplace(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(arena, iter.curLine, prb_STR("line3"), prb_StringFindMode_Exact));
-    prb_assert(iter.curLine.len == 5);
-    prb_assert(iter.curLineEndLen == 1);
-    prb_assert(iter.curLineCount == 3);
+function void
+test_stringsJoin(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(arena, iter.curLine, prb_STR("line4"), prb_StringFindMode_Exact));
-    prb_assert(iter.curLine.len == 5);
-    prb_assert(iter.curLineEndLen == 1);
-    prb_assert(iter.curLineCount == 4);
+function void
+test_beginString(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.curLine.len == 0);
-    prb_assert(iter.curLineEndLen == 1);
-    prb_assert(iter.curLineCount == 5);
+function void
+test_addStringSegment(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(arena, iter.curLine, prb_STR("line6"), prb_StringFindMode_Exact));
-    prb_assert(iter.curLine.len == 5);
-    prb_assert(iter.curLineEndLen == 1);
-    prb_assert(iter.curLineCount == 6);
+function void
+test_endString(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.curLine.len == 0);
-    prb_assert(iter.curLineEndLen == 1);
-    prb_assert(iter.curLineCount == 7);
+function void
+test_vfmtCustomBuffer(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(arena, iter.curLine, prb_STR("line8"), prb_StringFindMode_Exact));
-    prb_assert(iter.curLine.len == 5);
-    prb_assert(iter.curLineEndLen == 2);
-    prb_assert(iter.curLineCount == 8);
+function void
+test_fmt(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.curLine.len == 0);
-    prb_assert(iter.curLineEndLen == 2);
-    prb_assert(iter.curLineCount == 9);
+function void
+test_writeToStdout(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(arena, iter.curLine, prb_STR("line10"), prb_StringFindMode_Exact));
-    prb_assert(iter.curLine.len == 6);
-    prb_assert(iter.curLineEndLen == 2);
-    prb_assert(iter.curLineCount == 10);
+function void
+test_writelnToStdout(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.curLine.len == 0);
-    prb_assert(iter.curLineEndLen == 1);
-    prb_assert(iter.curLineCount == 11);
+function void
+test_setPrintColor(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(arena, iter.curLine, prb_STR("line12"), prb_StringFindMode_Exact));
-    prb_assert(iter.curLine.len == 6);
-    prb_assert(iter.curLineEndLen == 1);
-    prb_assert(iter.curLineCount == 12);
+    prb_writelnToStdout(prb_STR("color printing:"));
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.curLine.len == 0);
-    prb_assert(iter.curLineEndLen == 2);
-    prb_assert(iter.curLineCount == 13);
+    prb_setPrintColor(prb_ColorID_Blue);
+    prb_writelnToStdout(prb_STR("blue"));
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(prb_strStartsWith(arena, iter.curLine, prb_STR("line14"), prb_StringFindMode_Exact));
-    prb_assert(iter.curLine.len == 6);
-    prb_assert(iter.curLineEndLen == 0);
-    prb_assert(iter.curLineCount == 14);
+    prb_setPrintColor(prb_ColorID_Cyan);
+    prb_writelnToStdout(prb_STR("cyan"));
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Failure);
-    prb_assert(iter.curLineCount == 14);
+    prb_setPrintColor(prb_ColorID_Magenta);
+    prb_writelnToStdout(prb_STR("magenta"));
 
-    lines = prb_STR("\n");
-    iter = prb_createLineIter(lines);
+    prb_setPrintColor(prb_ColorID_Yellow);
+    prb_writelnToStdout(prb_STR("yellow"));
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Success);
-    prb_assert(iter.curLine.len == 0);
-    prb_assert(iter.curLineEndLen == 1);
+    prb_setPrintColor(prb_ColorID_Red);
+    prb_writelnToStdout(prb_STR("red"));
 
-    prb_assert(prb_lineIterNext(&iter) == prb_Failure);
+    prb_setPrintColor(prb_ColorID_Green);
+    prb_writelnToStdout(prb_STR("green"));
+
+    prb_setPrintColor(prb_ColorID_Black);
+    prb_writelnToStdout(prb_STR("black"));
+
+    prb_setPrintColor(prb_ColorID_White);
+    prb_writelnToStdout(prb_STR("white"));
+
+    prb_resetPrintColor();
+    prb_writelnToStdout(prb_STR("reset"));
+
+    prb_endTempMemory(temp);
+}
+
+function void
+test_resetPrintColor(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
 }
 
 function void
@@ -1473,6 +1506,145 @@ test_utf8CharIter(prb_Arena* arena, void* data) {
 }
 
 function void
+test_lineIter(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_unused(arena);
+    prb_String       lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
+    prb_LineIterator iter = prb_createLineIter(lines);
+
+    prb_assert(iter.curLineCount == 0);
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line1")));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 2);
+    prb_assert(iter.curLineCount == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line2")));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 2);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line3")));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 3);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line4")));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 4);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 5);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line6")));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 6);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 7);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line8")));
+    prb_assert(iter.curLine.len == 5);
+    prb_assert(iter.curLineEndLen == 2);
+    prb_assert(iter.curLineCount == 8);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 2);
+    prb_assert(iter.curLineCount == 9);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line10")));
+    prb_assert(iter.curLine.len == 6);
+    prb_assert(iter.curLineEndLen == 2);
+    prb_assert(iter.curLineCount == 10);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 11);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line12")));
+    prb_assert(iter.curLine.len == 6);
+    prb_assert(iter.curLineEndLen == 1);
+    prb_assert(iter.curLineCount == 12);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 2);
+    prb_assert(iter.curLineCount == 13);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(prb_strStartsWith(iter.curLine, prb_STR("line14")));
+    prb_assert(iter.curLine.len == 6);
+    prb_assert(iter.curLineEndLen == 0);
+    prb_assert(iter.curLineCount == 14);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Failure);
+    prb_assert(iter.curLineCount == 14);
+
+    lines = prb_STR("\n");
+    iter = prb_createLineIter(lines);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Success);
+    prb_assert(iter.curLine.len == 0);
+    prb_assert(iter.curLineEndLen == 1);
+
+    prb_assert(prb_lineIterNext(&iter) == prb_Failure);
+}
+
+function void
+test_wordIter(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_parseNumber(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+//
+// SECTION Processes
+//
+
+function void
+test_terminate(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_getCmdline(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_getCmdArgs(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
 test_getArgArrayFromString(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
@@ -1491,6 +1663,239 @@ test_getArgArrayFromString(prb_Arena* arena, void* data) {
     prb_endTempMemory(temp);
 }
 
+function void
+test_execCmd(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_waitForProcesses(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_sleep(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
+test_debuggerPresent(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+//
+// SECTION Timing
+//
+
+function void
+test_timeStart(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_unused(arena);
+    // TODO(khvorov) Write
+}
+
+function void
+test_getMsFrom(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_unused(arena);
+    // TODO(khvorov) Write
+}
+
+//
+// SECTION Multithreading
+//
+
+function void
+test_createJob(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_unused(arena);
+    // TODO(khvorov) Write
+}
+
+function void
+test_execJobs(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_unused(arena);
+    // TODO(khvorov) Write
+}
+
+//
+// SECTION Fileformat
+//
+
+function void
+assertArrsAreTheSame(prb_String* arr1, prb_String* arr2) {
+    prb_String* arr1NotInArr2 = setdiff(arr1, arr2);
+    if (arrlen(arr1NotInArr2) > 0) {
+        prb_writelnToStdout(prb_STR("in arr1 but not in arr2:"));
+        for (i32 index = 0; index < arrlen(arr1NotInArr2); index++) {
+            prb_String str = arr1NotInArr2[index];
+            prb_writeToStdout(str);
+            prb_writeToStdout(prb_STR("\n"));
+        }
+    }
+    prb_assert(arrlen(arr1NotInArr2) == 0);
+    arrfree(arr1NotInArr2);
+
+    prb_String* implNotInHeader = setdiff(arr2, arr1);
+    if (arrlen(implNotInHeader) > 0) {
+        prb_writelnToStdout(prb_STR("in arr2 but not in arr1:"));
+        for (i32 index = 0; index < arrlen(implNotInHeader); index++) {
+            prb_String str = implNotInHeader[index];
+            prb_writeToStdout(str);
+            prb_writeToStdout(prb_STR("\n"));
+        }
+    }
+    prb_assert(arrlen(implNotInHeader) == 0);
+    arrfree(implNotInHeader);
+
+    for (i32 index = 0; index < arrlen(arr1); index++) {
+        prb_String arr1Name = arr1[index];
+        prb_String implName = arr2[index];
+        prb_assert(prb_streq(arr1Name, implName));
+    }
+}
+
+function void
+test_fileformat(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+
+    prb_ReadEntireFileResult fileContents = prb_readEntireFile(arena, prb_STR("programmable_build.h"));
+    prb_assert(fileContents.success);
+    prb_LineIterator lineIter = prb_createLineIter((prb_String) {(const char*)fileContents.content.data, fileContents.content.len});
+
+    prb_String* headerNames = 0;
+    while (prb_lineIterNext(&lineIter) == prb_Success) {
+        prb_assert(!prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEF")));
+
+        if (prb_strStartsWith(lineIter.curLine, prb_STR("// SECTION"))) {
+            prb_String name = prb_fmt(arena, "%.*s", prb_LIT(lineIter.curLine));
+            arrput(headerNames, name);
+        } else if (prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEC"))) {
+            prb_StringFindSpec spec = {};
+            spec.str = lineIter.curLine;
+            spec.pattern = prb_STR("(");
+            spec.mode = prb_StringFindMode_AnyChar;
+            spec.direction = prb_StringDirection_FromStart;
+            prb_StringFindResult onePastNameEndRes = prb_strFind(spec);
+            prb_assert(onePastNameEndRes.found);
+            prb_String win = {lineIter.curLine.ptr, onePastNameEndRes.matchByteIndex};
+            spec.str = win;
+            spec.pattern = prb_STR(" ");
+            spec.direction = prb_StringDirection_FromEnd;
+            prb_StringFindResult nameStartRes = prb_strFind(spec);
+            prb_assert(nameStartRes.found);
+            win = prb_strSliceForward(win, nameStartRes.matchByteIndex + 1);
+            prb_String name = prb_fmt(arena, "%.*s", win.len, win.ptr);
+            arrput(headerNames, name);
+        } else if (prb_strStartsWith(lineIter.curLine, prb_STR("#ifndef prb_NO_IMPLEMENTATION"))) {
+            break;
+        }
+    }
+
+    prb_String* implNames = 0;
+    while (prb_lineIterNext(&lineIter) == prb_Success) {
+        prb_assert(!prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEC")));
+
+        if (prb_strStartsWith(lineIter.curLine, prb_STR("// SECTION"))) {
+            prb_StringFindSpec spec = {};
+            spec.str = lineIter.curLine;
+            spec.pattern = prb_STR(" (implementation)");
+            spec.mode = prb_StringFindMode_Exact;
+            spec.direction = prb_StringDirection_FromStart;
+            prb_StringFindResult implementationRes = prb_strFind(spec);
+            prb_assert(implementationRes.found);
+            prb_String name = prb_fmt(arena, "%.*s", implementationRes.matchByteIndex, lineIter.curLine.ptr);
+            arrput(implNames, name);
+        } else if (prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEF"))) {
+            prb_assert(prb_lineIterNext(&lineIter) == prb_Success);
+            prb_assert(prb_strStartsWith(lineIter.curLine, prb_STR("prb_")));
+            prb_StringFindSpec spec = {};
+            spec.str = lineIter.curLine;
+            spec.pattern = prb_STR("(");
+            spec.mode = prb_StringFindMode_AnyChar;
+            spec.direction = prb_StringDirection_FromStart;
+            prb_StringFindResult nameLenRes = prb_strFind(spec);
+            prb_assert(nameLenRes.found);
+            prb_String name = prb_fmt(arena, "%.*s", nameLenRes.matchByteIndex, lineIter.curLine.ptr);
+            arrput(implNames, name);
+        }
+    }
+
+    assertArrsAreTheSame(headerNames, implNames);
+
+    prb_String*              testNames = 0;
+    prb_ReadEntireFileResult testFileReadResut = prb_readEntireFile(arena, prb_STR(__FILE__));
+    prb_assert(testFileReadResut.success);
+    prb_String       testFileContent = prb_strFromBytes(testFileReadResut.content);
+    prb_LineIterator testFileLineIter = prb_createLineIter(testFileContent);
+    while (prb_lineIterNext(&testFileLineIter)) {
+        prb_String testFunctionsPrefix = prb_STR("test_");
+        if (prb_strStartsWith(testFileLineIter.curLine, prb_STR("// SECTION"))) {
+            if (prb_streq(testFileLineIter.curLine, prb_STR("// SECTION Fileformat"))) {
+                break;
+            } else {
+                arrput(testNames, testFileLineIter.curLine);
+            }
+        } else if (prb_strStartsWith(testFileLineIter.curLine, testFunctionsPrefix)) {
+            prb_StringFindSpec bracketSpec = {};
+            bracketSpec.str = testFileLineIter.curLine;
+            bracketSpec.pattern = prb_STR("(");
+            bracketSpec.mode = prb_StringFindMode_AnyChar;
+            prb_StringFindResult bracket = prb_strFind(bracketSpec);
+            prb_assert(bracket.found);
+            prb_String name = prb_strSliceBetween(testFileLineIter.curLine, testFunctionsPrefix.len, bracket.matchByteIndex);
+            testNameToPrbName(arena, name, &testNames);
+        }
+    }
+
+    arrput(testNames, prb_STR("// SECTION stb snprintf"));
+    arrput(testNames, prb_STR("// SECTION stb ds"));
+    assertArrsAreTheSame(headerNames, testNames);
+
+    prb_String* testNamesInMain = 0;
+    while (prb_lineIterNext(&testFileLineIter)) {
+        prb_String testCall = prb_STR("    arrput(jobs, prb_createJob(test_");
+        if (prb_strStartsWith(testFileLineIter.curLine, prb_STR("    // SECTION"))) {
+            if (prb_streq(testFileLineIter.curLine, prb_STR("    // SECTION Fileformat"))) {
+                break;
+            } else {
+                arrput(testNamesInMain, prb_strSliceForward(testFileLineIter.curLine, 4));
+            }
+        } else if (prb_strStartsWith(testFileLineIter.curLine, testCall)) {
+            prb_String nameOn = prb_strSliceForward(testFileLineIter.curLine, testCall.len);
+            prb_StringFindSpec commaSpec = {};
+            commaSpec.str = nameOn;
+            commaSpec.pattern = prb_STR(",");
+            commaSpec.mode = prb_StringFindMode_AnyChar;
+            prb_StringFindResult comma = prb_strFind(commaSpec);
+            prb_assert(comma.found);
+            prb_String name = prb_strSliceBetween(nameOn, 0, comma.matchByteIndex);
+            testNameToPrbName(arena, name, &testNamesInMain);
+        } else if (prb_strStartsWith(testFileLineIter.curLine, prb_STR("    test_setWorkingDir"))) {
+            arrput(testNamesInMain, prb_STR("prb_setWorkingDir"));
+        }
+    }
+
+    arrput(testNamesInMain, prb_STR("// SECTION stb snprintf"));
+    arrput(testNamesInMain, prb_STR("// SECTION stb ds"));
+    assertArrsAreTheSame(headerNames, testNamesInMain);
+
+    arrfree(headerNames);
+    arrfree(implNames);
+    arrfree(testNames);
+    prb_endTempMemory(temp);
+}
+
 int
 main() {
     prb_TimeStart testStart = prb_timeStart();
@@ -1500,17 +1905,23 @@ main() {
 
     prb_Job* jobs = 0;
 
+    // SECTION Memory
     arrput(jobs, prb_createJob(test_memeq, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getOffsetForAlignment, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_arenaAlignFreePtr, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_vmemAlloc, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_createArenaFromVmem, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_createArenaFromArena, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_arenaAllocAndZero, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_globalArenaCurrentFreePtr, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_globalArenaCurrentFreeSize, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_globalArenaChangeUsed, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_arenaAlignFreePtr, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_arenaFreePtr, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_arenaFreeSize, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_arenaChangeUsed, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_beginTempMemory, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_endTempMemory, 0, &arena, 10 * prb_MEGABYTE));
 
+    // SECTION Filesystem
     arrput(jobs, prb_createJob(test_pathExists, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getAbsolutePath, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_isDirectory, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_isFile, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_directoryIsEmpty, 0, &arena, 10 * prb_MEGABYTE));
@@ -1519,7 +1930,8 @@ main() {
     arrput(jobs, prb_createJob(test_removeFileIfExists, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_removeDirectoryIfExists, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_clearDirectory, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getCurrentWorkingDir, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getWorkingDir, 0, &arena, 10 * prb_MEGABYTE));
+    test_setWorkingDir(&arena, 0);  // NOTE(khvorov) Messes with global state of the process
     arrput(jobs, prb_createJob(test_pathJoin, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_charIsSep, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_findSepBeforeLastEntry, 0, &arena, 10 * prb_MEGABYTE));
@@ -1528,17 +1940,62 @@ main() {
     arrput(jobs, prb_createJob(test_replaceExt, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_pathFindIter, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getLastModified, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_createMultitime, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_multitimeAdd, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_readEntireFile, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_writeEntireFile, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_binaryToCArray, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getFileHash, 0, &arena, 10 * prb_MEGABYTE));
 
-    arrput(jobs, prb_createJob(test_strings, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_fileformat, 0, &arena, 10 * prb_MEGABYTE));
+    // SECTION Strings
+    arrput(jobs, prb_createJob(test_streq, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strSliceForward, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strSliceBetween, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strGetNullTerminated, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strMallocCopy, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strFromBytes, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strTrimSide, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strTrim, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strFind, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strFindIter, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strStartsEnds, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_lineIter, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strStartsWith, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strEndsWith, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strReplace, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_stringsJoin, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_beginString, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_addStringSegment, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_endString, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_vfmtCustomBuffer, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_fmt, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_writeToStdout, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_writelnToStdout, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_setPrintColor, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_resetPrintColor, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_utf8CharIter, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getArgArrayFromString, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_lineIter, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_wordIter, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_parseNumber, 0, &arena, 10 * prb_MEGABYTE));
 
-    arrput(jobs, prb_createJob(test_printColor, 0, &arena, 10 * prb_MEGABYTE));
+    // SECTION Processes
+    arrput(jobs, prb_createJob(test_terminate, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getCmdline, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getCmdArgs, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getArgArrayFromString, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_execCmd, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_waitForProcesses, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_sleep, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_debuggerPresent, 0, &arena, 10 * prb_MEGABYTE));
+
+    // SECTION Timing
+    arrput(jobs, prb_createJob(test_timeStart, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getMsFrom, 0, &arena, 10 * prb_MEGABYTE));
+
+    // SECTION Multithreading
+    arrput(jobs, prb_createJob(test_createJob, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_execJobs, 0, &arena, 10 * prb_MEGABYTE));
+
+    // SECTION Fileformat
+    arrput(jobs, prb_createJob(test_fileformat, 0, &arena, 10 * prb_MEGABYTE));
 
     prb_assert(prb_execJobs(jobs, arrlen(jobs), prb_ThreadMode_Multi) == prb_Success);
 
