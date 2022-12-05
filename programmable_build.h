@@ -480,7 +480,7 @@ prb_PUBLICDEC prb_Multitime            prb_createMultitime(void);
 prb_PUBLICDEC void                     prb_multitimeAdd(prb_Multitime* multitime, prb_FileTimestamp newTimestamp);
 prb_PUBLICDEC prb_ReadEntireFileResult prb_readEntireFile(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC prb_Status               prb_writeEntireFile(prb_Arena* arena, prb_String path, const void* content, int32_t contentLen);
-prb_PUBLICDEC prb_Status               prb_binaryToCArray(prb_Arena* arena, prb_String inPath, prb_String outPath, prb_String arrayName);
+prb_PUBLICDEC prb_String               prb_binaryToCArray(prb_Arena* arena, prb_String arrayName, void* data, int32_t dataLen);
 prb_PUBLICDEC uint64_t                 prb_getFileHash(prb_Arena* arena, prb_String filepath);
 
 // SECTION Strings
@@ -1129,7 +1129,7 @@ prb_pathExists(prb_Arena* arena, prb_String path) {
     return result;
 }
 
-prb_PUBLICDEF prb_String               
+prb_PUBLICDEF prb_String
 prb_getAbsolutePath(prb_Arena* arena, prb_String path) {
     prb_String result = {};
     prb_String pathNull = prb_strMallocCopy(path);
@@ -1144,7 +1144,7 @@ prb_getAbsolutePath(prb_Arena* arena, prb_String path) {
     char* str = (char*)prb_arenaFreePtr(arena);
     realpath(pathNull.ptr, str);
     result = prb_STR(str);
-    prb_arenaChangeUsed(arena, result.len + 1); // NOTE(khvorov) Null terminator
+    prb_arenaChangeUsed(arena, result.len + 1);  // NOTE(khvorov) Null terminator
 
 #else
 #error unimplemented
@@ -1741,30 +1741,27 @@ prb_writeEntireFile(prb_Arena* arena, prb_String path, const void* content, int3
     return result;
 }
 
-prb_PUBLICDEF prb_Status
-prb_binaryToCArray(prb_Arena* arena, prb_String inPath, prb_String outPath, prb_String arrayName) {
-    prb_Status               result = prb_Failure;
-    prb_TempMemory           temp = prb_beginTempMemory(arena);
-    prb_ReadEntireFileResult inContent = prb_readEntireFile(arena, inPath);
-    if (inContent.success) {
-        prb_GrowingString arrayGstr = prb_beginString(arena);
-        prb_addStringSegment(&arrayGstr, "unsigned char %.*s[] = {", arrayName.len, arrayName.ptr);
-
-        for (int32_t byteIndex = 0; byteIndex < inContent.content.len; byteIndex++) {
-            uint8_t byte = inContent.content.data[byteIndex];
-            prb_addStringSegment(&arrayGstr, "0x%x", byte);
-            if (byteIndex != inContent.content.len - 1) {
-                prb_addStringSegment(&arrayGstr, ", ");
+prb_PUBLICDEF prb_String
+prb_binaryToCArray(prb_Arena* arena, prb_String arrayName, void* data, int32_t dataLen) {
+    prb_GrowingString arrayGstr = prb_beginString(arena);
+    prb_addStringSegment(&arrayGstr, "unsigned char %.*s[] = {\n    ", prb_LIT(arrayName));
+    for (int32_t byteIndex = 0; byteIndex < dataLen; byteIndex++) {
+        uint8_t byte = ((uint8_t*)data)[byteIndex];
+        prb_addStringSegment(&arrayGstr, "0x%x", byte);
+        if (byteIndex != dataLen - 1) {
+            prb_addStringSegment(&arrayGstr, ",");
+            if ((byteIndex + 1) % 10 == 0) {
+                prb_addStringSegment(&arrayGstr, "\n    ");
+            } else {
+                prb_addStringSegment(&arrayGstr, " ");
             }
+        } else {
+            prb_addStringSegment(&arrayGstr, "\n");
         }
-        prb_addStringSegment(&arrayGstr, "};");
-        prb_String arrayStr = prb_endString(&arrayGstr);
-
-        result = prb_writeEntireFile(arena, outPath, arrayStr.ptr, arrayStr.len);
     }
-
-    prb_endTempMemory(temp);
-    return result;
+    prb_addStringSegment(&arrayGstr, "};");
+    prb_String arrayStr = prb_endString(&arrayGstr);
+    return arrayStr;
 }
 
 prb_PUBLICDEF uint64_t
