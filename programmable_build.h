@@ -40,6 +40,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Consistent string/str iterator/iter naming
 // TODO(khvorov) Access color escape codes as strings
 // TODO(khvorov) Change included dependency prefixes to prb_ probably
+// TODO(khvorov) Helper to reset iterators
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
