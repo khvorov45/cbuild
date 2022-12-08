@@ -43,6 +43,8 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Helper to reset iterators
 // TODO(khvorov) Random number generation
 // TODO(khvorov) Job status enum should probably be separate from process status
+// TODO(khvorov) Should be possible to redirect process stdout/err to different files.
+// TODO(khvorov) If stdout/err file is missing just ignore the output
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
