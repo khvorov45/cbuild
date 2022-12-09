@@ -1,5 +1,7 @@
 #include "../programmable_build.h"
 
+// TODO(khvorov) Non-ascii paths
+
 #define function static
 
 typedef uint8_t  u8;
