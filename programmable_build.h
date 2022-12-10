@@ -29,10 +29,8 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 prb_destroyIter() functions don't destroy actual entries, only system resources (e.g. directory handles).
 */
 
-// TODO(khvorov) Make sure utf8 paths work on windows
 // TODO(khvorov) File search by regex
 // TODO(khvorov) Run sanitizers
-// TODO(khvorov) prb_fmt should fail if locked for string
 // TODO(khvorov) Better assert message
 // TODO(khvorov) Automatic -lpthread probably
 // TODO(khvorov) Avoid accidentally recursing in printing in assert
@@ -2155,6 +2153,7 @@ prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args) 
 
 prb_PUBLICDEF prb_String
 prb_fmt(prb_Arena* arena, const char* fmt, ...) {
+    prb_assert(!arena->lockedForString);
     va_list args;
     va_start(args, fmt);
     prb_String result = prb_vfmtCustomBuffer(prb_arenaFreePtr(arena), prb_arenaFreeSize(arena), fmt, args);
