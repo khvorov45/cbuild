@@ -287,12 +287,13 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
 
             // NOTE(khvorov) Figure out if we should recompile this file
             bool     shouldRecompile = true;
-            uint64_t preprocessedHash = prb_getFileHash(arena, outputPreprocess[inputPathIndex]);
+            prb_FileHash preprocessedHash = prb_getFileHash(arena, outputPreprocess[inputPathIndex]);
+            prb_assert(preprocessedHash.valid);
             if (lib->project->prevCompileLog != 0 && prb_isFile(arena, outputObjFilepath)) {
                 int32_t logEntryIndex = shgeti(lib->project->prevCompileLog, outputObjFilepath.ptr);
                 if (logEntryIndex != -1) {
                     ObjInfo info = lib->project->prevCompileLog[logEntryIndex].value;
-                    if (preprocessedHash == info.preprocessedHash) {
+                    if (preprocessedHash.hash == info.preprocessedHash) {
                         if (prb_streq(compileCmd, info.compileCmd)) {
                             shouldRecompile = false;
                         }
@@ -310,7 +311,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             {
                 prb_String outputObjFilepathCopy = prb_strMallocCopy(outputObjFilepath);
                 prb_String compileCmdCopy = prb_strMallocCopy(compileCmd);
-                ObjInfo    thisObjInfo = {compileCmdCopy, preprocessedHash};
+                ObjInfo    thisObjInfo = {compileCmdCopy, preprocessedHash.hash};
                 shput(lib->project->thisCompileLog, outputObjFilepathCopy.ptr, thisObjInfo);
             }
         }

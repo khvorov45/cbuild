@@ -405,6 +405,11 @@ typedef struct prb_Multitime {
     uint64_t timeEarliest;
 } prb_Multitime;
 
+typedef struct prb_FileHash {
+    bool     valid;
+    uint64_t hash;
+} prb_FileHash;
+
 typedef void (*prb_JobProc)(prb_Arena* arena, void* data);
 
 typedef struct prb_Job {
@@ -487,7 +492,7 @@ prb_PUBLICDEC void                     prb_multitimeAdd(prb_Multitime* multitime
 prb_PUBLICDEC prb_ReadEntireFileResult prb_readEntireFile(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC prb_Status               prb_writeEntireFile(prb_Arena* arena, prb_String path, const void* content, int32_t contentLen);
 prb_PUBLICDEC prb_String               prb_binaryToCArray(prb_Arena* arena, prb_String arrayName, void* data, int32_t dataLen);
-prb_PUBLICDEC uint64_t                 prb_getFileHash(prb_Arena* arena, prb_String filepath);
+prb_PUBLICDEC prb_FileHash             prb_getFileHash(prb_Arena* arena, prb_String filepath);
 
 // SECTION Strings
 prb_PUBLICDEC bool                 prb_streq(prb_String str1, prb_String str2);
@@ -1777,15 +1782,17 @@ prb_binaryToCArray(prb_Arena* arena, prb_String arrayName, void* data, int32_t d
     return arrayStr;
 }
 
-prb_PUBLICDEF uint64_t
+prb_PUBLICDEF prb_FileHash
 prb_getFileHash(prb_Arena* arena, prb_String filepath) {
+    prb_FileHash             result = {};
     prb_TempMemory           temp = prb_beginTempMemory(arena);
     prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, filepath);
-    prb_assert(readRes.success);
-    prb_String str = (prb_String) {(const char*)readRes.content.data, readRes.content.len};
-    uint64_t   hash = stbds_hash_bytes((void*)str.ptr, str.len, 1);
+    if (readRes.success) {
+        result.valid = true;
+        result.hash = stbds_hash_bytes(readRes.content.data, readRes.content.len, 1);
+    }
     prb_endTempMemory(temp);
-    return hash;
+    return result;
 }
 
 //

@@ -1191,15 +1191,20 @@ test_getFileHash(prb_Arena* arena, void* data) {
     prb_String     filepath = prb_pathJoin(arena, dir, prb_STR("filename.txt"));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Success);
-    u64        hash1 = prb_getFileHash(arena, filepath);
+    prb_FileHash        hash1 = prb_getFileHash(arena, filepath);
+    prb_assert(hash1.valid);
     prb_String newContent = prb_STR("content");
     prb_assert(prb_writeEntireFile(arena, filepath, newContent.ptr, newContent.len) == prb_Success);
-    u64 hash2 = prb_getFileHash(arena, filepath);
-    prb_assert(hash1 != hash2);
+    prb_FileHash hash2 = prb_getFileHash(arena, filepath);
+    prb_assert(hash2.valid);
+    prb_assert(hash1.hash != hash2.hash);
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Success);
-    u64 hash3 = prb_getFileHash(arena, filepath);
-    prb_assert(hash3 == hash1);
+    prb_FileHash hash3 = prb_getFileHash(arena, filepath);
+    prb_assert(hash3.valid);
+    prb_assert(hash3.hash == hash1.hash);
     prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_FileHash hash4 = prb_getFileHash(arena, filepath);
+    prb_assert(!hash4.valid);
     prb_endTempMemory(temp);
 }
 
