@@ -806,6 +806,7 @@ test_replaceExt(prb_Arena* arena, void* data) {
     prb_assert(prb_streq(prb_replaceExt(arena, prb_STR("test.md"), prb_STR("txt")), prb_STR("test.txt")));
     prb_assert(prb_streq(prb_replaceExt(arena, prb_STR("path/test.md"), prb_STR("txt")), prb_STR("path/test.txt")));
     prb_assert(prb_streq(prb_replaceExt(arena, prb_STR("path/test.txt.md"), prb_STR("txt")), prb_STR("path/test.txt.txt")));
+    prb_assert(prb_streq(prb_replaceExt(arena, prb_STR("path.dot/test"), prb_STR("txt")), prb_STR("path.dot/test.txt")));
 
     prb_endTempMemory(temp);
 }

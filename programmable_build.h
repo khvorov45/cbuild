@@ -1406,19 +1406,21 @@ prb_pathJoin(prb_Arena* arena, prb_String path1, prb_String path2) {
 
 prb_PUBLICDEF bool
 prb_charIsSep(char ch) {
+    bool result = false;
+
 #if prb_PLATFORM_WINDOWS
 
-    bool result = ch == '/' || ch == '\\';
-    return result;
+    result = ch == '/' || ch == '\\';
 
 #elif prb_PLATFORM_LINUX
 
-    bool result = ch == '/';
-    return result;
+    result = ch == '/';
 
 #else
 #error unimplemented
 #endif
+
+    return result;
 }
 
 prb_PUBLICDEF prb_StringFindResult
@@ -1490,17 +1492,22 @@ prb_getLastEntryInPath(prb_String path) {
 
 prb_PUBLICDEF prb_String
 prb_replaceExt(prb_Arena* arena, prb_String path, prb_String newExt) {
-    prb_StringFindSpec spec = {};
-    spec.str = path;
-    spec.pattern = prb_STR(".");
-    spec.mode = prb_StringFindMode_AnyChar;
-    spec.direction = prb_StringDirection_FromEnd;
-    prb_StringFindResult dotFind = prb_strFind(spec);
-    prb_String           result = {};
-    if (dotFind.found) {
-        result = prb_fmt(arena, "%.*s.%.*s", dotFind.matchByteIndex, path.ptr, newExt.len, newExt.ptr);
+    bool    dotFound = false;
+    int32_t dotIndex = path.len - 1;
+    for (; dotIndex >= 0; dotIndex--) {
+        char ch = path.ptr[dotIndex];
+        if (prb_charIsSep(ch)) {
+            break;
+        } else if (ch == '.') {
+            dotFound = true;
+            break;
+        }
+    }
+    prb_String result = {};
+    if (dotFound) {
+        result = prb_fmt(arena, "%.*s.%.*s", dotIndex, path.ptr, prb_LIT(newExt));
     } else {
-        result = prb_fmt(arena, "%.*s.%.*s", path.len, path.ptr, newExt.len, newExt.ptr);
+        result = prb_fmt(arena, "%.*s.%.*s", prb_LIT(path), prb_LIT(newExt));
     }
     return result;
 }
