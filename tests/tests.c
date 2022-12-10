@@ -1,7 +1,5 @@
 #include "../programmable_build.h"
 
-// TODO(khvorov) Non-ascii paths
-
 #define function static
 
 typedef uint8_t  u8;
@@ -56,7 +54,8 @@ testNameToPrbName(prb_Arena* arena, prb_String testName, prb_String** prbNames) 
 
 function prb_String
 getTempDir(prb_Arena* arena, const char* funcName) {
-    prb_String dir = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(funcName));
+    prb_String funcNameWithNonascii = prb_fmt(arena, "%s太阳😐", funcName);
+    prb_String dir = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), funcNameWithNonascii);
     return dir;
 }
 
@@ -1191,7 +1190,7 @@ test_getFileHash(prb_Arena* arena, void* data) {
     prb_String     filepath = prb_pathJoin(arena, dir, prb_STR("filename.txt"));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Success);
-    prb_FileHash        hash1 = prb_getFileHash(arena, filepath);
+    prb_FileHash hash1 = prb_getFileHash(arena, filepath);
     prb_assert(hash1.valid);
     prb_String newContent = prb_STR("content");
     prb_assert(prb_writeEntireFile(arena, filepath, newContent.ptr, newContent.len) == prb_Success);
