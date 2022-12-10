@@ -29,7 +29,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 prb_destroyIter() functions don't destroy actual entries, only system resources (e.g. directory handles).
 */
 
-// TODO(khvorov) File search by regex
 // TODO(khvorov) Run sanitizers
 // TODO(khvorov) Test macros do the right thing
 // TODO(khvorov) Consistent string/str iterator/iter naming
@@ -343,21 +342,15 @@ typedef struct prb_StrFindIterator {
 typedef enum prb_PathFindMode {
     prb_PathFindMode_AllEntriesInDir,
     prb_PathFindMode_Glob,
+    prb_PathFindMode_RegexPosix,
 } prb_PathFindMode;
 
 typedef struct prb_PathFindSpec {
     prb_Arena*       arena;
     prb_String       dir;
     prb_PathFindMode mode;
+    prb_String       pattern;
     bool             recursive;
-    union {
-        struct {
-            prb_String pattern;
-        } glob;
-        struct {
-            int32_t ignore;
-        } allEntriesInDir;
-    };
 } prb_PathFindSpec;
 
 typedef struct prb_PathFindIterator_DirHandle {
@@ -385,6 +378,10 @@ typedef struct prb_PathFindIterator {
             int32_t currentIndex;
             glob_t  result;
         } glob;
+        struct {
+            int32_t     currentIndex;
+            prb_String* matches;
+        } regexPosix;
     };
 } prb_PathFindIterator;
 
@@ -1535,7 +1532,7 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
 
         case prb_PathFindMode_Glob: {
             iter.glob.currentIndex = -1;
-            prb_String pattern = prb_pathJoin(spec.arena, spec.dir, spec.glob.pattern);
+            prb_String pattern = prb_pathJoin(spec.arena, spec.dir, spec.pattern);
             iter.glob.returnVal = glob(pattern.ptr, GLOB_NOSORT, 0, &iter.glob.result);
             if (spec.recursive) {
                 prb_PathFindSpec recursiveSpec = spec;
@@ -1543,7 +1540,7 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
                 prb_PathFindIterator recursiveIter = prb_createPathFindIter(recursiveSpec);
                 while (prb_pathFindIterNext(&recursiveIter)) {
                     if (prb_isDirectory(spec.arena, recursiveIter.curPath)) {
-                        prb_String newPat = prb_pathJoin(spec.arena, recursiveIter.curPath, spec.glob.pattern);
+                        prb_String newPat = prb_pathJoin(spec.arena, recursiveIter.curPath, spec.pattern);
                         int        newReturnVal = glob(newPat.ptr, GLOB_NOSORT | GLOB_APPEND, 0, &iter.glob.result);
                         if (newReturnVal == 0) {
                             iter.glob.returnVal = 0;
@@ -1552,6 +1549,26 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
                 }
                 prb_destroyPathFindIter(&recursiveIter);
             }
+        } break;
+
+        case prb_PathFindMode_RegexPosix: {
+            iter.regexPosix.currentIndex = -1;
+            regex_t     regexCompiled = {};
+            const char* patternNull = prb_strGetNullTerminated(spec.arena, spec.pattern);
+            int         compResult = regcomp(&regexCompiled, patternNull, REG_EXTENDED);
+            prb_assert(compResult == 0);
+            prb_PathFindSpec allEntriesSpec = spec;
+            allEntriesSpec.mode = prb_PathFindMode_AllEntriesInDir;
+            prb_PathFindIterator allEntriesIter = prb_createPathFindIter(allEntriesSpec);
+            while (prb_pathFindIterNext(&allEntriesIter) == prb_Success) {
+                prb_String lastEntry = prb_getLastEntryInPath(allEntriesIter.curPath);
+                regmatch_t pos = {};
+                if (regexec(&regexCompiled, lastEntry.ptr, 1, &pos, 0) == 0) {
+                    prb_String curPathMalloced = prb_strMallocCopy(allEntriesIter.curPath);
+                    arrput(iter.regexPosix.matches, curPathMalloced);
+                }
+            }
+            prb_destroyPathFindIter(&allEntriesIter);
         } break;
     }
 
@@ -1610,6 +1627,16 @@ prb_pathFindIterNext(prb_PathFindIterator* iter) {
                 iter->curMatchCount += 1;
             }
         } break;
+
+        case prb_PathFindMode_RegexPosix: {
+            iter->regexPosix.currentIndex += 1;
+            if (arrlen(iter->regexPosix.matches) > iter->regexPosix.currentIndex) {
+                result = prb_Success;
+                // NOTE(khvorov) Make a copy so that this is still usable after destoying the iterator
+                iter->curPath = prb_fmt(iter->spec.arena, "%.*s", prb_LIT(iter->regexPosix.matches[iter->regexPosix.currentIndex]));
+                iter->curMatchCount += 1;
+            }
+        } break;
     }
 
 #else
@@ -1635,6 +1662,12 @@ prb_destroyPathFindIter(prb_PathFindIterator* iter) {
             arrfree(iter->allEntriesInDir.parents);
             break;
         case prb_PathFindMode_Glob: globfree(&iter->glob.result); break;
+        case prb_PathFindMode_RegexPosix:
+            for (int32_t matchIndex = 0; matchIndex < arrlen(iter->regexPosix.matches); matchIndex++) {
+                prb_free((void*)iter->regexPosix.matches[matchIndex].ptr);
+            }
+            arrfree(iter->regexPosix.matches);
+            break;
     }
 
 #else

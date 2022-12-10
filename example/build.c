@@ -226,7 +226,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
     prb_String* inputPaths = 0;
     for (i32 srcIndex = 0; srcIndex < lib->sourcesCount; srcIndex++) {
         prb_String           srcRelToDownload = lib->sourcesRelToDownload[srcIndex];
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {arena, lib->downloadDir, prb_PathFindMode_Glob, .glob.pattern = srcRelToDownload});
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = lib->downloadDir, .mode = prb_PathFindMode_Glob, srcRelToDownload});
         while (prb_pathFindIterNext(&iter)) {
             arrput(inputPaths, iter.curPath);
         }
@@ -236,7 +236,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
 
     StringFound* existingObjs = 0;
     {
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {arena, lib->objDir, prb_PathFindMode_AllEntriesInDir, .recursive = false});
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = lib->objDir, .mode = prb_PathFindMode_AllEntriesInDir});
         while (prb_pathFindIterNext(&iter)) {
             if (prb_strEndsWith(iter.curPath, prb_STR(".obj"))) {
                 shput(existingObjs, iter.curPath.ptr, false);

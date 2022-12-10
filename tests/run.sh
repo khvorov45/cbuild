@@ -3,7 +3,7 @@ set -e # stop on error
 echo Main tests
 rm -f tests/*gcno
 rm -f tests/*gcda
-gcc -g -Wall -Wextra -Werror -O0 \
+gcc -g -Wall -Wextra -Werror -Wfatal-errors -O0 \
     --coverage -fno-inline -fno-inline-small-functions -fno-default-inline -dumpbase '' \
     tests/tests.c -o tests/tests.bin -lpthread
 tests/tests.bin 
