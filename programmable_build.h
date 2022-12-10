@@ -31,9 +31,6 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 
 // TODO(khvorov) File search by regex
 // TODO(khvorov) Run sanitizers
-// TODO(khvorov) Better assert message
-// TODO(khvorov) Automatic -lpthread probably
-// TODO(khvorov) Avoid accidentally recursing in printing in assert
 // TODO(khvorov) Test macros do the right thing
 // TODO(khvorov) Consistent string/str iterator/iter naming
 // TODO(khvorov) Access color escape codes as strings
@@ -513,8 +510,8 @@ prb_PUBLICDEC void                 prb_addStringSegment(prb_GrowingString* gstr,
 prb_PUBLICDEC prb_String           prb_endString(prb_GrowingString* gstr);
 prb_PUBLICDEC prb_String           prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args);
 prb_PUBLICDEC prb_String           prb_fmt(prb_Arena* arena, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC void                 prb_writeToStdout(prb_String str);
-prb_PUBLICDEC void                 prb_writelnToStdout(prb_String str);
+prb_PUBLICDEC prb_Status           prb_writeToStdout(prb_String str);
+prb_PUBLICDEC prb_Status           prb_writelnToStdout(prb_String str);
 prb_PUBLICDEC void                 prb_setPrintColor(prb_ColorID color);
 prb_PUBLICDEC void                 prb_resetPrintColor(void);
 prb_PUBLICDEC prb_Utf8CharIterator prb_createUtf8CharIter(prb_String str, prb_StringDirection direction);
@@ -2163,8 +2160,9 @@ prb_fmt(prb_Arena* arena, const char* fmt, ...) {
     return result;
 }
 
-prb_PUBLICDEF void
+prb_PUBLICDEF prb_Status
 prb_writeToStdout(prb_String msg) {
+    prb_Status result = prb_Failure;
 #if prb_PLATFORM_WINDOWS
 
     HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -2173,17 +2171,22 @@ prb_writeToStdout(prb_String msg) {
 #elif prb_PLATFORM_LINUX
 
     ssize_t writeResult = write(STDOUT_FILENO, msg.ptr, msg.len);
-    prb_assert(writeResult == msg.len);
+    result = writeResult == msg.len ? prb_Success : prb_Failure;
 
 #else
 #error unimplemented
 #endif
+
+    return result;
 }
 
-prb_PUBLICDEF void
+prb_PUBLICDEF prb_Status
 prb_writelnToStdout(prb_String str) {
-    prb_writeToStdout(str);
-    prb_writeToStdout(prb_STR("\n"));
+    prb_Status result = prb_writeToStdout(str);
+    if (result == prb_Success) {
+        result = prb_writeToStdout(prb_STR("\n"));
+    }
+    return result;
 }
 
 prb_PUBLICDEF void

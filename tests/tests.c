@@ -1497,14 +1497,14 @@ function void
 test_writeToStdout(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
-    // TODO(khvorov) Write
+    prb_assert(prb_writeToStdout(prb_STR("write to stdout test\n")) == prb_Success);
 }
 
 function void
 test_writelnToStdout(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
-    // TODO(khvorov) Write
+    prb_assert(prb_writelnToStdout(prb_STR("writeln to stdout test")) == prb_Success);
 }
 
 function void
