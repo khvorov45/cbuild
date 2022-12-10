@@ -1,5 +1,7 @@
 #include "../programmable_build.h"
 
+// TODO(khvorov) Probably have a test runner that runs things like static analysis at the same time as tests
+
 #define function static
 
 typedef uint8_t  u8;
@@ -1248,7 +1250,7 @@ test_writeEntireFile(prb_Arena* arena, void* data) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_String     dir = getTempDir(arena, __FUNCTION__);
     prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
-    prb_String     filepath = prb_pathJoin(arena, dir, prb_STR("filename.txt"));
+    prb_String filepath = prb_pathJoin(arena, dir, prb_STR("filename.txt"));
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Failure);
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Success);
@@ -2158,10 +2160,7 @@ main() {
     prb_assert(arena.tempCount == 0);
     prb_assert(arena.base == baseStart);
 
-    {
-        prb_String msg = prb_fmt(&arena, "tests took %.2fms", prb_getMsFrom(testStart));
-        prb_writelnToStdout(msg);
-    }
+    prb_writelnToStdout(prb_fmt(&arena, "tests took %.2fms", prb_getMsFrom(testStart)));
 
     prb_terminate(0);
     prb_assert(!"unreachable");

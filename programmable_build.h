@@ -38,7 +38,10 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Random number generation
 // TODO(khvorov) Job status enum should probably be separate from process status
 // TODO(khvorov) Should be possible to redirect process stdout/err to different files.
+// TODO(khvorov) Should be possible to redirect process stdout/err to a buffer.
 // TODO(khvorov) If stdout/err file is missing just ignore the output
+
+// NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -2224,7 +2227,7 @@ prb_writelnToStdout(prb_String str) {
 
 prb_PUBLICDEF void
 prb_setPrintColor(prb_ColorID color) {
-    prb_String str = prb_STR("BAD COLOR");
+    prb_String str = {};
     switch (color) {
         case prb_ColorID_Black: str = prb_STR("\x1b[30m"); break;
         case prb_ColorID_Red: str = prb_STR("\x1b[31m"); break;
@@ -3866,7 +3869,9 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                         stbsp__cb_buf_clamp(i, lead[0]);
                         lead[0] -= (char)i;
                         while (i) {
+                            // NOLINTBEGIN(clang-analyzer-core.uninitialized.Assign)
                             *bf++ = *sn++;
+                            // NOLINTEND(clang-analyzer-core.uninitialized.Assign)
                             --i;
                         }
                         stbsp__chk_cb_buf(1);
@@ -3930,7 +3935,9 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                         i -= 4;
                     })
                     while (i) {
+                        // NOLINTBEGIN(clang-analyzer-core.uninitialized.Assign)
                         *bf++ = *s++;
+                        // NOLINTEND(clang-analyzer-core.uninitialized.Assign)
                         --i;
                     }
                     stbsp__chk_cb_buf(1);
