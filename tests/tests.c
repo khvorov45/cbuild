@@ -1,7 +1,5 @@
 #include "../programmable_build.h"
 
-// TODO(khvorov) Probably have a test runner that runs things like static analysis at the same time as tests
-
 #define function static
 
 typedef uint8_t  u8;
@@ -618,19 +616,20 @@ test_setWorkingDir(prb_Arena* arena, void* data) {
 
     prb_String cwdInit = prb_getWorkingDir(arena);
     prb_String newWd = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_assert(prb_removeDirectoryIfExists(arena, newWd) == prb_Success);
     prb_String newWdAbsolute = prb_getAbsolutePath(arena, newWd);
     prb_assert(prb_setWorkingDir(arena, newWd) == prb_Failure);
     prb_assert(prb_createDirIfNotExists(arena, newWd) == prb_Success);
     prb_assert(prb_setWorkingDir(arena, newWd) == prb_Success);
     prb_assert(prb_streq(prb_getWorkingDir(arena), newWdAbsolute));
-    prb_String filename = prb_STR("test.txt");
+    prb_String filename = prb_STR("testfile-setworkingdir.txt");
     prb_assert(prb_writeEntireFile(arena, filename, filename.ptr, filename.len) == prb_Success);
-    prb_ReadEntireFileResult fileRead = prb_readEntireFile(arena, prb_pathJoin(arena, newWd, filename));
-    prb_assert(!fileRead.success);
-    prb_setWorkingDir(arena, cwdInit);
-    fileRead = prb_readEntireFile(arena, prb_pathJoin(arena, newWd, filename));
+    prb_ReadEntireFileResult fileRead = prb_readEntireFile(arena, filename);
     prb_assert(fileRead.success);
     prb_assert(prb_streq(prb_strFromBytes(fileRead.content), filename));
+    prb_assert(prb_setWorkingDir(arena, cwdInit) == prb_Success);
+    fileRead = prb_readEntireFile(arena, filename);
+    prb_assert(!fileRead.success);
 
     prb_removeDirectoryIfExists(arena, newWd);
     prb_endTempMemory(temp);
