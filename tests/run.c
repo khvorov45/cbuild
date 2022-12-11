@@ -241,6 +241,7 @@ main() {
 
     // TODO(khvorov) Run example compilation probably
     // TODO(khvorov) Run static analysis
+    // TODO(khvorov) Change directories and run again (tests filepath handling)
 
     prb_writelnToStdout(prb_fmt(arena, "test run took %.2fms", prb_getMsFrom(scriptStart)));
     return 0;

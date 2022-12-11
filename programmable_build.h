@@ -40,6 +40,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Should be possible to redirect process stdout/err to different files.
 // TODO(khvorov) Should be possible to redirect process stdout/err to a buffer.
 // TODO(khvorov) If stdout/err file is missing just ignore the output
+// TODO(khvorov) Path entry iterator
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
@@ -461,6 +462,7 @@ prb_PUBLICDEC void           prb_endTempMemory(prb_TempMemory temp);
 
 // SECTION Filesystem
 prb_PUBLICDEC bool                     prb_pathExists(prb_Arena* arena, prb_String path);
+prb_PUBLICDEC bool                     prb_pathIsAbsolute(prb_String path);
 prb_PUBLICDEC prb_String               prb_getAbsolutePath(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC bool                     prb_isDirectory(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC bool                     prb_isFile(prb_Arena* arena, prb_String path);
@@ -1135,29 +1137,34 @@ prb_pathExists(prb_Arena* arena, prb_String path) {
     return result;
 }
 
-prb_PUBLICDEF prb_String
-prb_getAbsolutePath(prb_Arena* arena, prb_String path) {
-    prb_String result = {};
-    prb_String pathNull = prb_strMallocCopy(path);
-
+prb_PUBLICDEF bool
+prb_pathIsAbsolute(prb_String path) {
+    bool result = false;
 #if prb_PLATFORM_WINDOWS
 
 #error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
-    prb_assert(prb_arenaFreeSize(arena) >= PATH_MAX);
-    char* str = (char*)prb_arenaFreePtr(arena);
-    realpath(pathNull.ptr, str);
-    result = prb_STR(str);
-    prb_arenaChangeUsed(arena, result.len + 1);  // NOTE(khvorov) Null terminator
+    result = path.len > 0 && path.ptr[0] == '/';
 
 #else
 #error unimplemented
 #endif
 
-    prb_free((void*)pathNull.ptr);
     return result;
+}
+
+prb_PUBLICDEF prb_String
+prb_getAbsolutePath(prb_Arena* arena, prb_String path) {
+    prb_String pathAbs = path;
+    if (!prb_pathIsAbsolute(path)) {
+        pathAbs = prb_pathJoin(arena, prb_getWorkingDir(arena), path);
+    }
+
+    // TODO(khvorov) Resolve the path (i.e., remove . and ..)
+
+    return pathAbs;
 }
 
 prb_PUBLICDEF bool
@@ -1453,18 +1460,9 @@ prb_findSepBeforeLastEntry(prb_String path) {
 
 prb_PUBLICDEF prb_String
 prb_getParentDir(prb_Arena* arena, prb_String path) {
-#if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
-#elif prb_PLATFORM_LINUX
-
-    prb_assert(!prb_streq(path, prb_STR("/")));
-
-#endif
-
-    prb_StringFindResult findResult = prb_findSepBeforeLastEntry(path);
-    prb_String           result = findResult.found ? (prb_String) {path.ptr, findResult.matchByteIndex + 1} : prb_getWorkingDir(arena);
+    prb_String           pathAbs = prb_getAbsolutePath(arena, path);
+    prb_StringFindResult findResult = prb_findSepBeforeLastEntry(pathAbs);
+    prb_String           result = findResult.found ? (prb_String) {pathAbs.ptr, prb_max(findResult.matchByteIndex, 1)} : pathAbs;
     return result;
 }
 
@@ -1472,21 +1470,10 @@ prb_PUBLICDEF prb_String
 prb_getLastEntryInPath(prb_String path) {
     prb_StringFindResult findResult = prb_findSepBeforeLastEntry(path);
     prb_String           result = path;
-
-#if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
-#elif prb_PLATFORM_LINUX
-
     if (findResult.found) {
         prb_assert(path.len > 1);
         result = prb_strSliceForward(path, findResult.matchByteIndex + 1);
     }
-
-#else
-#error unimplemented
-#endif
     return result;
 }
 

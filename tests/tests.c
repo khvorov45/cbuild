@@ -287,12 +287,40 @@ test_pathExists(prb_Arena* arena, void* data) {
 }
 
 function void
+test_pathIsAbsolute(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+
+    prb_assert(!prb_pathIsAbsolute(prb_getLastEntryInPath(prb_STR(__FILE__))));
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    prb_assert(prb_pathIsAbsolute(prb_STR("/home")));
+    prb_assert(prb_pathIsAbsolute(prb_STR("/nonexistant")));
+
+#else
+#error unimplemented
+#endif
+}
+
+function void
 test_getAbsolutePath(prb_Arena* arena, void* data) {
     prb_unused(data);
+    prb_String cwd = prb_getWorkingDir(arena);
     prb_String filename = prb_STR("test.txt");
     prb_String fileAbs = prb_getAbsolutePath(arena, filename);
-    prb_String fileWithCwd = prb_pathJoin(arena, prb_getWorkingDir(arena), filename);
+    prb_String fileWithCwd = prb_pathJoin(arena, cwd, filename);
     prb_assert(prb_streq(fileAbs, fileWithCwd));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/home")), prb_STR("/home")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/nonexistant/file.txt")), prb_STR("/nonexistant/file.txt")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("dir/file.md")), prb_pathJoin(arena, cwd, prb_STR("dir/file.md"))));
+    // TODO(khvorov) Test path resolving
+    // prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("./file.md")), prb_pathJoin(arena, cwd, prb_STR("file.md"))));
+    // prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("../file.md")), prb_pathJoin(arena, prb_getParentDir(arena, cwd), prb_STR("file.md"))));
 }
 
 function void
@@ -756,12 +784,13 @@ function void
 test_getParentDir(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_String     cwd = prb_getWorkingDir(arena);
 
-    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("test/path")), prb_STR("test/")));
-    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("test/path/")), prb_STR("test/")));
-    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("test/path2/path")), prb_STR("test/path2/")));
+    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("test/run.sh")), prb_pathJoin(arena, cwd, prb_STR("test"))));
+    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("test/path/")), prb_pathJoin(arena, cwd, prb_STR("test"))));
+    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("test/path2/path")), prb_pathJoin(arena, cwd, prb_STR("test/path2"))));
 
-    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("test")), prb_getWorkingDir(arena)));
+    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("test")), cwd));
 
 #if prb_PLATFORM_WINDOWS
     prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("C:\\\\test")), prb_STR("C:\\\\")));
@@ -1924,9 +1953,11 @@ assertArrsAreTheSame(prb_String* arr1, prb_String* arr2) {
 function void
 test_fileformat(prb_Arena* arena, void* data) {
     prb_unused(data);
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-
-    prb_ReadEntireFileResult fileContents = prb_readEntireFile(arena, prb_STR("programmable_build.h"));
+    prb_TempMemory           temp = prb_beginTempMemory(arena);
+    prb_String               fileParent = prb_getParentDir(arena, prb_STR(__FILE__));
+    prb_String               rootDir = prb_getParentDir(arena, fileParent);
+    prb_String               prbFilepath = prb_pathJoin(arena, rootDir, prb_STR("programmable_build.h"));
+    prb_ReadEntireFileResult fileContents = prb_readEntireFile(arena, prbFilepath);
     prb_assert(fileContents.success);
     prb_LineIterator lineIter = prb_createLineIter((prb_String) {(const char*)fileContents.content.data, fileContents.content.len});
 
@@ -2078,6 +2109,7 @@ main() {
 
     // SECTION Filesystem
     arrput(jobs, prb_createJob(test_pathExists, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_pathIsAbsolute, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getAbsolutePath, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_isDirectory, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_isFile, 0, &arena, 10 * prb_MEGABYTE));
