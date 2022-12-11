@@ -41,6 +41,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Should be possible to redirect process stdout/err to a buffer.
 // TODO(khvorov) If stdout/err file is missing just ignore the output
 // TODO(khvorov) Path entry iterator
+// TODO(khvorov) Rename to cbuild probably
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
@@ -1237,6 +1238,7 @@ prb_directoryIsEmpty(prb_Arena* arena, prb_String path) {
 
 prb_PUBLICDEF prb_Status
 prb_createDirIfNotExists(prb_Arena* arena, prb_String path) {
+    // TODO(khvorov) Make work when multiple levels are needed
     prb_TempMemory temp = prb_beginTempMemory(arena);
     const char*    pathNull = prb_strGetNullTerminated(arena, path);
     prb_Status     result = prb_Success;
@@ -1755,6 +1757,7 @@ prb_readEntireFile(prb_Arena* arena, prb_String path) {
 
 prb_PUBLICDEF prb_Status
 prb_writeEntireFile(prb_Arena* arena, prb_String path, const void* content, int32_t contentLen) {
+    // TODO(khvorov) Create required directories when they don't exist
     prb_Status result = prb_Failure;
 
 #if prb_PLATFORM_WINDOWS
