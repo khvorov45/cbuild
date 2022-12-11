@@ -645,7 +645,7 @@ test_setWorkingDir(prb_Arena* arena, void* data) {
     prb_String cwdInit = prb_getWorkingDir(arena);
     prb_String newWd = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
     prb_assert(prb_removeDirectoryIfExists(arena, newWd) == prb_Success);
-    prb_String newWdAbsolute = prb_getAbsolutePath(arena, newWd);
+    // prb_String newWdAbsolute = prb_getAbsolutePath(arena, newWd);
     prb_assert(prb_setWorkingDir(arena, newWd) == prb_Failure);
     prb_assert(prb_createDirIfNotExists(arena, newWd) == prb_Success);
     prb_assert(prb_setWorkingDir(arena, newWd) == prb_Success);
