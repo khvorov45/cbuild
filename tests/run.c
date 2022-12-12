@@ -247,7 +247,7 @@ main() {
     // TODO(khvorov) Change directories and compile/run tests again (to test filepath handling)
 
     // NOTE(khvorov) Compile all the examples in every supported way
-    if (noexamples) {
+    if (!noexamples) {
         prb_String rootDir = prb_getParentDir(arena, testsDir);
         prb_String exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
         prb_String exampleBuildProgramSrc = prb_pathJoin(arena, exampleDir, prb_STR("build.c"));
