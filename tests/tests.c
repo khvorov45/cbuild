@@ -321,9 +321,10 @@ test_getAbsolutePath(prb_Arena* arena, void* data) {
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/home")), prb_STR("/home")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/nonexistant/file.txt")), prb_STR("/nonexistant/file.txt")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("dir/file.md")), prb_pathJoin(arena, cwd, prb_STR("dir/file.md"))));
-    // TODO(khvorov) Test path resolving
-    // prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("./file.md")), prb_pathJoin(arena, cwd, prb_STR("file.md"))));
-    // prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("../file.md")), prb_pathJoin(arena, prb_getParentDir(arena, cwd), prb_STR("file.md"))));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("./file.md")), prb_pathJoin(arena, cwd, prb_STR("file.md"))));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/path/./file.md")), prb_STR("/path/file.md")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/path/../file.md")), prb_STR("/file.md")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("../file.md")), prb_pathJoin(arena, prb_getParentDir(arena, cwd), prb_STR("file.md"))));
 }
 
 function void
@@ -648,12 +649,11 @@ test_setWorkingDir(prb_Arena* arena, void* data) {
     prb_String cwdInit = prb_getWorkingDir(arena);
     prb_String newWd = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
     prb_assert(prb_removeDirectoryIfExists(arena, newWd) == prb_Success);
-    // prb_String newWdAbsolute = prb_getAbsolutePath(arena, newWd);
+    prb_String newWdAbsolute = prb_getAbsolutePath(arena, newWd);
     prb_assert(prb_setWorkingDir(arena, newWd) == prb_Failure);
     prb_assert(prb_createDirIfNotExists(arena, newWd) == prb_Success);
     prb_assert(prb_setWorkingDir(arena, newWd) == prb_Success);
-    // TODO(khvorov) Reenable when absolute path actually resolves the paths
-    // prb_assert(prb_streq(prb_getWorkingDir(arena), newWdAbsolute));
+    prb_assert(prb_streq(prb_getWorkingDir(arena), newWdAbsolute));
     prb_String filename = prb_STR("testfile-setworkingdir.txt");
     prb_assert(prb_writeEntireFile(arena, filename, filename.ptr, filename.len) == prb_Success);
     prb_ReadEntireFileResult fileRead = prb_readEntireFile(arena, filename);

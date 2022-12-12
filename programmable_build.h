@@ -1171,9 +1171,33 @@ prb_getAbsolutePath(prb_Arena* arena, prb_String path) {
         pathAbs = prb_pathJoin(arena, prb_getWorkingDir(arena), path);
     }
 
-    // TODO(khvorov) Resolve the path (i.e., remove . and ..)
+    prb_GrowingString gstr = prb_beginString(arena);
+    prb_PathEntryIter iter = prb_createPathEntryIter(pathAbs);
+    while (prb_pathEntryIterNext(&iter) == prb_Success) {
+        bool addThisEntry = true;
+        if (prb_streq(iter.curEntryName, prb_STR("."))) {
+            addThisEntry = false;
+        } else {
+            prb_PathEntryIter iterCopy = iter;
+            if (prb_pathEntryIterNext(&iterCopy) == prb_Success) {
+                if (prb_streq(iterCopy.curEntryName, prb_STR(".."))) {
+                    addThisEntry = false;
+                    // NOTE(khvorov) Skip the next one (..) as well
+                    prb_pathEntryIterNext(&iter);
+                }
+            }
+        }
+        if (addThisEntry) {
+            if (gstr.string.len == 0 || prb_charIsSep(gstr.string.ptr[gstr.string.len - 1])) {
+                prb_addStringSegment(&gstr, "%.*s", prb_LIT(iter.curEntryName));    
+            } else {
+                prb_addStringSegment(&gstr, "/%.*s", prb_LIT(iter.curEntryName));
+            }
+        }
+    }
 
-    return pathAbs;
+    prb_String result = prb_endString(&gstr);
+    return result;
 }
 
 prb_PUBLICDEF bool
