@@ -13,14 +13,6 @@ jobs:
     - uses: actions/checkout@v2
     - name: tests
       run: ./tests/run.sh
-    - name: example build gcc debug
-      run: ./example/build.sh gcc debug
-    - name: example build gcc release
-      run: ./example/build.sh gcc release
-    - name: example build clang debug
-      run: ./example/build.sh clang debug
-    - name: example build clang release
-      run: ./example/build.sh clang release    
     - name: coverage
       uses: codecov/codecov-action@v3
       with:

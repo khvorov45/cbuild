@@ -157,9 +157,13 @@ main() {
     prb_TimeStart scriptStart = prb_timeStart();
     prb_Arena     arena_ = prb_createArenaFromVmem(1 * prb_GIGABYTE);
     prb_Arena*    arena = &arena_;
-    prb_String    testsDir = prb_getParentDir(arena, prb_STR(__FILE__));
-    prb_String    testsFile = prb_pathJoin(arena, testsDir, prb_STR("tests.c"));
-    prb_String    precompFile = prb_pathJoin(arena, testsDir, prb_STR("precompile.c"));
+
+    prb_String* args = prb_getCmdArgs(arena);
+    bool        noexamples = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("noexamples"));
+
+    prb_String testsDir = prb_getParentDir(arena, prb_STR(__FILE__));
+    prb_String testsFile = prb_pathJoin(arena, testsDir, prb_STR("tests.c"));
+    prb_String precompFile = prb_pathJoin(arena, testsDir, prb_STR("precompile.c"));
 
     {
         prb_String       patsToRemove[] = {prb_STR("*.gcda"), prb_STR("*.gcno"), prb_STR("*.bin"), prb_STR("*.obj")};
@@ -194,6 +198,7 @@ main() {
         precompFile,
     };
 
+    // NOTE(khvorov) Start test compiling
     prb_ProcessHandle* compileProcs = 0;
     prb_ProcessHandle* precompileProcs = 0;
     CompileCmd*        precompCmds = 0;
@@ -218,9 +223,9 @@ main() {
             }
         }
     }
-
     prb_assert(prb_waitForProcesses(precompileProcs, arrlen(compileProcs)) == prb_Success);
 
+    // NOTE(khvorov) Finish test compiling (2 TU ones)
     for (i32 precompIndex = 0; precompIndex < arrlen(precompCmds); precompIndex++) {
         CompileCmd precmd = precompCmds[precompIndex];
         CompileCmd cmd = constructCompileCmd(arena, testsFile, precmd.output, precmd.compiler, precmd.lang);
@@ -229,9 +234,9 @@ main() {
         arrput(compileProcs, proc);
         arrput(compCmds, cmd);
     }
-
     prb_assert(prb_waitForProcesses(compileProcs, arrlen(compileProcs)) == prb_Success);
 
+    // NOTE(khvorov) Run all the test executalbes. Probalby overkill but tests finish fasts so do it anyway.
     for (i32 compCmdIndex = 0; compCmdIndex < arrlen(compCmds); compCmdIndex++) {
         CompileCmd compCmd = compCmds[compCmdIndex];
         prb_writelnToStdout(compCmd.output);
@@ -239,9 +244,49 @@ main() {
         prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
     }
 
-    // TODO(khvorov) Run example compilation probably
-    // TODO(khvorov) Run static analysis
-    // TODO(khvorov) Change directories and run again (tests filepath handling)
+    // TODO(khvorov) Change directories and compile/run tests again (to test filepath handling)
+
+    // NOTE(khvorov) Compile all the examples in every supported way
+    if (noexamples) {
+        prb_String rootDir = prb_getParentDir(arena, testsDir);
+        prb_String exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
+        prb_String exampleBuildProgramSrc = prb_pathJoin(arena, exampleDir, prb_STR("build.c"));
+        CompileCmd exampleBuildProgramCompileCmd = constructCompileCmd(arena, exampleBuildProgramSrc, prb_STR(""), compilers[0], Lang_C);
+        prb_writelnToStdout(exampleBuildProgramCompileCmd.cmd);
+        prb_ProcessHandle exampleBuildProgramCompileProc = prb_execCmd(arena, exampleBuildProgramCompileCmd.cmd, 0, (prb_String) {});
+        prb_assert(exampleBuildProgramCompileProc.status == prb_ProcessStatus_CompletedSuccess);
+
+        prb_String compilerArgs[] = {
+            prb_STR("clang"),
+#if prb_PLATFORM_WINDOWS
+            prb_STR("msvc")
+#elif prb_PLATFORM_LINUX
+            prb_STR("gcc")
+#else
+#error unimplemented
+#endif
+        };
+
+        prb_String buildModeArgs[] = {prb_STR("debug"), prb_STR("release")};
+
+        for (i32 compArgIndex = 0; compArgIndex < prb_arrayLength(compilerArgs); compArgIndex++) {
+            prb_String compilerArg = compilerArgs[compArgIndex];
+            for (i32 buildModeArgIndex = 0; buildModeArgIndex < prb_arrayLength(buildModeArgs); buildModeArgIndex++) {
+                prb_String buildModeArg = buildModeArgs[buildModeArgIndex];
+                prb_String cmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(exampleBuildProgramCompileCmd.output), prb_LIT(compilerArg), prb_LIT(buildModeArg));
+                prb_writelnToStdout(cmd);
+                prb_ProcessHandle proc = prb_execCmd(arena, cmd, 0, (prb_String) {});
+                prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
+                // NOTE(khvorov) Compile again to make sure incremental compilation code executes
+                proc = prb_execCmd(arena, cmd, 0, (prb_String) {});
+                prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
+            }
+        }
+    }
+
+    // TODO(khvorov) Verify that the actual build script in the example directory works (from multiple working dirs)
+   
+    // TODO(khvorov) Run static analysis 
 
     prb_writelnToStdout(prb_fmt(arena, "test run took %.2fms", prb_getMsFrom(scriptStart)));
     return 0;
