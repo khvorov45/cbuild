@@ -46,6 +46,9 @@ testNameToPrbName(prb_Arena* arena, prb_String testName, prb_String** prbNames) 
     } else if (prb_streq(testName, prb_STR("wordIter"))) {
         arrput(*prbNames, prb_STR("prb_createWordIter"));
         arrput(*prbNames, prb_STR("prb_wordIterNext"));
+    } else if (prb_streq(testName, prb_STR("pathEntryIter"))) {
+        arrput(*prbNames, prb_STR("prb_createPathEntryIter"));
+        arrput(*prbNames, prb_STR("prb_pathEntryIterNext"));
     } else {
         prb_String nameWithPrefix = prb_fmt(arena, "prb_%.*s", prb_LIT(testName));
         arrput(*prbNames, nameWithPrefix);
@@ -839,6 +842,55 @@ test_replaceExt(prb_Arena* arena, void* data) {
     prb_assert(prb_streq(prb_replaceExt(arena, prb_STR("path.dot/test"), prb_STR("txt")), prb_STR("path.dot/test.txt")));
 
     prb_endTempMemory(temp);
+}
+
+function void
+test_pathEntryIter(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+
+    prb_PathEntryIter iter = prb_createPathEntryIter(prb_STR("path/../to/./file"));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("path")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("path")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("..")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("path/..")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("to")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("path/../to")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR(".")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("path/../to/.")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("file")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("path/../to/./file")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Failure);
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    iter = prb_createPathEntryIter(prb_STR("/path/to/file"));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("/")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("/")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("path")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("/path")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("to")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("/path/to")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("file")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("/path/to/file")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Failure);
+
+#else
+#error unimplemented
+#endif
 }
 
 function void
@@ -2128,6 +2180,7 @@ main() {
     arrput(jobs, prb_createJob(test_getParentDir, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getLastEntryInPath, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_replaceExt, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_pathEntryIter, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_pathFindIter, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getLastModified, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_createMultitime, 0, &arena, 10 * prb_MEGABYTE));

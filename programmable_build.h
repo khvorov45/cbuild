@@ -40,7 +40,6 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Should be possible to redirect process stdout/err to different files.
 // TODO(khvorov) Should be possible to redirect process stdout/err to a buffer.
 // TODO(khvorov) If stdout/err file is missing just ignore the output
-// TODO(khvorov) Path entry iterator
 // TODO(khvorov) Rename to cbuild probably
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
@@ -344,6 +343,13 @@ typedef struct prb_StrFindIterator {
     int32_t              curMatchCount;
 } prb_StrFindIterator;
 
+typedef struct prb_PathEntryIter {
+    prb_String ogstr;
+    int32_t    curOffset;
+    prb_String curEntryName;
+    prb_String curEntryPath;
+} prb_PathEntryIter;
+
 typedef enum prb_PathFindMode {
     prb_PathFindMode_AllEntriesInDir,
     prb_PathFindMode_Glob,
@@ -481,6 +487,8 @@ prb_PUBLICDEC prb_StringFindResult     prb_findSepBeforeLastEntry(prb_String pat
 prb_PUBLICDEC prb_String               prb_getParentDir(prb_Arena* arena, prb_String path);
 prb_PUBLICDEC prb_String               prb_getLastEntryInPath(prb_String path);
 prb_PUBLICDEC prb_String               prb_replaceExt(prb_Arena* arena, prb_String path, prb_String newExt);
+prb_PUBLICDEC prb_PathEntryIter        prb_createPathEntryIter(prb_String path);
+prb_PUBLICDEC prb_Status               prb_pathEntryIterNext(prb_PathEntryIter* iter);
 prb_PUBLICDEC prb_PathFindIterator     prb_createPathFindIter(prb_PathFindSpec spec);
 prb_PUBLICDEC prb_Status               prb_pathFindIterNext(prb_PathFindIterator* iter);
 prb_PUBLICDEC void                     prb_destroyPathFindIter(prb_PathFindIterator* iter);
@@ -1497,6 +1505,55 @@ prb_replaceExt(prb_Arena* arena, prb_String path, prb_String newExt) {
         result = prb_fmt(arena, "%.*s.%.*s", dotIndex, path.ptr, prb_LIT(newExt));
     } else {
         result = prb_fmt(arena, "%.*s.%.*s", prb_LIT(path), prb_LIT(newExt));
+    }
+    return result;
+}
+
+prb_PUBLICDEF prb_PathEntryIter
+prb_createPathEntryIter(prb_String path) {
+    prb_PathEntryIter iter = {};
+    iter.ogstr = path;
+    return iter;
+}
+
+prb_PUBLICDEF prb_Status
+prb_pathEntryIterNext(prb_PathEntryIter* iter) {
+    prb_Status result = prb_Failure;
+    if (iter->curOffset < iter->ogstr.len) {
+        result = prb_Success;
+        int32_t oldOffset = iter->curOffset;
+
+        for (int32_t pathIndex = iter->curOffset; pathIndex < iter->ogstr.len; pathIndex++) {
+            char curCh = iter->ogstr.ptr[pathIndex];
+            if (prb_charIsSep(curCh)) {
+                iter->curOffset = pathIndex + 1;
+                break;
+            }
+        }
+
+        int32_t firstFoundSepIndex = iter->curOffset - 1;
+
+        // NOTE(khvorov) Did not find a separator
+        if (iter->curOffset == oldOffset) {
+            firstFoundSepIndex = iter->ogstr.len;
+            iter->curOffset = iter->ogstr.len;
+        }
+
+// NOTE(khvorov) Linux's root `/` path
+#if prb_PLATFORM_LINUX
+        if (oldOffset == 0 && firstFoundSepIndex == 0) {
+            firstFoundSepIndex = 1;
+        }
+#endif
+
+        prb_assert(firstFoundSepIndex > oldOffset);
+        iter->curEntryName = prb_strSliceBetween(iter->ogstr, oldOffset, firstFoundSepIndex);
+        iter->curEntryPath = prb_strSliceBetween(iter->ogstr, 0, firstFoundSepIndex);
+
+        // NOTE(khvorov) Ignore multiple separators in a row
+        while (iter->curOffset < iter->ogstr.len && prb_charIsSep(iter->ogstr.ptr[iter->curOffset])) {
+            iter->curOffset += 1;
+        }
     }
     return result;
 }
