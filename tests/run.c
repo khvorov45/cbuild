@@ -152,16 +152,8 @@ constructCompileCmd(prb_Arena* arena, prb_String input, prb_String extraInputs, 
     return result;
 }
 
-int
-main() {
-    prb_TimeStart scriptStart = prb_timeStart();
-    prb_Arena     arena_ = prb_createArenaFromVmem(1 * prb_GIGABYTE);
-    prb_Arena*    arena = &arena_;
-
-    prb_String* args = prb_getCmdArgs(arena);
-    bool        noexamples = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("noexamples"));
-
-    prb_String testsDir = prb_getParentDir(arena, prb_STR(__FILE__));
+function void
+compileAndRunTests(prb_Arena* arena, prb_String testsDir) {
     prb_String testsFile = prb_pathJoin(arena, testsDir, prb_STR("tests.c"));
     prb_String precompFile = prb_pathJoin(arena, testsDir, prb_STR("precompile.c"));
 
@@ -243,15 +235,36 @@ main() {
         prb_ProcessHandle proc = prb_execCmd(arena, compCmd.output, 0, (prb_String) {});
         prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
     }
+}
 
-    // TODO(khvorov) Change directories and compile/run tests again (to test filepath handling)
+int
+main() {
+    prb_TimeStart scriptStart = prb_timeStart();
+    prb_Arena     arena_ = prb_createArenaFromVmem(1 * prb_GIGABYTE);
+    prb_Arena*    arena = &arena_;
+
+    prb_String* args = prb_getCmdArgs(arena);
+    bool        noexamples = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("noexamples"));
+
+    prb_String testsDir = prb_getAbsolutePath(arena, prb_getParentDir(arena, prb_STR(__FILE__)));
+    prb_String rootDir = prb_getParentDir(arena, testsDir);
+
+    // NOTE(khvorov) Run tests from different example directories because I
+    // found it tests filepath handling better
+
+    prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
+    compileAndRunTests(arena, testsDir);
+
+    prb_assert(prb_setWorkingDir(arena, testsDir) == prb_Success);
+    compileAndRunTests(arena, testsDir);
+
+    prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
 
     // NOTE(khvorov) Compile all the examples in every supported way
-    if (!noexamples) {
-        prb_String rootDir = prb_getParentDir(arena, testsDir);
+    if (!noexamples || true) {
         prb_String exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
         prb_String exampleBuildProgramSrc = prb_pathJoin(arena, exampleDir, prb_STR("build.c"));
-        CompileCmd exampleBuildProgramCompileCmd = constructCompileCmd(arena, exampleBuildProgramSrc, prb_STR(""), compilers[0], Lang_C);
+        CompileCmd exampleBuildProgramCompileCmd = constructCompileCmd(arena, exampleBuildProgramSrc, prb_STR(""), Compiler_Clang, Lang_C);
         prb_writelnToStdout(exampleBuildProgramCompileCmd.cmd);
         prb_ProcessHandle exampleBuildProgramCompileProc = prb_execCmd(arena, exampleBuildProgramCompileCmd.cmd, 0, (prb_String) {});
         prb_assert(exampleBuildProgramCompileProc.status == prb_ProcessStatus_CompletedSuccess);
@@ -306,7 +319,12 @@ main() {
         prb_ProcessHandle builsScriptExec = prb_execCmd(arena, buildScriptCmd, 0, (prb_String) {});
         prb_assert(builsScriptExec.status == prb_ProcessStatus_CompletedSuccess);
 
-        // TODO(khvorov) Change directories and run build script again
+        prb_assert(prb_setWorkingDir(arena, exampleDir) == prb_Success);
+        prb_writelnToStdout(buildScriptCmd);
+        builsScriptExec = prb_execCmd(arena, buildScriptCmd, 0, (prb_String) {});
+        prb_assert(builsScriptExec.status == prb_ProcessStatus_CompletedSuccess);
+
+        prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
     }
 
     // TODO(khvorov) Run static analysis
