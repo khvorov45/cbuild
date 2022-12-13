@@ -282,11 +282,34 @@ main() {
                 prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
             }
         }
+
+#if prb_PLATFORM_WINDOWS
+        prb_String buildScriptName = prb_STR("build.bat");
+#elif prb_PLATFORM_LINUX
+        prb_String buildScriptName = prb_STR("build.sh");
+#else
+#error unimplemented
+#endif
+
+        prb_String buildScriptPath = prb_pathJoin(arena, exampleDir, buildScriptName);
+
+#if prb_PLATFORM_WINDOWS
+        prb_String buildScriptName = prb_STR("build.bat");
+#elif prb_PLATFORM_LINUX
+        prb_String buildScriptCmd = prb_fmt(arena, "sh %.*s", prb_LIT(buildScriptPath));
+#else
+#error unimplemented
+#endif
+
+        buildScriptCmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(buildScriptCmd), prb_LIT(compilerArgs[0]), prb_LIT(buildModeArgs[0]));
+        prb_writelnToStdout(buildScriptCmd);
+        prb_ProcessHandle builsScriptExec = prb_execCmd(arena, buildScriptCmd, 0, (prb_String) {});
+        prb_assert(builsScriptExec.status == prb_ProcessStatus_CompletedSuccess);
+
+        // TODO(khvorov) Change directories and run build script again
     }
 
-    // TODO(khvorov) Verify that the actual build script in the example directory works (from multiple working dirs)
-   
-    // TODO(khvorov) Run static analysis 
+    // TODO(khvorov) Run static analysis
 
     prb_writelnToStdout(prb_fmt(arena, "test run took %.2fms", prb_getMsFrom(scriptStart)));
     return 0;
