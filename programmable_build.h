@@ -43,6 +43,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Rename to cbuild probably
 // TODO(khvorov) Pathfind iterator should probably not crash when given non-existant directories
 // TODO(khvorov) Set env variables when executing processes
+// TODO(khvorov) Set env variables for the current process
 // TODO(khvorov) strReplace should just take a position and a length of the replacement
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
