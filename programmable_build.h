@@ -31,7 +31,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 
 // TODO(khvorov) Run sanitizers
 // TODO(khvorov) Test macros do the right thing
-// TODO(khvorov) Consistent string/str iterator/iter naming
+// TODO(khvorov) Consistent string/str iterator/iter dir/directory naming
 // TODO(khvorov) Access color escape codes as strings
 // TODO(khvorov) Change included dependency prefixes to prb_ probably
 // TODO(khvorov) Helper to reset iterators
@@ -42,6 +42,8 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) If stdout/err file is missing just ignore the output
 // TODO(khvorov) Rename to cbuild probably
 // TODO(khvorov) Pathfind iterator should probably not crash when given non-existant directories
+// TODO(khvorov) Set env variables when executing processes
+// TODO(khvorov) strReplace should just take a position and a length of the replacement
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
