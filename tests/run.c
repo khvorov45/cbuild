@@ -249,6 +249,15 @@ main() {
     prb_String testsDir = prb_getAbsolutePath(arena, prb_getParentDir(arena, prb_STR(__FILE__)));
     prb_String rootDir = prb_getParentDir(arena, testsDir);
 
+    // TODO(khvorov) Run sanitizers for tests probably
+    // TODO(khvorov) Organize output better
+
+    // NOTE(khvorov) Static analysis
+    prb_String mainFilePath = prb_pathJoin(arena, rootDir, prb_STR("programmable_build.h"));
+    prb_String staticAnalysisCmd = prb_fmt(arena, "clang-tidy %.*s", prb_LIT(mainFilePath));
+    prb_writelnToStdout(staticAnalysisCmd);
+    prb_ProcessHandle staticAnalysisProc = prb_execCmd(arena, staticAnalysisCmd, prb_ProcessFlag_DontWait, (prb_String){});
+
     // NOTE(khvorov) Run tests from different example directories because I
     // found it tests filepath handling better
 
@@ -327,7 +336,7 @@ main() {
         prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
     }
 
-    // TODO(khvorov) Run static analysis
+    prb_assert(prb_waitForProcesses(&staticAnalysisProc, 1));
 
     prb_writelnToStdout(prb_fmt(arena, "test run took %.2fms", prb_getMsFrom(scriptStart)));
     return 0;

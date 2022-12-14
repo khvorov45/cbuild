@@ -29,7 +29,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 prb_destroyIter() functions don't destroy actual entries, only system resources (e.g. directory handles).
 */
 
-// TODO(khvorov) Run sanitizers
 // TODO(khvorov) Test macros do the right thing
 // TODO(khvorov) Consistent string/str iterator/iter dir/directory naming
 // TODO(khvorov) Access color escape codes as strings
