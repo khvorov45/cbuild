@@ -1892,11 +1892,12 @@ test_getArgArrayFromString(prb_Arena* arena, void* data) {
 
     for (i32 strIndex = 0; strIndex < prb_arrayLength(strings); strIndex++) {
         const char** args = prb_getArgArrayFromString(arena, strings[strIndex]);
-        prb_assert(arrlen(args) == 4 + 1);
+        prb_assert(arrlen(args) == 4);
         prb_assert(prb_streq(prb_STR(args[0]), prb_STR("prg")));
         prb_assert(prb_streq(prb_STR(args[1]), prb_STR("arg1")));
         prb_assert(prb_streq(prb_STR(args[2]), prb_STR("arg2")));
         prb_assert(prb_streq(prb_STR(args[3]), prb_STR("arg3")));
+        prb_assert(args[4] == 0);
     }
 
     prb_endTempMemory(temp);

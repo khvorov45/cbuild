@@ -2688,7 +2688,8 @@ prb_getArgArrayFromString(prb_Arena* arena, prb_String string) {
     }
 
     // NOTE(khvorov) Arg array needs a null at the end
-    arrput(args, 0);
+    arrsetcap(args, arrlen(args) + 1);
+    args[arrlen(args)] = 0;
 
     return args;
 }
