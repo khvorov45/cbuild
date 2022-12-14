@@ -202,7 +202,7 @@ compileAndRunTests(prb_Arena* arena, prb_String testsDir) {
             for (i32 srcIndex = 0; srcIndex < prb_arrayLength(sources); srcIndex++) {
                 prb_String source = sources[srcIndex];
                 CompileCmd cmd = constructCompileCmd(arena, source, prb_STR(""), compiler, lang);
-                prb_writelnToStdout(cmd.cmd);
+                prb_writelnToStdout(arena, cmd.cmd);
                 prb_ProcessHandle proc = prb_execCmd(arena, cmd.cmd, prb_ProcessFlag_DontWait, (prb_String) {});
                 prb_assert(proc.status >= prb_ProcessStatus_Launched);
                 if (prb_strEndsWith(source, prb_STR("precompile.c"))) {
@@ -221,7 +221,7 @@ compileAndRunTests(prb_Arena* arena, prb_String testsDir) {
     for (i32 precompIndex = 0; precompIndex < arrlen(precompCmds); precompIndex++) {
         CompileCmd precmd = precompCmds[precompIndex];
         CompileCmd cmd = constructCompileCmd(arena, testsFile, precmd.output, precmd.compiler, precmd.lang);
-        prb_writelnToStdout(cmd.cmd);
+        prb_writelnToStdout(arena, cmd.cmd);
         prb_ProcessHandle proc = prb_execCmd(arena, cmd.cmd, prb_ProcessFlag_DontWait, (prb_String) {});
         arrput(compileProcs, proc);
         arrput(compCmds, cmd);
@@ -231,7 +231,7 @@ compileAndRunTests(prb_Arena* arena, prb_String testsDir) {
     // NOTE(khvorov) Run all the test executalbes. Probalby overkill but tests finish fast so do it anyway.
     for (i32 compCmdIndex = 0; compCmdIndex < arrlen(compCmds); compCmdIndex++) {
         CompileCmd compCmd = compCmds[compCmdIndex];
-        prb_writelnToStdout(compCmd.output);
+        prb_writelnToStdout(arena, compCmd.output);
         prb_String        cmdOutPath = prb_replaceExt(arena, compCmd.output, prb_STR("log"));
         prb_ProcessHandle proc = prb_execCmd(arena, compCmd.output, prb_ProcessFlag_RedirectStderr | prb_ProcessFlag_RedirectStdout, cmdOutPath);
         prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
@@ -255,7 +255,7 @@ main() {
     // NOTE(khvorov) Static analysis
     prb_String mainFilePath = prb_pathJoin(arena, rootDir, prb_STR("programmable_build.h"));
     prb_String staticAnalysisCmd = prb_fmt(arena, "clang-tidy %.*s", prb_LIT(mainFilePath));
-    prb_writelnToStdout(staticAnalysisCmd);
+    prb_writelnToStdout(arena, staticAnalysisCmd);
     prb_String        staticAnalysisOutput = prb_pathJoin(arena, testsDir, prb_STR("static_analysis_out"));
     prb_ProcessHandle staticAnalysisProc = prb_execCmd(arena, staticAnalysisCmd, prb_ProcessFlag_DontWait | prb_ProcessFlag_RedirectStderr | prb_ProcessFlag_RedirectStdout, staticAnalysisOutput);
     prb_assert(staticAnalysisProc.status == prb_ProcessStatus_Launched);
@@ -274,10 +274,10 @@ main() {
         bool                 first = true;
         while (prb_pathFindIterNext(&iter)) {
             if (first) {
-                prb_writelnToStdout(prb_STR("tests output:"));
+                prb_writelnToStdout(arena, prb_STR("tests output:"));
                 prb_ReadEntireFileResult readres = prb_readEntireFile(arena, iter.curPath);
                 prb_assert(readres.success);
-                prb_writelnToStdout(prb_strFromBytes(readres.content));
+                prb_writelnToStdout(arena, prb_strFromBytes(readres.content));
                 first = false;
             }
             prb_removeFileIfExists(arena, iter.curPath);
@@ -289,7 +289,7 @@ main() {
         prb_String exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
         prb_String exampleBuildProgramSrc = prb_pathJoin(arena, exampleDir, prb_STR("build.c"));
         CompileCmd exampleBuildProgramCompileCmd = constructCompileCmd(arena, exampleBuildProgramSrc, prb_STR(""), Compiler_Clang, Lang_C);
-        prb_writelnToStdout(exampleBuildProgramCompileCmd.cmd);
+        prb_writelnToStdout(arena, exampleBuildProgramCompileCmd.cmd);
         prb_ProcessHandle exampleBuildProgramCompileProc = prb_execCmd(arena, exampleBuildProgramCompileCmd.cmd, 0, (prb_String) {});
         prb_assert(exampleBuildProgramCompileProc.status == prb_ProcessStatus_CompletedSuccess);
 
@@ -311,7 +311,7 @@ main() {
             for (i32 buildModeArgIndex = 0; buildModeArgIndex < prb_arrayLength(buildModeArgs); buildModeArgIndex++) {
                 prb_String buildModeArg = buildModeArgs[buildModeArgIndex];
                 prb_String cmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(exampleBuildProgramCompileCmd.output), prb_LIT(compilerArg), prb_LIT(buildModeArg));
-                prb_writelnToStdout(cmd);
+                prb_writelnToStdout(arena, cmd);
                 prb_ProcessHandle proc = prb_execCmd(arena, cmd, 0, (prb_String) {});
                 prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
                 // NOTE(khvorov) Compile again to make sure incremental compilation code executes
@@ -339,12 +339,12 @@ main() {
 #endif
 
         buildScriptCmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(buildScriptCmd), prb_LIT(compilerArgs[0]), prb_LIT(buildModeArgs[0]));
-        prb_writelnToStdout(buildScriptCmd);
+        prb_writelnToStdout(arena, buildScriptCmd);
         prb_ProcessHandle builsScriptExec = prb_execCmd(arena, buildScriptCmd, 0, (prb_String) {});
         prb_assert(builsScriptExec.status == prb_ProcessStatus_CompletedSuccess);
 
         prb_assert(prb_setWorkingDir(arena, exampleDir) == prb_Success);
-        prb_writelnToStdout(buildScriptCmd);
+        prb_writelnToStdout(arena, buildScriptCmd);
         builsScriptExec = prb_execCmd(arena, buildScriptCmd, 0, (prb_String) {});
         prb_assert(builsScriptExec.status == prb_ProcessStatus_CompletedSuccess);
 
@@ -356,11 +356,11 @@ main() {
     {
         prb_ReadEntireFileResult staticAnalysisOutRead = prb_readEntireFile(arena, staticAnalysisOutput);
         prb_assert(staticAnalysisOutRead.success);
-        prb_writelnToStdout(prb_STR("static analysis out:"));
-        prb_writelnToStdout(prb_strFromBytes(staticAnalysisOutRead.content));
+        prb_writelnToStdout(arena, prb_STR("static analysis out:"));
+        prb_writelnToStdout(arena, prb_strFromBytes(staticAnalysisOutRead.content));
         prb_assert(prb_removeFileIfExists(arena, staticAnalysisOutput));
     }
 
-    prb_writelnToStdout(prb_fmt(arena, "test run took %.2fms", prb_getMsFrom(scriptStart)));
+    prb_writelnToStdout(arena, prb_fmt(arena, "test run took %.2fms", prb_getMsFrom(scriptStart)));
     return 0;
 }

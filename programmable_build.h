@@ -46,7 +46,6 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) strReplace should just take a position and a length of the replacement
 // TODO(khvorov) strReplace should probably handle multiple replacements
 // TODO(khvorov) Ability to check/change file executable permissions
-// TODO(khvorov) writeln should probably format the string before writing it
 // TODO(khvorov) A way to limit the number of cores used when executing jobs/processes
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
@@ -202,7 +201,8 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
     prb_writeToStdout(prb_STR("assertion failure at "));\
     prb_writeToStdout(prb_STR(__FILE__));\
     prb_writeToStdout(prb_STR(":"));\
-    prb_writelnToStdout(prb_STR(prb_LINE_STRING));\
+    prb_writeToStdout(prb_STR(prb_LINE_STRING));\
+    prb_writeToStdout(prb_STR("\n"));\
     prb_debugbreak();\
     prb_terminate(1);\
 } while (0)
@@ -548,7 +548,7 @@ prb_PUBLICDEC prb_String           prb_endString(prb_GrowingString* gstr);
 prb_PUBLICDEC prb_String           prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args);
 prb_PUBLICDEC prb_String           prb_fmt(prb_Arena* arena, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
 prb_PUBLICDEC prb_Status           prb_writeToStdout(prb_String str);
-prb_PUBLICDEC prb_Status           prb_writelnToStdout(prb_String str);
+prb_PUBLICDEC prb_Status           prb_writelnToStdout(prb_Arena* arena, prb_String str);
 prb_PUBLICDEC void                 prb_setPrintColor(prb_ColorID color);
 prb_PUBLICDEC void                 prb_resetPrintColor(void);
 prb_PUBLICDEC prb_Utf8CharIterator prb_createUtf8CharIter(prb_String str, prb_StringDirection direction);
@@ -2314,11 +2314,10 @@ prb_writeToStdout(prb_String msg) {
 }
 
 prb_PUBLICDEF prb_Status
-prb_writelnToStdout(prb_String str) {
-    prb_Status result = prb_writeToStdout(str);
-    if (result == prb_Success) {
-        result = prb_writeToStdout(prb_STR("\n"));
-    }
+prb_writelnToStdout(prb_Arena* arena, prb_String str) {
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Status result = prb_writeToStdout(prb_fmt(arena, "%.*s\n", prb_LIT(str)));
+    prb_endTempMemory(temp);
     return result;
 }
 

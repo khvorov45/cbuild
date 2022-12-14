@@ -1668,9 +1668,8 @@ test_writeToStdout(prb_Arena* arena, void* data) {
 
 function void
 test_writelnToStdout(prb_Arena* arena, void* data) {
-    prb_unused(arena);
     prb_unused(data);
-    prb_assert(prb_writelnToStdout(prb_STR("writeln to stdout test")) == prb_Success);
+    prb_assert(prb_writelnToStdout(arena, prb_STR("writeln to stdout test")) == prb_Success);
 }
 
 function void
@@ -1678,34 +1677,34 @@ test_setPrintColor(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_writelnToStdout(prb_STR("color printing:"));
+    prb_writelnToStdout(arena, prb_STR("color printing:"));
 
     prb_setPrintColor(prb_ColorID_Blue);
-    prb_writelnToStdout(prb_STR("blue"));
+    prb_writelnToStdout(arena, prb_STR("blue"));
 
     prb_setPrintColor(prb_ColorID_Cyan);
-    prb_writelnToStdout(prb_STR("cyan"));
+    prb_writelnToStdout(arena, prb_STR("cyan"));
 
     prb_setPrintColor(prb_ColorID_Magenta);
-    prb_writelnToStdout(prb_STR("magenta"));
+    prb_writelnToStdout(arena, prb_STR("magenta"));
 
     prb_setPrintColor(prb_ColorID_Yellow);
-    prb_writelnToStdout(prb_STR("yellow"));
+    prb_writelnToStdout(arena, prb_STR("yellow"));
 
     prb_setPrintColor(prb_ColorID_Red);
-    prb_writelnToStdout(prb_STR("red"));
+    prb_writelnToStdout(arena, prb_STR("red"));
 
     prb_setPrintColor(prb_ColorID_Green);
-    prb_writelnToStdout(prb_STR("green"));
+    prb_writelnToStdout(arena, prb_STR("green"));
 
     prb_setPrintColor(prb_ColorID_Black);
-    prb_writelnToStdout(prb_STR("black"));
+    prb_writelnToStdout(arena, prb_STR("black"));
 
     prb_setPrintColor(prb_ColorID_White);
-    prb_writelnToStdout(prb_STR("white"));
+    prb_writelnToStdout(arena, prb_STR("white"));
 
     prb_resetPrintColor();
-    prb_writelnToStdout(prb_STR("reset"));
+    prb_writelnToStdout(arena, prb_STR("reset"));
 
     prb_endTempMemory(temp);
 }
@@ -1972,10 +1971,10 @@ test_execJobs(prb_Arena* arena, void* data) {
 //
 
 function void
-assertArrsAreTheSame(prb_String* arr1, prb_String* arr2) {
+assertArrsAreTheSame(prb_Arena* arena, prb_String* arr1, prb_String* arr2) {
     prb_String* arr1NotInArr2 = setdiff(arr1, arr2);
     if (arrlen(arr1NotInArr2) > 0) {
-        prb_writelnToStdout(prb_STR("in arr1 but not in arr2:"));
+        prb_writelnToStdout(arena, prb_STR("in arr1 but not in arr2:"));
         for (i32 index = 0; index < arrlen(arr1NotInArr2); index++) {
             prb_String str = arr1NotInArr2[index];
             prb_writeToStdout(str);
@@ -1987,7 +1986,7 @@ assertArrsAreTheSame(prb_String* arr1, prb_String* arr2) {
 
     prb_String* implNotInHeader = setdiff(arr2, arr1);
     if (arrlen(implNotInHeader) > 0) {
-        prb_writelnToStdout(prb_STR("in arr2 but not in arr1:"));
+        prb_writelnToStdout(arena, prb_STR("in arr2 but not in arr1:"));
         for (i32 index = 0; index < arrlen(implNotInHeader); index++) {
             prb_String str = implNotInHeader[index];
             prb_writeToStdout(str);
@@ -2073,7 +2072,7 @@ test_fileformat(prb_Arena* arena, void* data) {
         }
     }
 
-    assertArrsAreTheSame(headerNames, implNames);
+    assertArrsAreTheSame(arena, headerNames, implNames);
 
     prb_String*              testNames = 0;
     prb_ReadEntireFileResult testFileReadResut = prb_readEntireFile(arena, prb_STR(__FILE__));
@@ -2102,7 +2101,7 @@ test_fileformat(prb_Arena* arena, void* data) {
 
     arrput(testNames, prb_STR("// SECTION stb snprintf"));
     arrput(testNames, prb_STR("// SECTION stb ds"));
-    assertArrsAreTheSame(headerNames, testNames);
+    assertArrsAreTheSame(arena, headerNames, testNames);
 
     prb_String* testNamesInMain = 0;
     while (prb_lineIterNext(&testFileLineIter)) {
@@ -2130,7 +2129,7 @@ test_fileformat(prb_Arena* arena, void* data) {
 
     arrput(testNamesInMain, prb_STR("// SECTION stb snprintf"));
     arrput(testNamesInMain, prb_STR("// SECTION stb ds"));
-    assertArrsAreTheSame(headerNames, testNamesInMain);
+    assertArrsAreTheSame(arena, headerNames, testNamesInMain);
 
     arrfree(headerNames);
     arrfree(implNames);
@@ -2246,7 +2245,7 @@ main() {
     prb_assert(arena.tempCount == 0);
     prb_assert(arena.base == baseStart);
 
-    prb_writelnToStdout(prb_fmt(&arena, "tests took %.2fms", prb_getMsFrom(testStart)));
+    prb_writelnToStdout(&arena, prb_fmt(&arena, "tests took %.2fms", prb_getMsFrom(testStart)));
 
     prb_terminate(0);
     prb_assert(!"unreachable");
