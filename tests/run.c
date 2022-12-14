@@ -228,7 +228,7 @@ compileAndRunTests(prb_Arena* arena, prb_String testsDir) {
     }
     prb_assert(prb_waitForProcesses(compileProcs, arrlen(compileProcs)) == prb_Success);
 
-    // NOTE(khvorov) Run all the test executalbes. Probalby overkill but tests finish fasts so do it anyway.
+    // NOTE(khvorov) Run all the test executalbes. Probalby overkill but tests finish fast so do it anyway.
     for (i32 compCmdIndex = 0; compCmdIndex < arrlen(compCmds); compCmdIndex++) {
         CompileCmd compCmd = compCmds[compCmdIndex];
         prb_writelnToStdout(compCmd.output);
@@ -261,7 +261,7 @@ main() {
     prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
 
     // NOTE(khvorov) Compile all the examples in every supported way
-    if (!noexamples || true) {
+    if (!noexamples) {
         prb_String exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
         prb_String exampleBuildProgramSrc = prb_pathJoin(arena, exampleDir, prb_STR("build.c"));
         CompileCmd exampleBuildProgramCompileCmd = constructCompileCmd(arena, exampleBuildProgramSrc, prb_STR(""), Compiler_Clang, Lang_C);

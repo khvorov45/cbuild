@@ -48,6 +48,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) strReplace should probably handle multiple replacements
 // TODO(khvorov) Ability to check/change file executable permissions
 // TODO(khvorov) writeln should probably format the string before writing it
+// TODO(khvorov) A way to limit the number of cores used when executing jobs/processes
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
