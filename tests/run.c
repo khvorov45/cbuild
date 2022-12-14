@@ -270,7 +270,7 @@ main() {
 
     // NOTE(khvorov) Print the one of the test results
     {
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = testsDir, .mode = prb_PathFindMode_Glob, .pattern = prb_STR("*.log")});
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = testsDir, .mode = prb_PathFindMode_Glob, .pattern = prb_STR("*.log"), .recursive = false});
         bool                 first = true;
         while (prb_pathFindIterNext(&iter)) {
             if (first) {
