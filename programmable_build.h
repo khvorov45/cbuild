@@ -133,34 +133,53 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #define prb_STR(x) (prb_String) {x, prb_strlen(x)}
 #define prb_LIT(x) (x).len, (x).ptr
 
-// Debug break taken from SDL
-// https://github.com/libsdl-org/SDL/blob/main/include/SDL_assert.h
-#ifdef __has_builtin
-    #define _prb_HAS_BUILTIN(x) __has_builtin(x)
-#else
-    #define _prb_HAS_BUILTIN(x) 0
+// Taken from portable snippets
+// https://github.com/nemequ/portable-snippets/blob/master/debug-trap/debug-trap.h
+#if defined(__has_builtin) && !defined(__ibmxl__)
+#if __has_builtin(__builtin_debugtrap)
+#define prb_debugbreak() __builtin_debugtrap()
+#elif __has_builtin(__debugbreak)
+#define prb_debugbreak() __debugbreak()
 #endif
-
-#if defined(_MSC_VER)
-    /* Don't include intrin.h here because it contains C++ code */
-    extern void __cdecl __debugbreak(void);
-    #define prb_debugbreak() __debugbreak()
-#elif _prb_HAS_BUILTIN(__builtin_debugtrap)
-    #define prb_debugbreak() __builtin_debugtrap()
-#elif ((!defined(__NACL__)) && ((defined(__GNUC__) || defined(__clang__)) && (defined(__i386__) || defined(__x86_64__))))
-    #define prb_debugbreak() __asm__ __volatile__("int $3\n\t")
-#elif (defined(__APPLE__) && (defined(__arm64__) || defined(__aarch64__))) /* this might work on other ARM targets, but this is a known quantity... */
-    #define prb_debugbreak() __asm__ __volatile__("brk #22\n\t")
-#elif defined(__APPLE__) && defined(__arm__)
-    #define prb_debugbreak() __asm__ __volatile__("bkpt #22\n\t")
-#elif defined(__386__) && defined(__WATCOMC__)
-    #define prb_debugbreak() { _asm { int 0x03 } }
-#elif defined(prb_HAVE_SIGNAL_H) && !defined(__WATCOMC__)
-    #include <signal.h>
-    #define prb_debugbreak() raise(SIGTRAP)
+#endif
+#if !defined(prb_debugbreak)
+#if defined(_MSC_VER) || defined(__INTEL_COMPILER)
+#define prb_debugbreak() __debugbreak()
+#elif defined(__ARMCC_VERSION)
+#define prb_debugbreak() __breakpoint(42)
+#elif defined(__ibmxl__) || defined(__xlC__)
+#include <builtins.h>
+#define prb_debugbreak() __trap(42)
+#elif defined(__DMC__) && defined(_M_IX86)
+#define prb_debugbreak() __asm int 3h;
+#elif defined(__i386__) || defined(__x86_64__)
+#define prb_debugbreak() __asm__ __volatile__("int3")
+#elif defined(__thumb__)
+#define prb_debugbreak() __asm__ __volatile__(".inst 0xde01")
+#elif defined(__aarch64__)
+#define prb_debugbreak() __asm__ __volatile__(".inst 0xd4200000")
+#elif defined(__arm__)
+#define prb_debugbreak() __asm__ __volatile__(".inst 0xe7f001f0")
+#elif defined (__alpha__) && !defined(__osf__)
+#define prb_debugbreak() __asm__ __volatile__("bpt")
+#elif defined(_54_)
+#define prb_debugbreak() __asm__ __volatile__("ESTOP")
+#elif defined(_55_)
+#define prb_debugbreak() __asm__ __volatile__(";\n .if (.MNEMONIC)\n ESTOP_1\n .else\n ESTOP_1()\n .endif\n NOP")
+#elif defined(_64P_)
+#define prb_debugbreak() __asm__ __volatile__("SWBP 0")
+#elif defined(_6x_)
+#define prb_debugbreak() __asm__ __volatile__("NOP\n .word 0x10000000")
+#elif defined(__STDC_HOSTED__) && (__STDC_HOSTED__ == 0) && defined(__GNUC__)
+#define prb_debugbreak() __builtin_trap()
 #else
-    /* How do we trigger breakpoints on this platform? */
-    #define prb_debugbreak()
+#include <signal.h>
+#if defined(SIGTRAP)
+#define prb_debugbreak() raise(SIGTRAP)
+#else
+#define prb_debugbreak() raise(SIGABRT)
+#endif
+#endif
 #endif
 
 // Taken from stb snprintf
@@ -1197,7 +1216,7 @@ prb_getAbsolutePath(prb_Arena* arena, prb_String path) {
         }
         if (addThisEntry) {
             if (gstr.string.len == 0 || prb_charIsSep(gstr.string.ptr[gstr.string.len - 1])) {
-                prb_addStringSegment(&gstr, "%.*s", prb_LIT(iter.curEntryName));    
+                prb_addStringSegment(&gstr, "%.*s", prb_LIT(iter.curEntryName));
             } else {
                 prb_addStringSegment(&gstr, "/%.*s", prb_LIT(iter.curEntryName));
             }
