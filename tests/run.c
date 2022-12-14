@@ -232,7 +232,8 @@ compileAndRunTests(prb_Arena* arena, prb_String testsDir) {
     for (i32 compCmdIndex = 0; compCmdIndex < arrlen(compCmds); compCmdIndex++) {
         CompileCmd compCmd = compCmds[compCmdIndex];
         prb_writelnToStdout(compCmd.output);
-        prb_ProcessHandle proc = prb_execCmd(arena, compCmd.output, 0, (prb_String) {});
+        prb_String cmdOutPath = prb_replaceExt(arena, compCmd.output, prb_STR("log"));
+        prb_ProcessHandle proc = prb_execCmd(arena, compCmd.output, prb_ProcessFlag_RedirectStderr | prb_ProcessFlag_RedirectStdout, cmdOutPath);
         prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
     }
 }
@@ -250,24 +251,38 @@ main() {
     prb_String rootDir = prb_getParentDir(arena, testsDir);
 
     // TODO(khvorov) Run sanitizers for tests probably
-    // TODO(khvorov) Organize output better
 
     // NOTE(khvorov) Static analysis
     prb_String mainFilePath = prb_pathJoin(arena, rootDir, prb_STR("programmable_build.h"));
     prb_String staticAnalysisCmd = prb_fmt(arena, "clang-tidy %.*s", prb_LIT(mainFilePath));
     prb_writelnToStdout(staticAnalysisCmd);
-    prb_ProcessHandle staticAnalysisProc = prb_execCmd(arena, staticAnalysisCmd, prb_ProcessFlag_DontWait, (prb_String){});
+    prb_String staticAnalysisOutput = prb_pathJoin(arena, testsDir, prb_STR("static_analysis_out"));
+    prb_ProcessHandle staticAnalysisProc = prb_execCmd(arena, staticAnalysisCmd, prb_ProcessFlag_DontWait | prb_ProcessFlag_RedirectStderr | prb_ProcessFlag_RedirectStdout, staticAnalysisOutput);
+    prb_assert(staticAnalysisProc.status == prb_ProcessStatus_Launched);
 
     // NOTE(khvorov) Run tests from different example directories because I
     // found it tests filepath handling better
-
-    prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
+    prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);    
     compileAndRunTests(arena, testsDir);
-
     prb_assert(prb_setWorkingDir(arena, testsDir) == prb_Success);
     compileAndRunTests(arena, testsDir);
-
     prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
+
+    // NOTE(khvorov) Print the one of the test results
+    {
+        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec){.arena = arena, .dir = testsDir, .mode = prb_PathFindMode_Glob, .pattern = prb_STR("*.log")});
+        bool first = true;
+        while (prb_pathFindIterNext(&iter)) {
+            if (first) {
+                prb_writelnToStdout(prb_STR("tests output:"));
+                prb_ReadEntireFileResult readres = prb_readEntireFile(arena, iter.curPath);
+                prb_assert(readres.success);
+                prb_writelnToStdout(prb_strFromBytes(readres.content));
+                first = false;
+            }
+            prb_removeFileIfExists(arena, iter.curPath);
+        }
+    }
 
     // NOTE(khvorov) Compile all the examples in every supported way
     if (!noexamples) {
@@ -336,7 +351,15 @@ main() {
         prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
     }
 
+    // NOTE(khvorov) Print result of static analysis
     prb_assert(prb_waitForProcesses(&staticAnalysisProc, 1));
+    {
+        prb_ReadEntireFileResult staticAnalysisOutRead = prb_readEntireFile(arena, staticAnalysisOutput);
+        prb_assert(staticAnalysisOutRead.success);
+        prb_writelnToStdout(prb_STR("static analysis out:"));
+        prb_writelnToStdout(prb_strFromBytes(staticAnalysisOutRead.content));
+        prb_assert(prb_removeFileIfExists(arena, staticAnalysisOutput));
+    }
 
     prb_writelnToStdout(prb_fmt(arena, "test run took %.2fms", prb_getMsFrom(scriptStart)));
     return 0;
