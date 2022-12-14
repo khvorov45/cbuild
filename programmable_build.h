@@ -2316,7 +2316,7 @@ prb_writeToStdout(prb_String msg) {
 prb_PUBLICDEF prb_Status
 prb_writelnToStdout(prb_Arena* arena, prb_String str) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_Status result = prb_writeToStdout(prb_fmt(arena, "%.*s\n", prb_LIT(str)));
+    prb_Status     result = prb_writeToStdout(prb_fmt(arena, "%.*s\n", prb_LIT(str)));
     prb_endTempMemory(temp);
     return result;
 }
