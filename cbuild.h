@@ -30,7 +30,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 prb_destroyIter() functions don't destroy actual entries, only system resources (e.g. directory handles).
 */
 
-// TODO(khvorov) Test macros do the right thing
 // TODO(khvorov) Access color escape codes as strings
 // TODO(khvorov) Helper to reset iterators
 // TODO(khvorov) Random number generation
@@ -118,7 +117,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #define prb_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define prb_arrayLength(arr) (int32_t)(sizeof(arr) / sizeof(arr[0]))
 #define prb_arenaAllocArray(arena, type, len) (type*)prb_arenaAllocAndZero(arena, (len) * sizeof(type), alignof(type))
-#define prb_arenaAllocStruct(type) (type*)prb_allocAndZero(arena, sizeof(type), alignof(type))
+#define prb_arenaAllocStruct(arena, type) (type*)prb_arenaAllocAndZero(arena, sizeof(type), alignof(type))
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 #define prb_unused(x) ((x) = (x))
 

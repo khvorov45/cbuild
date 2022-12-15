@@ -62,6 +62,44 @@ getTempDir(prb_Arena* arena, const char* funcName) {
     return dir;
 }
 
+function void
+testMacros(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+
+    prb_assert(prb_max(1, 2) == 2);
+    prb_assert(prb_min(1, 2) == 1);
+    prb_assert(prb_clamp(0, 2, 5) == 2);
+    prb_assert(prb_clamp(4, 2, 5) == 4);
+    prb_assert(prb_clamp(6, 2, 5) == 5);
+
+    i32 testArr[] = {1, 2, 3};
+    prb_assert(prb_arrayLength(testArr) == 3);
+
+    prb_arenaAlignFreePtr(arena, alignof(i32));
+    void* ptrBefore = prb_arenaFreePtr(arena);
+    i32* arr = prb_arenaAllocArray(arena, i32, 3);
+    prb_assert(arr == ptrBefore);
+    void* ptrAfter = prb_arenaFreePtr(arena);
+    prb_assert(ptrAfter == (u8*)ptrBefore + sizeof(i32) * 3);
+
+    prb_arenaAlignFreePtr(arena, alignof(prb_Str));
+    ptrBefore = prb_arenaFreePtr(arena);
+    prb_Str* strPtr = prb_arenaAllocStruct(arena, prb_Str);
+    prb_assert(strPtr == ptrBefore);
+    ptrAfter = prb_arenaFreePtr(arena);
+    prb_assert(ptrAfter == (u8*)ptrBefore + sizeof(prb_Str));
+
+    prb_assert(prb_isPowerOf2(1));
+    prb_assert(prb_isPowerOf2(2));
+    prb_assert(!prb_isPowerOf2(3));
+    prb_assert(prb_isPowerOf2(4));
+    prb_assert(!prb_isPowerOf2(5));
+    prb_assert(prb_isPowerOf2(8));
+
+    prb_endTempMemory(temp);
+}
+
 //
 // SECTION Memory
 //
@@ -2145,6 +2183,8 @@ main() {
     prb_assert(arena.tempCount == 0);
 
     prb_Job* jobs = 0;
+
+    arrput(jobs, prb_createJob(testMacros, 0, &arena, 10 * prb_MEGABYTE));
 
     // SECTION Memory
     arrput(jobs, prb_createJob(test_memeq, 0, &arena, 10 * prb_MEGABYTE));
