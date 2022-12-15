@@ -1,6 +1,6 @@
 /* A set of utilities for writing "build scripts" as small C (or C++) programs.
 
-Repository: https://github.com/khvorov45/programmable_build
+Repository: https://github.com/khvorov45/cbuild
 See example/build.c for an example build script.
 
 If using in multiple translation units:
@@ -46,6 +46,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) strReplace should probably handle multiple replacements
 // TODO(khvorov) Ability to check/change file executable permissions
 // TODO(khvorov) A way to limit the number of cores used when executing jobs/processes
+// TODO(khvorov) Small example in readme and doc comment. Probably actually test it works.
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
@@ -54,8 +55,8 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 
-#ifndef PROGRAMMABLE_BUILD_H
-#define PROGRAMMABLE_BUILD_H
+#ifndef prb_HEADER_FILE
+#define prb_HEADER_FILE
 
 #include <stdint.h>
 #include <stddef.h>
@@ -999,7 +1000,7 @@ prb_stbds_shmode_func_wrapper(T*, size_t elemsize, int mode) {
 #define prb_stbds_shmode_func_wrapper(t, e, m) prb_stbds_shmode_func(e, m)
 #endif
 
-#endif  // PROGRAMMABLE_BUILD_H
+#endif  // prb_HEADER_FILE
 
 #ifndef prb_NO_IMPLEMENTATION
 
