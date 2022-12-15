@@ -82,7 +82,7 @@ getStaticLibInfo(
 #endif
 
     result.libFile = prb_pathJoin(arena, project->compileOutDir, libFilename);
-    result.notDownloaded = !prb_isDirectory(arena, result.downloadDir) || prb_directoryIsEmpty(arena, result.downloadDir);
+    result.notDownloaded = !prb_isDir(arena, result.downloadDir) || prb_dirIsEmpty(arena, result.downloadDir);
     return result;
 }
 
@@ -129,25 +129,25 @@ fileIsPreprocessed(prb_Str name) {
 
 static prb_Str
 constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_Str inputPath, prb_Str outputPath, prb_Str linkFlags) {
-    prb_GrowingString cmd = prb_beginString(arena);
+    prb_GrowingStr cmd = prb_beginStr(arena);
 
     switch (project->compiler) {
-        case Compiler_Gcc: prb_addStringSegment(&cmd, "gcc"); break;
-        case Compiler_Clang: prb_addStringSegment(&cmd, "clang"); break;
-        case Compiler_Msvc: prb_addStringSegment(&cmd, "cl /nologo /diagnostics:column /FC"); break;
+        case Compiler_Gcc: prb_addStrSegment(&cmd, "gcc"); break;
+        case Compiler_Clang: prb_addStrSegment(&cmd, "clang"); break;
+        case Compiler_Msvc: prb_addStrSegment(&cmd, "cl /nologo /diagnostics:column /FC"); break;
     }
 
     if (project->release) {
         switch (project->compiler) {
             case Compiler_Gcc:
-            case Compiler_Clang: prb_addStringSegment(&cmd, " -Ofast"); break;
-            case Compiler_Msvc: prb_addStringSegment(&cmd, " /O2"); break;
+            case Compiler_Clang: prb_addStrSegment(&cmd, " -Ofast"); break;
+            case Compiler_Msvc: prb_addStrSegment(&cmd, " /O2"); break;
         }
     } else {
         switch (project->compiler) {
             case Compiler_Gcc:
-            case Compiler_Clang: prb_addStringSegment(&cmd, " -g"); break;
-            case Compiler_Msvc: prb_addStringSegment(&cmd, " /Zi"); break;
+            case Compiler_Clang: prb_addStrSegment(&cmd, " -g"); break;
+            case Compiler_Msvc: prb_addStrSegment(&cmd, " /Zi"); break;
         }
     }
 
@@ -157,40 +157,40 @@ constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_S
         prb_assert(!inIsPreprocessed);
         switch (project->compiler) {
             case Compiler_Gcc:
-            case Compiler_Clang: prb_addStringSegment(&cmd, " -E"); break;
-            case Compiler_Msvc: prb_addStringSegment(&cmd, " /P /Fi%.*s", prb_LIT(outputPath)); break;
+            case Compiler_Clang: prb_addStrSegment(&cmd, " -E"); break;
+            case Compiler_Msvc: prb_addStrSegment(&cmd, " /P /Fi%.*s", prb_LIT(outputPath)); break;
         }
     }
     if (inIsPreprocessed) {
         prb_assert(!outIsPreprocess);
         switch (project->compiler) {
-            case Compiler_Gcc: prb_addStringSegment(&cmd, " -fpreprocessed"); break;
+            case Compiler_Gcc: prb_addStrSegment(&cmd, " -fpreprocessed"); break;
             case Compiler_Clang: break;
-            case Compiler_Msvc: prb_addStringSegment(&cmd, " /Yc"); break;
+            case Compiler_Msvc: prb_addStrSegment(&cmd, " /Yc"); break;
         }
     }
 
-    prb_addStringSegment(&cmd, " %.*s", prb_LIT(flags));
+    prb_addStrSegment(&cmd, " %.*s", prb_LIT(flags));
     bool isObj = prb_strEndsWith(outputPath, prb_STR("obj"));
     if (isObj) {
-        prb_addStringSegment(&cmd, " -c");
+        prb_addStrSegment(&cmd, " -c");
     }
 
 #if prb_PLATFORM_WINDOWS
     if (compiler == Compiler_Msvc) {
         prb_Str pdbPath = prb_replaceExt(outputPath, prb_STR("pdb"));
-        prb_addStringSegment(&cmd, " /Fd%.s", pdbPath);
+        prb_addStrSegment(&cmd, " /Fd%.s", pdbPath);
     }
 #endif
 
     switch (project->compiler) {
         case Compiler_Gcc:
-        case Compiler_Clang: prb_addStringSegment(&cmd, " %.*s -o %.*s", prb_LIT(inputPath), prb_LIT(outputPath)); break;
+        case Compiler_Clang: prb_addStrSegment(&cmd, " %.*s -o %.*s", prb_LIT(inputPath), prb_LIT(outputPath)); break;
         case Compiler_Msvc: {
             prb_Str objPath = isObj ? outputPath : prb_replaceExt(arena, outputPath, prb_STR("obj"));
-            prb_addStringSegment(&cmd, " /Fo%.*s", prb_LIT(objPath));
+            prb_addStrSegment(&cmd, " /Fo%.*s", prb_LIT(objPath));
             if (!isObj) {
-                prb_addStringSegment(&cmd, " /Fe%.*s", prb_LIT(outputPath));
+                prb_addStrSegment(&cmd, " /Fe%.*s", prb_LIT(outputPath));
             }
         } break;
     }
@@ -198,13 +198,13 @@ constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_S
     if (linkFlags.ptr && linkFlags.len > 0) {
         switch (project->compiler) {
             case Compiler_Gcc:
-            case Compiler_Clang: prb_addStringSegment(&cmd, " %.*s", prb_LIT(linkFlags)); break;
-            case Compiler_Msvc: prb_addStringSegment(&cmd, "-link -incremental:no %.*s", prb_LIT(linkFlags)); break;
+            case Compiler_Clang: prb_addStrSegment(&cmd, " %.*s", prb_LIT(linkFlags)); break;
+            case Compiler_Msvc: prb_addStrSegment(&cmd, "-link -incremental:no %.*s", prb_LIT(linkFlags)); break;
         }
-        prb_addStringSegment(&cmd, " %.*s", prb_LIT(linkFlags));
+        prb_addStrSegment(&cmd, " %.*s", prb_LIT(linkFlags));
     }
 
-    prb_Str cmdStr = prb_endString(&cmd);
+    prb_Str cmdStr = prb_endStr(&cmd);
     return cmdStr;
 }
 
@@ -226,7 +226,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
     prb_Str* inputPaths = 0;
     for (i32 srcIndex = 0; srcIndex < lib->sourcesCount; srcIndex++) {
         prb_Str           srcRelToDownload = lib->sourcesRelToDownload[srcIndex];
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = lib->downloadDir, .mode = prb_PathFindMode_Glob, srcRelToDownload});
+        prb_PathFindIter iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = lib->downloadDir, .mode = prb_PathFindMode_Glob, srcRelToDownload});
         while (prb_pathFindIterNext(&iter)) {
             arrput(inputPaths, iter.curPath);
         }
@@ -236,7 +236,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
 
     StringFound* existingObjs = 0;
     {
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = lib->objDir, .mode = prb_PathFindMode_AllEntriesInDir});
+        prb_PathFindIter iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = lib->objDir, .mode = prb_PathFindMode_AllEntriesInDir});
         while (prb_pathFindIterNext(&iter)) {
             if (prb_strEndsWith(iter.curPath, prb_STR(".obj"))) {
                 shput(existingObjs, iter.curPath.ptr, false);
@@ -410,11 +410,11 @@ static void
 textfileReplace(prb_Arena* arena, prb_Str path, prb_Str pattern, prb_Str replacement) {
     prb_ReadEntireFileResult content = prb_readEntireFile(arena, path);
     prb_assert(content.success);
-    prb_StringFindSpec spec = {
+    prb_StrFindSpec spec = {
         .str = (prb_Str) {(const char*)content.content.data, content.content.len},
         .pattern = pattern,
-        .mode = prb_StringFindMode_Exact,
-        .direction = prb_StringDirection_FromStart,
+        .mode = prb_StrFindMode_Exact,
+        .direction = prb_StrDirection_FromStart,
     };
     prb_Str newContent = prb_strReplace(arena, spec, replacement);
     prb_assert(prb_writeEntireFile(arena, path, newContent.ptr, newContent.len) == prb_Success);
@@ -429,8 +429,8 @@ typedef struct GetStrInQuotesResult {
 static GetStrInQuotesResult
 getStrInQuotes(prb_Str str) {
     GetStrInQuotesResult result = {};
-    prb_StringFindSpec   quoteFindSpec = {.str = str, .pattern = prb_STR("\""), .mode = prb_StringFindMode_AnyChar};
-    prb_StringFindResult quoteFindResult = prb_strFind(quoteFindSpec);
+    prb_StrFindSpec   quoteFindSpec = {.str = str, .pattern = prb_STR("\""), .mode = prb_StrFindMode_AnyChar};
+    prb_StrFindResult quoteFindResult = prb_strFind(quoteFindSpec);
     if (quoteFindResult.found) {
         quoteFindSpec.str = prb_strSliceForward(str, quoteFindResult.matchByteIndex + 1);
         quoteFindResult = prb_strFind(quoteFindSpec);
@@ -479,7 +479,7 @@ static ParseLogResult
 parseLog(prb_Arena* arena, prb_Str str, prb_Str* columnNames) {
     prb_unused(str);
     ParseLogResult   result = {};
-    prb_LineIterator lineIter = prb_createLineIter(str);
+    prb_LineIter lineIter = prb_createLineIter(str);
     if (prb_lineIterNext(&lineIter) == prb_Success) {
         String3 headers = get3StrInQuotes(lineIter.curLine);
         if (headers.success) {
@@ -507,13 +507,13 @@ parseLog(prb_Arena* arena, prb_Str str, prb_Str* columnNames) {
 }
 
 static void
-addLogRow(prb_GrowingString* gstr, prb_Str* strings) {
+addLogRow(prb_GrowingStr* gstr, prb_Str* strings) {
     for (i32 colIndex = 0; colIndex < LogColumn_Count; colIndex++) {
-        prb_addStringSegment(gstr, "\"%.*s\"", prb_LIT(strings[colIndex]));
+        prb_addStrSegment(gstr, "\"%.*s\"", prb_LIT(strings[colIndex]));
         if (colIndex == LogColumn_Count - 1) {
-            prb_addStringSegment(gstr, "\n");
+            prb_addStrSegment(gstr, "\n");
         } else {
-            prb_addStringSegment(gstr, ",");
+            prb_addStrSegment(gstr, ",");
         }
     }
 }
@@ -522,7 +522,7 @@ static void
 writeLog(prb_Arena* arena, CompileLogEntry* log, prb_Str path, prb_Str* columnNames) {
     prb_TempMemory    temp = prb_beginTempMemory(arena);
     prb_Arena         numberFmtArena = prb_createArenaFromArena(arena, 100);
-    prb_GrowingString gstr = prb_beginString(arena);
+    prb_GrowingStr gstr = prb_beginStr(arena);
     addLogRow(&gstr, columnNames);
     for (i32 entryIndex = 0; entryIndex < shlen(log); entryIndex++) {
         CompileLogEntry entry = log[entryIndex];
@@ -536,7 +536,7 @@ writeLog(prb_Arena* arena, CompileLogEntry* log, prb_Str path, prb_Str* columnNa
         addLogRow(&gstr, strings);
         prb_endTempMemory(tempNumber);
     }
-    prb_Str str = prb_endString(&gstr);
+    prb_Str str = prb_endStr(&gstr);
     prb_assert(prb_writeEntireFile(arena, path, str.ptr, str.len) == prb_Success);
     prb_endTempMemory(temp);
 }
@@ -1051,11 +1051,11 @@ main() {
     prb_TimeStart compileStart = prb_timeStart();
 
     // NOTE(khvorov) Force clean
-    // prb_assert(prb_clearDirectory(arena, fribidi.objDir) == prb_Success);
-    // prb_assert(prb_clearDirectory(arena, icu.objDir) == prb_Success);
-    // prb_assert(prb_clearDirectory(arena, freetype.objDir) == prb_Success);
-    // prb_assert(prb_clearDirectory(arena, harfbuzz.objDir) == prb_Success);
-    // prb_assert(prb_clearDirectory(arena, sdl.objDir) == prb_Success);
+    // prb_assert(prb_clearDir(arena, fribidi.objDir) == prb_Success);
+    // prb_assert(prb_clearDir(arena, icu.objDir) == prb_Success);
+    // prb_assert(prb_clearDir(arena, freetype.objDir) == prb_Success);
+    // prb_assert(prb_clearDir(arena, harfbuzz.objDir) == prb_Success);
+    // prb_assert(prb_clearDir(arena, sdl.objDir) == prb_Success);
 
     prb_Job* compileJobs = 0;
     arrput(compileJobs, prb_createJob(compileStaticLib, &fribidi, arena, 50 * prb_MEGABYTE));

@@ -31,21 +31,21 @@ constructCompileCmd(prb_Arena* arena, prb_Str input, prb_Str extraInputs, Compil
         prb_assert(prb_strEndsWith(input, prb_STR(".c")));
         prb_Str inputNameNoExt = input;
         inputNameNoExt.len -= 2;
-        prb_GrowingString gstr = prb_beginString(arena);
-        prb_addStringSegment(&gstr, "%.*s", prb_LIT(inputNameNoExt));
+        prb_GrowingStr gstr = prb_beginStr(arena);
+        prb_addStrSegment(&gstr, "%.*s", prb_LIT(inputNameNoExt));
         switch (compiler) {
-            case Compiler_Gcc: prb_addStringSegment(&gstr, "-gcc"); break;
-            case Compiler_Clang: prb_addStringSegment(&gstr, "-clang"); break;
-            case Compiler_Msvc: prb_addStringSegment(&gstr, "-msvc"); break;
+            case Compiler_Gcc: prb_addStrSegment(&gstr, "-gcc"); break;
+            case Compiler_Clang: prb_addStrSegment(&gstr, "-clang"); break;
+            case Compiler_Msvc: prb_addStrSegment(&gstr, "-msvc"); break;
         }
         if (isPrecompile || extraInputs.len > 0) {
-            prb_addStringSegment(&gstr, "-2tu");
+            prb_addStrSegment(&gstr, "-2tu");
         } else {
-            prb_addStringSegment(&gstr, "-1tu");
+            prb_addStrSegment(&gstr, "-1tu");
         }
         switch (lang) {
-            case Lang_C: prb_addStringSegment(&gstr, "-c"); break;
-            case Lang_Cpp: prb_addStringSegment(&gstr, "-cpp"); break;
+            case Lang_C: prb_addStrSegment(&gstr, "-c"); break;
+            case Lang_Cpp: prb_addStrSegment(&gstr, "-cpp"); break;
         }
 
         prb_Str outputExt = prb_STR("obj");
@@ -58,83 +58,83 @@ constructCompileCmd(prb_Arena* arena, prb_Str input, prb_Str extraInputs, Compil
 #error unimplemented
 #endif
         }
-        prb_addStringSegment(&gstr, ".%.*s", prb_LIT(outputExt));
+        prb_addStrSegment(&gstr, ".%.*s", prb_LIT(outputExt));
 
-        outputName = prb_endString(&gstr);
+        outputName = prb_endStr(&gstr);
     }
 
     prb_Str outputNamePdb = prb_replaceExt(arena, outputName, prb_STR("pdb"));
 
-    prb_GrowingString cmd = prb_beginString(arena);
+    prb_GrowingStr cmd = prb_beginStr(arena);
 
     switch (compiler) {
-        case Compiler_Gcc: prb_addStringSegment(&cmd, "gcc"); break;
-        case Compiler_Clang: prb_addStringSegment(&cmd, "clang"); break;
-        case Compiler_Msvc: prb_addStringSegment(&cmd, "cl /nologo /diagnostics:column /FC"); break;
+        case Compiler_Gcc: prb_addStrSegment(&cmd, "gcc"); break;
+        case Compiler_Clang: prb_addStrSegment(&cmd, "clang"); break;
+        case Compiler_Msvc: prb_addStrSegment(&cmd, "cl /nologo /diagnostics:column /FC"); break;
     }
 
     switch (compiler) {
         case Compiler_Gcc:
-        case Compiler_Clang: prb_addStringSegment(&cmd, " -g"); break;
-        case Compiler_Msvc: prb_addStringSegment(&cmd, " /Zi"); break;
+        case Compiler_Clang: prb_addStrSegment(&cmd, " -g"); break;
+        case Compiler_Msvc: prb_addStrSegment(&cmd, " /Zi"); break;
     }
 
-    prb_addStringSegment(&cmd, " -Wall");
+    prb_addStrSegment(&cmd, " -Wall");
 
     switch (compiler) {
         case Compiler_Gcc:
-        case Compiler_Clang: prb_addStringSegment(&cmd, " -Wextra -Werror -Wfatal-errors"); break;
-        case Compiler_Msvc: prb_addStringSegment(&cmd, " /WX"); break;
+        case Compiler_Clang: prb_addStrSegment(&cmd, " -Wextra -Werror -Wfatal-errors"); break;
+        case Compiler_Msvc: prb_addStrSegment(&cmd, " /WX"); break;
     }
 
     if (!isPrecompile && extraInputs.len == 0 && compiler == Compiler_Gcc && lang == Lang_C) {
-        prb_addStringSegment(&cmd, " --coverage -fno-inline -fno-inline-small-functions -fno-default-inline");
+        prb_addStrSegment(&cmd, " --coverage -fno-inline -fno-inline-small-functions -fno-default-inline");
     }
 
     if (extraInputs.len > 0) {
-        prb_addStringSegment(&cmd, " -Dprb_NO_IMPLEMENTATION");
+        prb_addStrSegment(&cmd, " -Dprb_NO_IMPLEMENTATION");
     }
 
     if (isPrecompile) {
-        prb_addStringSegment(&cmd, " -c");
+        prb_addStrSegment(&cmd, " -c");
     }
 
     switch (lang) {
         case Lang_C:
             switch (compiler) {
                 case Compiler_Gcc:
-                case Compiler_Clang: prb_addStringSegment(&cmd, " -x c"); break;
-                case Compiler_Msvc: prb_addStringSegment(&cmd, " /Tc"); break;
+                case Compiler_Clang: prb_addStrSegment(&cmd, " -x c"); break;
+                case Compiler_Msvc: prb_addStrSegment(&cmd, " /Tc"); break;
             }
             break;
         case Lang_Cpp:
             switch (compiler) {
                 case Compiler_Gcc:
-                case Compiler_Clang: prb_addStringSegment(&cmd, " -x c++"); break;
-                case Compiler_Msvc: prb_addStringSegment(&cmd, " /Tp"); break;
+                case Compiler_Clang: prb_addStrSegment(&cmd, " -x c++"); break;
+                case Compiler_Msvc: prb_addStrSegment(&cmd, " /Tp"); break;
             }
             break;
     }
 
-    prb_addStringSegment(&cmd, " %.*s", prb_LIT(input));
+    prb_addStrSegment(&cmd, " %.*s", prb_LIT(input));
 
     if (extraInputs.len > 0) {
         switch (compiler) {
             case Compiler_Gcc:
-            case Compiler_Clang: prb_addStringSegment(&cmd, " -x none %.*s", prb_LIT(extraInputs)); break;
-            case Compiler_Msvc: prb_addStringSegment(&cmd, " %.*s", prb_LIT(extraInputs)); break;
+            case Compiler_Clang: prb_addStrSegment(&cmd, " -x none %.*s", prb_LIT(extraInputs)); break;
+            case Compiler_Msvc: prb_addStrSegment(&cmd, " %.*s", prb_LIT(extraInputs)); break;
         }
     }
 
     switch (compiler) {
         case Compiler_Gcc:
-        case Compiler_Clang: prb_addStringSegment(&cmd, " -o %.*s", prb_LIT(outputName)); break;
+        case Compiler_Clang: prb_addStrSegment(&cmd, " -o %.*s", prb_LIT(outputName)); break;
         case Compiler_Msvc: {
-            prb_addStringSegment(&cmd, " /Fd%.*s", prb_LIT(outputNamePdb));
+            prb_addStrSegment(&cmd, " /Fd%.*s", prb_LIT(outputNamePdb));
             if (isPrecompile) {
-                prb_addStringSegment(&cmd, " /Fo%.*s", prb_LIT(outputName));
+                prb_addStrSegment(&cmd, " /Fo%.*s", prb_LIT(outputName));
             } else {
-                prb_addStringSegment(&cmd, " /Fe%.*s", prb_LIT(outputName));
+                prb_addStrSegment(&cmd, " /Fe%.*s", prb_LIT(outputName));
             }
         } break;
     }
@@ -142,12 +142,12 @@ constructCompileCmd(prb_Arena* arena, prb_Str input, prb_Str extraInputs, Compil
     if (!isPrecompile) {
         switch (compiler) {
             case Compiler_Gcc:
-            case Compiler_Clang: prb_addStringSegment(&cmd, " -lpthread"); break;
+            case Compiler_Clang: prb_addStrSegment(&cmd, " -lpthread"); break;
             case Compiler_Msvc: break;
         }
     }
 
-    prb_Str cmdStr = prb_endString(&cmd);
+    prb_Str cmdStr = prb_endStr(&cmd);
     CompileCmd result = {.cmd = cmdStr, .output = outputName, .compiler = compiler, .lang = lang};
     return result;
 }
@@ -163,7 +163,7 @@ compileAndRunTests(prb_Arena* arena, prb_Str testsDir) {
         for (i32 patIndex = 0; patIndex < prb_arrayLength(patsToRemove); patIndex++) {
             prb_Str pat = patsToRemove[patIndex];
             spec.pattern = pat;
-            prb_PathFindIterator iter = prb_createPathFindIter(spec);
+            prb_PathFindIter iter = prb_createPathFindIter(spec);
             while (prb_pathFindIterNext(&iter) == prb_Success) {
                 prb_removeFileIfExists(arena, iter.curPath);
             }
@@ -270,7 +270,7 @@ main() {
 
     // NOTE(khvorov) Print the one of the test results
     {
-        prb_PathFindIterator iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = testsDir, .mode = prb_PathFindMode_Glob, .pattern = prb_STR("*.log"), .recursive = false});
+        prb_PathFindIter iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = testsDir, .mode = prb_PathFindMode_Glob, .pattern = prb_STR("*.log"), .recursive = false});
         bool                 first = true;
         while (prb_pathFindIterNext(&iter)) {
             if (first) {

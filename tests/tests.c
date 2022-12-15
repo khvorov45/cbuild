@@ -230,33 +230,33 @@ test_pathExists(prb_Arena* arena, void* data) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempDir(arena, __FUNCTION__);
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_pathExists(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_pathExists(arena, dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_pathExists(arena, dir));
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(!prb_pathExists(arena, dirTrailingSlash));
     prb_assert(!prb_pathExists(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(prb_pathExists(arena, dirTrailingSlash));
     prb_assert(prb_pathExists(arena, dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(!prb_pathExists(arena, dirTrailingSlash));
     prb_assert(!prb_pathExists(arena, dir));
 
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
-    prb_assert(prb_removeDirectoryIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dirNotNull) == prb_Success);
     prb_assert(!prb_pathExists(arena, dirNotNull));
     prb_assert(!prb_pathExists(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dirNotNull) == prb_Success);
     prb_assert(prb_pathExists(arena, dirNotNull));
     prb_assert(prb_pathExists(arena, dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dirNotNull) == prb_Success);
     prb_assert(!prb_pathExists(arena, dirNotNull));
     prb_assert(!prb_pathExists(arena, dir));
 
@@ -328,42 +328,42 @@ test_getAbsolutePath(prb_Arena* arena, void* data) {
 }
 
 function void
-test_isDirectory(prb_Arena* arena, void* data) {
+test_isDir(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempDir(arena, __FUNCTION__);
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(!prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(!prb_isDir(arena, dir));
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dirTrailingSlash));
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(!prb_isDir(arena, dirTrailingSlash));
+    prb_assert(!prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dirTrailingSlash));
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dirTrailingSlash));
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dirTrailingSlash));
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(!prb_isDir(arena, dirTrailingSlash));
+    prb_assert(!prb_isDir(arena, dir));
 
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
-    prb_assert(prb_removeDirectoryIfExists(arena, dirNotNull) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dirNotNull));
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(!prb_isDir(arena, dirNotNull));
+    prb_assert(!prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dirNotNull) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dirNotNull));
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dirNotNull) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dirNotNull));
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dirNotNull));
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(!prb_isDir(arena, dirNotNull));
+    prb_assert(!prb_isDir(arena, dir));
 
-    prb_assert(!prb_isDirectory(arena, prb_STR(__FILE__)));
+    prb_assert(!prb_isDir(arena, prb_STR(__FILE__)));
 
     prb_endTempMemory(temp);
 }
@@ -404,41 +404,41 @@ test_isFile(prb_Arena* arena, void* data) {
 }
 
 function void
-test_directoryIsEmpty(prb_Arena* arena, void* data) {
+test_dirIsEmpty(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempDir(arena, __FUNCTION__);
-    prb_assert(prb_clearDirectory(arena, dir) == prb_Success);
-    prb_assert(prb_directoryIsEmpty(arena, dir));
+    prb_assert(prb_clearDir(arena, dir) == prb_Success);
+    prb_assert(prb_dirIsEmpty(arena, dir));
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("file.txt"));
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
-    prb_assert(!prb_directoryIsEmpty(arena, dir));
+    prb_assert(!prb_dirIsEmpty(arena, dir));
     prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
-    prb_assert(prb_directoryIsEmpty(arena, dir));
+    prb_assert(prb_dirIsEmpty(arena, dir));
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
-    prb_assert(prb_directoryIsEmpty(arena, dirTrailingSlash));
-    prb_assert(prb_directoryIsEmpty(arena, dir));
+    prb_assert(prb_dirIsEmpty(arena, dirTrailingSlash));
+    prb_assert(prb_dirIsEmpty(arena, dir));
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
-    prb_assert(!prb_directoryIsEmpty(arena, dirTrailingSlash));
-    prb_assert(!prb_directoryIsEmpty(arena, dir));
+    prb_assert(!prb_dirIsEmpty(arena, dirTrailingSlash));
+    prb_assert(!prb_dirIsEmpty(arena, dir));
     prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
-    prb_assert(prb_directoryIsEmpty(arena, dirTrailingSlash));
-    prb_assert(prb_directoryIsEmpty(arena, dir));
+    prb_assert(prb_dirIsEmpty(arena, dirTrailingSlash));
+    prb_assert(prb_dirIsEmpty(arena, dir));
 
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
-    prb_assert(prb_directoryIsEmpty(arena, dirNotNull));
-    prb_assert(prb_directoryIsEmpty(arena, dir));
+    prb_assert(prb_dirIsEmpty(arena, dirNotNull));
+    prb_assert(prb_dirIsEmpty(arena, dir));
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
-    prb_assert(!prb_directoryIsEmpty(arena, dirNotNull));
-    prb_assert(!prb_directoryIsEmpty(arena, dir));
+    prb_assert(!prb_dirIsEmpty(arena, dirNotNull));
+    prb_assert(!prb_dirIsEmpty(arena, dir));
     prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
-    prb_assert(prb_directoryIsEmpty(arena, dirNotNull));
-    prb_assert(prb_directoryIsEmpty(arena, dir));
+    prb_assert(prb_dirIsEmpty(arena, dirNotNull));
+    prb_assert(prb_dirIsEmpty(arena, dir));
 
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
 }
 
@@ -448,36 +448,36 @@ test_createDirIfNotExists(prb_Arena* arena, void* data) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempDir(arena, __FUNCTION__);
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(!prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
     prb_assert(prb_createDirIfNotExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dirTrailingSlash));
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeFileOrDirectoryIfExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dirTrailingSlash));
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dirTrailingSlash));
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeFileOrDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(!prb_isDir(arena, dirTrailingSlash));
+    prb_assert(!prb_isDir(arena, dir));
 
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
     prb_assert(prb_createDirIfNotExists(arena, dirNotNull) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dirNotNull));
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeFileOrDirectoryIfExists(arena, dirNotNull) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dirNotNull));
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dirNotNull));
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeFileOrDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(!prb_isDir(arena, dirNotNull));
+    prb_assert(!prb_isDir(arena, dir));
 
     prb_endTempMemory(temp);
 }
 
 function void
-test_removeFileOrDirectoryIfExists(prb_Arena* arena, void* data) {
+test_removeFileOrDirIfExists(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
@@ -489,41 +489,41 @@ test_removeFileOrDirectoryIfExists(prb_Arena* arena, void* data) {
     filepathNotNull.len = filepath.len;
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
 
-    prb_assert(prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dir));
     prb_assert(prb_isFile(arena, filepath));
 
-    prb_assert(prb_removeFileOrDirectoryIfExists(arena, filepath) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dir));
+    prb_assert(prb_removeFileOrDirIfExists(arena, filepath) == prb_Success);
+    prb_assert(prb_isDir(arena, dir));
     prb_assert(!prb_isFile(arena, filepath));
 
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
 
-    prb_assert(prb_removeFileOrDirectoryIfExists(arena, filepathNotNull) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dir));
+    prb_assert(prb_removeFileOrDirIfExists(arena, filepathNotNull) == prb_Success);
+    prb_assert(prb_isDir(arena, dir));
     prb_assert(!prb_isFile(arena, filepath));
 
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
 
-    prb_assert(prb_removeFileOrDirectoryIfExists(arena, dir) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_removeFileOrDirIfExists(arena, dir) == prb_Success);
+    prb_assert(!prb_isDir(arena, dir));
     prb_assert(!prb_isFile(arena, filepath));
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
     prb_assert(prb_createDirIfNotExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dirTrailingSlash));
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeFileOrDirectoryIfExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dirTrailingSlash));
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dirTrailingSlash));
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeFileOrDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(!prb_isDir(arena, dirTrailingSlash));
+    prb_assert(!prb_isDir(arena, dir));
 
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
     prb_assert(prb_createDirIfNotExists(arena, dirNotNull) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dirNotNull));
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeFileOrDirectoryIfExists(arena, dirNotNull) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dirNotNull));
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dirNotNull));
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeFileOrDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(!prb_isDir(arena, dirNotNull));
+    prb_assert(!prb_isDir(arena, dir));
 
     prb_endTempMemory(temp);
 }
@@ -534,7 +534,7 @@ test_removeFileIfExists(prb_Arena* arena, void* data) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempDir(arena, __FUNCTION__);
-    prb_assert(prb_clearDirectory(arena, dir) == prb_Success);
+    prb_assert(prb_clearDir(arena, dir) == prb_Success);
 
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("file.txt"));
     prb_Str filepathNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(filepath));
@@ -550,76 +550,76 @@ test_removeFileIfExists(prb_Arena* arena, void* data) {
     prb_assert(prb_removeFileIfExists(arena, filepathNotNull) == prb_Success);
     prb_assert(!prb_isFile(arena, filepath));
 
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
 
     prb_endTempMemory(temp);
 }
 
 function void
-test_removeDirectoryIfExists(prb_Arena* arena, void* data) {
+test_removeDirIfExists(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempDir(arena, __FUNCTION__);
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(!prb_isDir(arena, dir));
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
     prb_assert(prb_createDirIfNotExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dirTrailingSlash));
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dirTrailingSlash));
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dirTrailingSlash));
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(!prb_isDir(arena, dirTrailingSlash));
+    prb_assert(!prb_isDir(arena, dir));
 
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
     prb_assert(prb_createDirIfNotExists(arena, dirNotNull) == prb_Success);
-    prb_assert(prb_isDirectory(arena, dirNotNull));
-    prb_assert(prb_isDirectory(arena, dir));
-    prb_assert(prb_removeDirectoryIfExists(arena, dirNotNull) == prb_Success);
-    prb_assert(!prb_isDirectory(arena, dirNotNull));
-    prb_assert(!prb_isDirectory(arena, dir));
+    prb_assert(prb_isDir(arena, dirNotNull));
+    prb_assert(prb_isDir(arena, dir));
+    prb_assert(prb_removeDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(!prb_isDir(arena, dirNotNull));
+    prb_assert(!prb_isDir(arena, dir));
 
     prb_endTempMemory(temp);
 }
 
 function void
-test_clearDirectory(prb_Arena* arena, void* data) {
+test_clearDir(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempDir(arena, __FUNCTION__);
-    prb_assert(prb_clearDirectory(arena, dir) == prb_Success);
-    prb_assert(prb_directoryIsEmpty(arena, dir));
+    prb_assert(prb_clearDir(arena, dir) == prb_Success);
+    prb_assert(prb_dirIsEmpty(arena, dir));
 
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("file.txt"));
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
 
-    prb_assert(!prb_directoryIsEmpty(arena, dir));
-    prb_assert(prb_clearDirectory(arena, dir) == prb_Success);
-    prb_assert(prb_directoryIsEmpty(arena, dir));
+    prb_assert(!prb_dirIsEmpty(arena, dir));
+    prb_assert(prb_clearDir(arena, dir) == prb_Success);
+    prb_assert(prb_dirIsEmpty(arena, dir));
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
-    prb_assert(!prb_directoryIsEmpty(arena, dir));
-    prb_assert(!prb_directoryIsEmpty(arena, dirTrailingSlash));
-    prb_assert(prb_clearDirectory(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(prb_directoryIsEmpty(arena, dirTrailingSlash));
-    prb_assert(prb_directoryIsEmpty(arena, dir));
+    prb_assert(!prb_dirIsEmpty(arena, dir));
+    prb_assert(!prb_dirIsEmpty(arena, dirTrailingSlash));
+    prb_assert(prb_clearDir(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(prb_dirIsEmpty(arena, dirTrailingSlash));
+    prb_assert(prb_dirIsEmpty(arena, dir));
 
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabs", prb_LIT(dir));
     dirNotNull.len = dir.len;
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
-    prb_assert(!prb_directoryIsEmpty(arena, dir));
-    prb_assert(!prb_directoryIsEmpty(arena, dirNotNull));
-    prb_assert(prb_clearDirectory(arena, dirNotNull) == prb_Success);
-    prb_assert(prb_directoryIsEmpty(arena, dirNotNull));
-    prb_assert(prb_directoryIsEmpty(arena, dir));
+    prb_assert(!prb_dirIsEmpty(arena, dir));
+    prb_assert(!prb_dirIsEmpty(arena, dirNotNull));
+    prb_assert(prb_clearDir(arena, dirNotNull) == prb_Success);
+    prb_assert(prb_dirIsEmpty(arena, dirNotNull));
+    prb_assert(prb_dirIsEmpty(arena, dir));
 
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
 
     prb_endTempMemory(temp);
 }
@@ -630,7 +630,7 @@ test_getWorkingDir(prb_Arena* arena, void* data) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str cwd = prb_getWorkingDir(arena);
-    prb_assert(prb_isDirectory(arena, cwd));
+    prb_assert(prb_isDir(arena, cwd));
     prb_Str filename = prb_STR(__FUNCTION__);
     prb_assert(prb_writeEntireFile(arena, filename, filename.ptr, filename.len) == prb_Success);
     prb_ReadEntireFileResult fileContent = prb_readEntireFile(arena, prb_pathJoin(arena, cwd, filename));
@@ -648,7 +648,7 @@ test_setWorkingDir(prb_Arena* arena, void* data) {
 
     prb_Str cwdInit = prb_getWorkingDir(arena);
     prb_Str newWd = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
-    prb_assert(prb_removeDirectoryIfExists(arena, newWd) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, newWd) == prb_Success);
     prb_Str newWdAbsolute = prb_getAbsolutePath(arena, newWd);
     prb_assert(prb_setWorkingDir(arena, newWd) == prb_Failure);
     prb_assert(prb_createDirIfNotExists(arena, newWd) == prb_Success);
@@ -663,7 +663,7 @@ test_setWorkingDir(prb_Arena* arena, void* data) {
     fileRead = prb_readEntireFile(arena, filename);
     prb_assert(!fileRead.success);
 
-    prb_removeDirectoryIfExists(arena, newWd);
+    prb_removeDirIfExists(arena, newWd);
     prb_endTempMemory(temp);
 }
 
@@ -711,70 +711,70 @@ test_findSepBeforeLastEntry(prb_Arena* arena, void* data) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == prb_strlen("test"));
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path/"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path/"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == prb_strlen("test"));
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path2/path"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path2/path"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == prb_strlen("test/path2"));
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("test"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("test"));
         prb_assert(!res.found);
     }
 
 #if prb_PLATFORM_WINDOWS
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\"));
         prb_assert(!res.found);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\test"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\test"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == 3);
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\test/"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\test/"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == 3);
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("//network"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("//network"));
         prb_assert(!res.found);
     }
 #elif prb_PLATFORM_LINUX
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("/"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("/"));
         prb_assert(!res.found);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("/test"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("/test"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == 0);
         prb_assert(res.matchLen == 1);
     }
 
     {
-        prb_StringFindResult res = prb_findSepBeforeLastEntry(prb_STR("/test/"));
+        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("/test/"));
         prb_assert(res.found);
         prb_assert(res.matchByteIndex == 0);
         prb_assert(res.matchLen == 1);
@@ -909,7 +909,7 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     prb_Str regexPatternNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(regexPattern));
     regexPatternNotNull.len = regexPattern.len;
 
-    prb_assert(prb_clearDirectory(arena, dir) == prb_Success);
+    prb_assert(prb_clearDir(arena, dir) == prb_Success);
 
     prb_Str files[] = {
         prb_pathJoin(arena, dir, prb_STR("f1.c")),
@@ -927,11 +927,11 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     spec.arena = arena;
     spec.dir = dir;
     spec.mode = prb_PathFindMode_AllEntriesInDir;
-    prb_PathFindIterator iter = prb_createPathFindIter(spec);
+    prb_PathFindIter iter = prb_createPathFindIter(spec);
     spec.dir = dirTrailingSlash;
-    prb_PathFindIterator iterTrailingSlash = prb_createPathFindIter(spec);
+    prb_PathFindIter iterTrailingSlash = prb_createPathFindIter(spec);
     spec.dir = dirNotNull;
-    prb_PathFindIterator iterNotNull = prb_createPathFindIter(spec);
+    prb_PathFindIter iterNotNull = prb_createPathFindIter(spec);
 
     i32 filesFound[] = {0, 0, 0, 0};
     i32 totalEntries = 0;
@@ -963,8 +963,8 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     prb_assert(prb_pathFindIterNext(&iterNotNull) == prb_Failure);
 
     prb_destroyPathFindIter(&iter);
-    prb_PathFindIterator empty = {};
-    prb_assert(prb_memeq(&iter, &empty, sizeof(prb_PathFindIterator)));
+    prb_PathFindIter empty = {};
+    prb_assert(prb_memeq(&iter, &empty, sizeof(prb_PathFindIter)));
     prb_destroyPathFindIter(&iterNotNull);
     prb_destroyPathFindIter(&iterTrailingSlash);
 
@@ -974,9 +974,9 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     iterGlobSpec.mode = prb_PathFindMode_Glob;
     iterGlobSpec.recursive = false;
     iterGlobSpec.pattern = globPattern;
-    prb_PathFindIterator iterGlob = prb_createPathFindIter(iterGlobSpec);
+    prb_PathFindIter iterGlob = prb_createPathFindIter(iterGlobSpec);
     iterGlobSpec.pattern = globPatternNotNull;
-    prb_PathFindIterator iterGlobNotNull = prb_createPathFindIter(iterGlobSpec);
+    prb_PathFindIter iterGlobNotNull = prb_createPathFindIter(iterGlobSpec);
     while (prb_pathFindIterNext(&iterGlob) == prb_Success) {
         bool found = false;
         for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
@@ -1000,7 +1000,7 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     prb_assert(prb_pathFindIterNext(&iterGlobNotNull) == prb_Failure);
 
     prb_destroyPathFindIter(&iterGlob);
-    prb_assert(prb_memeq(&iterGlob, &empty, sizeof(prb_PathFindIterator)));
+    prb_assert(prb_memeq(&iterGlob, &empty, sizeof(prb_PathFindIter)));
     prb_destroyPathFindIter(&iterGlobNotNull);
 
     prb_PathFindSpec iterRegexSpec = {};
@@ -1009,9 +1009,9 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     iterRegexSpec.mode = prb_PathFindMode_RegexPosix;
     iterRegexSpec.recursive = false;
     iterRegexSpec.pattern = regexPattern;
-    prb_PathFindIterator iterRegex = prb_createPathFindIter(iterRegexSpec);
+    prb_PathFindIter iterRegex = prb_createPathFindIter(iterRegexSpec);
     iterRegexSpec.pattern = regexPatternNotNull;
-    prb_PathFindIterator iterRegexNotNull = prb_createPathFindIter(iterRegexSpec);
+    prb_PathFindIter iterRegexNotNull = prb_createPathFindIter(iterRegexSpec);
     while (prb_pathFindIterNext(&iterRegex) == prb_Success) {
         bool found = false;
         for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
@@ -1035,10 +1035,10 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     prb_assert(prb_pathFindIterNext(&iterRegexNotNull) == prb_Failure);
 
     prb_destroyPathFindIter(&iterRegex);
-    prb_assert(prb_memeq(&iterRegex, &empty, sizeof(prb_PathFindIterator)));
+    prb_assert(prb_memeq(&iterRegex, &empty, sizeof(prb_PathFindIter)));
     prb_destroyPathFindIter(&iterRegexNotNull);
 
-    prb_assert(prb_clearDirectory(arena, dir) == prb_Success);
+    prb_assert(prb_clearDir(arena, dir) == prb_Success);
     spec.dir = dir;
     iter = prb_createPathFindIter(spec);
     prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
@@ -1095,7 +1095,7 @@ test_pathFindIter(prb_Arena* arena, void* data) {
 
     spec.dir = dir;
     spec.recursive = true;
-    prb_PathFindIterator iterRecursive = prb_createPathFindIter(spec);
+    prb_PathFindIter iterRecursive = prb_createPathFindIter(spec);
     while (prb_pathFindIterNext(&iterRecursive) == prb_Success) {
         bool found = false;
 
@@ -1152,7 +1152,7 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     prb_assert(iterRecursive.curMatchCount == prb_arrayLength(files) + prb_arrayLength(nestedFiles) + prb_arrayLength(nestedNestedFiles) + 3);
 
     iterGlobSpec.recursive = true;
-    prb_PathFindIterator iterRecursiveGlob = prb_createPathFindIter(iterGlobSpec);
+    prb_PathFindIter iterRecursiveGlob = prb_createPathFindIter(iterGlobSpec);
     while (prb_pathFindIterNext(&iterRecursiveGlob) == prb_Success) {
         bool found = false;
 
@@ -1199,7 +1199,7 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     prb_assert(iterRecursiveGlob.curMatchCount == 6);
 
     iterRegexSpec.recursive = true;
-    prb_PathFindIterator iterRecursiveRegex = prb_createPathFindIter(iterRegexSpec);
+    prb_PathFindIter iterRecursiveRegex = prb_createPathFindIter(iterRegexSpec);
     while (prb_pathFindIterNext(&iterRecursiveRegex) == prb_Success) {
         bool found = false;
 
@@ -1245,7 +1245,7 @@ test_pathFindIter(prb_Arena* arena, void* data) {
 
     prb_assert(iterRecursiveRegex.curMatchCount == 6);
 
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
 }
 
@@ -1254,7 +1254,7 @@ test_getLastModified(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_Str     dir = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
-    prb_assert(prb_clearDirectory(arena, dir) == prb_Success);
+    prb_assert(prb_clearDir(arena, dir) == prb_Success);
     prb_Str file = prb_pathJoin(arena, dir, prb_STR("f1.c"));
 
     prb_FileTimestamp lastMod = prb_getLastModified(arena, file);
@@ -1273,7 +1273,7 @@ test_getLastModified(prb_Arena* arena, void* data) {
     u64 t2 = lastMod.timestamp;
     prb_assert(t2 > t1);
 
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
 }
 
@@ -1330,12 +1330,12 @@ test_writeEntireFile(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_Str     dir = getTempDir(arena, __FUNCTION__);
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("filename.txt"));
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Failure);
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Success);
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
 }
 
@@ -1367,7 +1367,7 @@ test_getFileHash(prb_Arena* arena, void* data) {
     prb_FileHash hash3 = prb_getFileHash(arena, filepath);
     prb_assert(hash3.valid);
     prb_assert(hash3.hash == hash1.hash);
-    prb_assert(prb_removeDirectoryIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_FileHash hash4 = prb_getFileHash(arena, filepath);
     prb_assert(!hash4.valid);
     prb_endTempMemory(temp);
@@ -1438,65 +1438,65 @@ test_strFind(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_StringFindSpec spec = {};
+    prb_StrFindSpec spec = {};
     spec.str = prb_STR("p1at4pattern1 pattern2 pattern3p2a.t");
     spec.pattern = prb_STR("pattern");
-    spec.mode = prb_StringFindMode_Exact;
-    spec.direction = prb_StringDirection_FromStart;
+    spec.mode = prb_StrFindMode_Exact;
+    spec.direction = prb_StrDirection_FromStart;
 
     {
-        prb_StringFindResult res = prb_strFind(spec);
+        prb_StrFindResult res = prb_strFind(spec);
         prb_assert(res.found && res.matchByteIndex == 5 && res.matchLen == 7);
     }
 
     {
-        spec.direction = prb_StringDirection_FromEnd;
-        prb_StringFindResult res = prb_strFind(spec);
+        spec.direction = prb_StrDirection_FromEnd;
+        prb_StrFindResult res = prb_strFind(spec);
         prb_assert(res.found && res.matchByteIndex == 23 && res.matchLen == 7);
-        spec.direction = prb_StringDirection_FromStart;
+        spec.direction = prb_StrDirection_FromStart;
     }
 
     spec.str = prb_STR("p1at4pat1ern1 pat1ern2 pat1ern3p2a.p");
     {
-        prb_StringFindResult res = prb_strFind(spec);
+        prb_StrFindResult res = prb_strFind(spec);
         prb_assert(!res.found && res.matchByteIndex == 0 && res.matchLen == 0);
     }
 
     {
-        spec.direction = prb_StringDirection_FromEnd;
-        prb_StringFindResult res = prb_strFind(spec);
+        spec.direction = prb_StrDirection_FromEnd;
+        prb_StrFindResult res = prb_strFind(spec);
         prb_assert(!res.found && res.matchByteIndex == 0 && res.matchLen == 0);
-        spec.direction = prb_StringDirection_FromStart;
+        spec.direction = prb_StrDirection_FromStart;
     }
 
     spec.str = prb_STR("中华人民共和国是目前世界上人口最多的国家");
     spec.pattern = prb_STR("民共和国");
     {
-        prb_StringFindResult res = prb_strFind(spec);
+        prb_StrFindResult res = prb_strFind(spec);
         prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 4 * 3);
-        spec.direction = prb_StringDirection_FromEnd;
+        spec.direction = prb_StrDirection_FromEnd;
         res = prb_strFind(spec);
         prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 4 * 3);
-        spec.direction = prb_StringDirection_FromStart;
+        spec.direction = prb_StrDirection_FromStart;
     }
 
     {
-        spec.mode = prb_StringFindMode_AnyChar;
-        prb_StringFindResult res = prb_strFind(spec);
+        spec.mode = prb_StrFindMode_AnyChar;
+        prb_StrFindResult res = prb_strFind(spec);
         prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 1 * 3);
-        spec.direction = prb_StringDirection_FromEnd;
+        spec.direction = prb_StrDirection_FromEnd;
         res = prb_strFind(spec);
         prb_assert(res.found && res.matchByteIndex == 18 * 3 && res.matchLen == 1 * 3);
-        spec.direction = prb_StringDirection_FromStart;
-        spec.mode = prb_StringFindMode_Exact;
+        spec.direction = prb_StrDirection_FromStart;
+        spec.mode = prb_StrFindMode_Exact;
     }
 
     spec.str = prb_STR("prb_PUBLICDEC prb_StringWindow prb_createStringWindow(void* ptr, i32 len)");
     spec.pattern = prb_STR("prb_[^[:space:]]*\\(");
-    spec.mode = prb_StringFindMode_RegexPosix;
+    spec.mode = prb_StrFindMode_RegexPosix;
     spec.regexPosix.arena = arena;
     {
-        prb_StringFindResult res = prb_strFind(spec);
+        prb_StrFindResult res = prb_strFind(spec);
         prb_assert(
             res.found
             && res.matchByteIndex == prb_strlen("prb_PUBLICDEC prb_StringWindow ")
@@ -1506,14 +1506,14 @@ test_strFind(prb_Arena* arena, void* data) {
 
     spec.str.ptr = "prb_one() prb_2()";
     {
-        spec.direction = prb_StringDirection_FromEnd;
-        prb_StringFindResult res = prb_strFind(spec);
+        spec.direction = prb_StrDirection_FromEnd;
+        prb_StrFindResult res = prb_strFind(spec);
         prb_assert(
             res.found
             && res.matchByteIndex == prb_strlen("prb_one() ")
             && res.matchLen == prb_strlen("prb_2(")
         );
-        spec.direction = prb_StringDirection_FromStart;
+        spec.direction = prb_StrDirection_FromStart;
     }
 
     prb_endTempMemory(temp);
@@ -1524,14 +1524,14 @@ test_strFindIter(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory     temp = prb_beginTempMemory(arena);
     prb_Str         str = prb_STR("prog arg1:val1 arg2:val2 arg3:val3");
-    prb_StringFindSpec spec = {};
+    prb_StrFindSpec spec = {};
     spec.str = str;
     spec.pattern = prb_STR(":");
-    spec.mode = prb_StringFindMode_Exact;
-    spec.direction = prb_StringDirection_FromStart;
+    spec.mode = prb_StrFindMode_Exact;
+    spec.direction = prb_StrDirection_FromStart;
 
     {
-        prb_StrFindIterator iter = prb_createStrFindIter(spec);
+        prb_StrFindIter iter = prb_createStrFindIter(spec);
         prb_assert(iter.curMatchCount == 0);
 
         prb_assert(prb_strFindIterNext(&iter) == prb_Success);
@@ -1560,8 +1560,8 @@ test_strFindIter(prb_Arena* arena, void* data) {
     }
 
     {
-        spec.direction = prb_StringDirection_FromEnd;
-        prb_StrFindIterator iter = prb_createStrFindIter(spec);
+        spec.direction = prb_StrDirection_FromEnd;
+        prb_StrFindIter iter = prb_createStrFindIter(spec);
         prb_assert(iter.curMatchCount == 0);
 
         prb_assert(prb_strFindIterNext(&iter) == prb_Success);
@@ -1588,7 +1588,7 @@ test_strFindIter(prb_Arena* arena, void* data) {
         prb_assert(iter.curResult.matchLen == 0);
         prb_assert(iter.curMatchCount == 3);
 
-        spec.direction = prb_StringDirection_FromStart;
+        spec.direction = prb_StrDirection_FromStart;
     }
 
     prb_endTempMemory(temp);
@@ -1625,21 +1625,21 @@ test_stringsJoin(prb_Arena* arena, void* data) {
 }
 
 function void
-test_beginString(prb_Arena* arena, void* data) {
+test_beginStr(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
     // TODO(khvorov) Write
 }
 
 function void
-test_addStringSegment(prb_Arena* arena, void* data) {
+test_addStrSegment(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
     // TODO(khvorov) Write
 }
 
 function void
-test_endString(prb_Arena* arena, void* data) {
+test_endStr(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
     // TODO(khvorov) Write
@@ -1725,7 +1725,7 @@ test_utf8CharIter(prb_Arena* arena, void* data) {
     i32        utf8Bytes[] = {1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
     prb_assert(prb_arrayLength(charsUtf32) == prb_arrayLength(utf8Bytes));
 
-    prb_Utf8CharIterator iter = prb_createUtf8CharIter(str, prb_StringDirection_FromStart);
+    prb_Utf8CharIter iter = prb_createUtf8CharIter(str, prb_StrDirection_FromStart);
     prb_assert(iter.curCharCount == 0);
     i32 curTotalUtf8Bytes = 0;
     for (i32 charIndex = 0; charIndex < prb_arrayLength(charsUtf32); charIndex++) {
@@ -1748,7 +1748,7 @@ test_lineIter(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_unused(arena);
     prb_Str       lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
-    prb_LineIterator iter = prb_createLineIter(lines);
+    prb_LineIter iter = prb_createLineIter(lines);
 
     prb_assert(iter.curLineCount == 0);
     prb_assert(prb_lineIterNext(&iter) == prb_Success);
@@ -1883,14 +1883,14 @@ test_getCmdArgs(prb_Arena* arena, void* data) {
 }
 
 function void
-test_getArgArrayFromString(prb_Arena* arena, void* data) {
+test_getArgArrayFromStr(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str strings[] = {prb_STR("prg arg1 arg2 arg3"), prb_STR("  prg arg1 arg2  arg3 ")};
 
     for (i32 strIndex = 0; strIndex < prb_arrayLength(strings); strIndex++) {
-        const char** args = prb_getArgArrayFromString(arena, strings[strIndex]);
+        const char** args = prb_getArgArrayFromStr(arena, strings[strIndex]);
         prb_assert(arrlen(args) == 4);
         prb_assert(prb_streq(prb_STR(args[0]), prb_STR("prg")));
         prb_assert(prb_streq(prb_STR(args[1]), prb_STR("arg1")));
@@ -2012,7 +2012,7 @@ test_fileformat(prb_Arena* arena, void* data) {
     prb_Str               prbFilepath = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
     prb_ReadEntireFileResult fileContents = prb_readEntireFile(arena, prbFilepath);
     prb_assert(fileContents.success);
-    prb_LineIterator lineIter = prb_createLineIter((prb_Str) {(const char*)fileContents.content.data, fileContents.content.len});
+    prb_LineIter lineIter = prb_createLineIter((prb_Str) {(const char*)fileContents.content.data, fileContents.content.len});
 
     prb_Str* headerNames = 0;
     while (prb_lineIterNext(&lineIter) == prb_Success) {
@@ -2022,18 +2022,18 @@ test_fileformat(prb_Arena* arena, void* data) {
             prb_Str name = prb_fmt(arena, "%.*s", prb_LIT(lineIter.curLine));
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEC"))) {
-            prb_StringFindSpec spec = {};
+            prb_StrFindSpec spec = {};
             spec.str = lineIter.curLine;
             spec.pattern = prb_STR("(");
-            spec.mode = prb_StringFindMode_AnyChar;
-            spec.direction = prb_StringDirection_FromStart;
-            prb_StringFindResult onePastNameEndRes = prb_strFind(spec);
+            spec.mode = prb_StrFindMode_AnyChar;
+            spec.direction = prb_StrDirection_FromStart;
+            prb_StrFindResult onePastNameEndRes = prb_strFind(spec);
             prb_assert(onePastNameEndRes.found);
             prb_Str win = {lineIter.curLine.ptr, onePastNameEndRes.matchByteIndex};
             spec.str = win;
             spec.pattern = prb_STR(" ");
-            spec.direction = prb_StringDirection_FromEnd;
-            prb_StringFindResult nameStartRes = prb_strFind(spec);
+            spec.direction = prb_StrDirection_FromEnd;
+            prb_StrFindResult nameStartRes = prb_strFind(spec);
             prb_assert(nameStartRes.found);
             win = prb_strSliceForward(win, nameStartRes.matchByteIndex + 1);
             prb_Str name = prb_fmt(arena, "%.*s", win.len, win.ptr);
@@ -2048,24 +2048,24 @@ test_fileformat(prb_Arena* arena, void* data) {
         prb_assert(!prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEC")));
 
         if (prb_strStartsWith(lineIter.curLine, prb_STR("// SECTION"))) {
-            prb_StringFindSpec spec = {};
+            prb_StrFindSpec spec = {};
             spec.str = lineIter.curLine;
             spec.pattern = prb_STR(" (implementation)");
-            spec.mode = prb_StringFindMode_Exact;
-            spec.direction = prb_StringDirection_FromStart;
-            prb_StringFindResult implementationRes = prb_strFind(spec);
+            spec.mode = prb_StrFindMode_Exact;
+            spec.direction = prb_StrDirection_FromStart;
+            prb_StrFindResult implementationRes = prb_strFind(spec);
             prb_assert(implementationRes.found);
             prb_Str name = prb_fmt(arena, "%.*s", implementationRes.matchByteIndex, lineIter.curLine.ptr);
             arrput(implNames, name);
         } else if (prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEF"))) {
             prb_assert(prb_lineIterNext(&lineIter) == prb_Success);
             prb_assert(prb_strStartsWith(lineIter.curLine, prb_STR("prb_")));
-            prb_StringFindSpec spec = {};
+            prb_StrFindSpec spec = {};
             spec.str = lineIter.curLine;
             spec.pattern = prb_STR("(");
-            spec.mode = prb_StringFindMode_AnyChar;
-            spec.direction = prb_StringDirection_FromStart;
-            prb_StringFindResult nameLenRes = prb_strFind(spec);
+            spec.mode = prb_StrFindMode_AnyChar;
+            spec.direction = prb_StrDirection_FromStart;
+            prb_StrFindResult nameLenRes = prb_strFind(spec);
             prb_assert(nameLenRes.found);
             prb_Str name = prb_fmt(arena, "%.*s", nameLenRes.matchByteIndex, lineIter.curLine.ptr);
             arrput(implNames, name);
@@ -2078,7 +2078,7 @@ test_fileformat(prb_Arena* arena, void* data) {
     prb_ReadEntireFileResult testFileReadResut = prb_readEntireFile(arena, prb_STR(__FILE__));
     prb_assert(testFileReadResut.success);
     prb_Str       testFileContent = prb_strFromBytes(testFileReadResut.content);
-    prb_LineIterator testFileLineIter = prb_createLineIter(testFileContent);
+    prb_LineIter testFileLineIter = prb_createLineIter(testFileContent);
     while (prb_lineIterNext(&testFileLineIter)) {
         prb_Str testFunctionsPrefix = prb_STR("test_");
         if (prb_strStartsWith(testFileLineIter.curLine, prb_STR("// SECTION"))) {
@@ -2088,11 +2088,11 @@ test_fileformat(prb_Arena* arena, void* data) {
                 arrput(testNames, testFileLineIter.curLine);
             }
         } else if (prb_strStartsWith(testFileLineIter.curLine, testFunctionsPrefix)) {
-            prb_StringFindSpec bracketSpec = {};
+            prb_StrFindSpec bracketSpec = {};
             bracketSpec.str = testFileLineIter.curLine;
             bracketSpec.pattern = prb_STR("(");
-            bracketSpec.mode = prb_StringFindMode_AnyChar;
-            prb_StringFindResult bracket = prb_strFind(bracketSpec);
+            bracketSpec.mode = prb_StrFindMode_AnyChar;
+            prb_StrFindResult bracket = prb_strFind(bracketSpec);
             prb_assert(bracket.found);
             prb_Str name = prb_strSliceBetween(testFileLineIter.curLine, testFunctionsPrefix.len, bracket.matchByteIndex);
             testNameToPrbName(arena, name, &testNames);
@@ -2114,11 +2114,11 @@ test_fileformat(prb_Arena* arena, void* data) {
             }
         } else if (prb_strStartsWith(testFileLineIter.curLine, testCall)) {
             prb_Str         nameOn = prb_strSliceForward(testFileLineIter.curLine, testCall.len);
-            prb_StringFindSpec commaSpec = {};
+            prb_StrFindSpec commaSpec = {};
             commaSpec.str = nameOn;
             commaSpec.pattern = prb_STR(",");
-            commaSpec.mode = prb_StringFindMode_AnyChar;
-            prb_StringFindResult comma = prb_strFind(commaSpec);
+            commaSpec.mode = prb_StrFindMode_AnyChar;
+            prb_StrFindResult comma = prb_strFind(commaSpec);
             prb_assert(comma.found);
             prb_Str name = prb_strSliceBetween(nameOn, 0, comma.matchByteIndex);
             testNameToPrbName(arena, name, &testNamesInMain);
@@ -2164,14 +2164,14 @@ main() {
     arrput(jobs, prb_createJob(test_pathExists, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_pathIsAbsolute, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getAbsolutePath, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_isDirectory, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_isDir, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_isFile, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_directoryIsEmpty, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_dirIsEmpty, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_createDirIfNotExists, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_removeFileOrDirectoryIfExists, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_removeFileOrDirIfExists, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_removeFileIfExists, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_removeDirectoryIfExists, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_clearDirectory, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_removeDirIfExists, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_clearDir, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getWorkingDir, 0, &arena, 10 * prb_MEGABYTE));
     test_setWorkingDir(&arena, 0);  // NOTE(khvorov) Messes with global state of the process
     arrput(jobs, prb_createJob(test_pathJoin, 0, &arena, 10 * prb_MEGABYTE));
@@ -2205,9 +2205,9 @@ main() {
     arrput(jobs, prb_createJob(test_strEndsWith, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strReplace, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_stringsJoin, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_beginString, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_addStringSegment, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_endString, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_beginStr, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_addStrSegment, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_endStr, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_vfmtCustomBuffer, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_fmt, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_writeToStdout, 0, &arena, 10 * prb_MEGABYTE));
@@ -2223,7 +2223,7 @@ main() {
     arrput(jobs, prb_createJob(test_terminate, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getCmdline, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getCmdArgs, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getArgArrayFromString, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getArgArrayFromStr, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_execCmd, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_waitForProcesses, 0, &arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_sleep, 0, &arena, 10 * prb_MEGABYTE));
