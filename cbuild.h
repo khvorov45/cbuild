@@ -39,7 +39,6 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Should be possible to redirect process stdout/err to different files.
 // TODO(khvorov) Should be possible to redirect process stdout/err to a buffer.
 // TODO(khvorov) If stdout/err file is missing just ignore the output
-// TODO(khvorov) Rename to cbuild probably
 // TODO(khvorov) Pathfind iterator should probably not crash when given non-existant directories
 // TODO(khvorov) Set env variables when executing processes
 // TODO(khvorov) Set env variables for the current process
