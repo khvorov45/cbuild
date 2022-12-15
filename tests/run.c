@@ -1,4 +1,4 @@
-#include "../programmable_build.h"
+#include "../cbuild.h"
 
 #define function static
 
@@ -253,7 +253,7 @@ main() {
     // TODO(khvorov) Run sanitizers for tests probably
 
     // NOTE(khvorov) Static analysis
-    prb_String mainFilePath = prb_pathJoin(arena, rootDir, prb_STR("programmable_build.h"));
+    prb_String mainFilePath = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
     prb_String staticAnalysisCmd = prb_fmt(arena, "clang-tidy %.*s", prb_LIT(mainFilePath));
     prb_writelnToStdout(arena, staticAnalysisCmd);
     prb_String        staticAnalysisOutput = prb_pathJoin(arena, testsDir, prb_STR("static_analysis_out"));

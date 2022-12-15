@@ -1,4 +1,4 @@
-#include "../programmable_build.h"
+#include "../cbuild.h"
 
 #define function static
 
@@ -1321,7 +1321,7 @@ test_readEntireFile(prb_Arena* arena, void* data) {
     prb_assert(!readResult.success);
     readResult = prb_readEntireFile(arena, prb_STR(__FILE__));
     prb_assert(readResult.success);
-    prb_assert(prb_strStartsWith(prb_strFromBytes(readResult.content), prb_STR("#include \"../programmable_build.h\"")));
+    prb_assert(prb_strStartsWith(prb_strFromBytes(readResult.content), prb_STR("#include \"../cbuild.h\"")));
     prb_endTempMemory(temp);
 }
 
@@ -2009,7 +2009,7 @@ test_fileformat(prb_Arena* arena, void* data) {
     prb_TempMemory           temp = prb_beginTempMemory(arena);
     prb_String               fileParent = prb_getParentDir(arena, prb_STR(__FILE__));
     prb_String               rootDir = prb_getParentDir(arena, fileParent);
-    prb_String               prbFilepath = prb_pathJoin(arena, rootDir, prb_STR("programmable_build.h"));
+    prb_String               prbFilepath = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
     prb_ReadEntireFileResult fileContents = prb_readEntireFile(arena, prbFilepath);
     prb_assert(fileContents.success);
     prb_LineIterator lineIter = prb_createLineIter((prb_String) {(const char*)fileContents.content.data, fileContents.content.len});
