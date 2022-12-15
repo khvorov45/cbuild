@@ -12,15 +12,16 @@ Note that arenas are not thread-safe, so don't pass the same arena to multiple t
 All string formatting functions are wrappers around stb printf
 https://github.com/nothings/stb/blob/master/stb_sprintf.h
 The strings are allocated on the linear allocator everything else is using.
-The original stb sprintf API is still exposed.
+The original stb sprintf API is still exposed but with the additional prb_ prefix
 
 The library includes all of stb ds
 https://github.com/nothings/stb/blob/master/stb_ds.h
-There are no wrappers for it, use the original API.
+There are no wrappers for it, use the original API (note the additional prb_ prefix)
+Note that by default short macro names (like arrlen) are exposed, define prb_STBDS_NO_SHORT_NAMES to disable them.
 All memory allocation calls in stb ds are using libc realloc/free.
 
 If a prb_* function ever returns an array (pointer to multiple elements) then it's
-an stb ds array, so get its length with arrlen()
+an stb ds array, so get its length with arrlen() (or prb_stbds_arrlen() without short names)
 
 All prb_* iterators are meant to be used in loops like this
 for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
@@ -32,7 +33,6 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Test macros do the right thing
 // TODO(khvorov) Consistent string/str iterator/iter dir/directory naming
 // TODO(khvorov) Access color escape codes as strings
-// TODO(khvorov) Change included dependency prefixes to prb_ probably
 // TODO(khvorov) Helper to reset iterators
 // TODO(khvorov) Random number generation
 // TODO(khvorov) Job status enum should probably be separate from process status
@@ -179,8 +179,8 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #endif
 #endif
 
-// Taken from stb snprintf
-// https://github.com/nothings/stb/blob/master/stb_sprintf.h
+// Taken from prb_stb snprintf
+// https://github.com/nothings/prb_stb/blob/master/prb_stb_sprintf.h
 #if defined(__has_attribute)
     #if __has_attribute(format)
         #define prb_ATTRIBUTE_FORMAT(fmt, va) __attribute__((format(printf, fmt, va)))
@@ -584,155 +584,155 @@ prb_PUBLICDEC prb_Status prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_Thre
 #if defined(__has_feature) && defined(__has_attribute)
 #if __has_feature(address_sanitizer)
 #if __has_attribute(__no_sanitize__)
-#define STBSP__ASAN __attribute__((__no_sanitize__("address")))
+#define prb_STBSP__ASAN __attribute__((__no_sanitize__("address")))
 #elif __has_attribute(__no_sanitize_address__)
-#define STBSP__ASAN __attribute__((__no_sanitize_address__))
+#define prb_STBSP__ASAN __attribute__((__no_sanitize_address__))
 #elif __has_attribute(__no_address_safety_analysis__)
-#define STBSP__ASAN __attribute__((__no_address_safety_analysis__))
+#define prb_STBSP__ASAN __attribute__((__no_address_safety_analysis__))
 #endif
 #endif
 #endif
 #elif defined(__GNUC__) && (__GNUC__ >= 5 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8))
 #if defined(__SANITIZE_ADDRESS__) && __SANITIZE_ADDRESS__
-#define STBSP__ASAN __attribute__((__no_sanitize_address__))
+#define prb_STBSP__ASAN __attribute__((__no_sanitize_address__))
 #endif
 #endif
 
-#ifndef STBSP__ASAN
-#define STBSP__ASAN
+#ifndef prb_STBSP__ASAN
+#define prb_STBSP__ASAN
 #endif
 
 #ifndef prb_NOT_STATIC
-#define STB_SPRINTF_STATIC
+#define prb_STB_SPRINTF_STATIC
 #endif
 
-#ifdef STB_SPRINTF_STATIC
-#define STBSP__PUBLICDEC static
-#define STBSP__PUBLICDEF static STBSP__ASAN
+#ifdef prb_STB_SPRINTF_STATIC
+#define prb_STBSP__PUBLICDEC static
+#define prb_STBSP__PUBLICDEF static prb_STBSP__ASAN
 #else
 #ifdef __cplusplus
-#define STBSP__PUBLICDEC extern "C"
-#define STBSP__PUBLICDEF extern "C" STBSP__ASAN
+#define prb_STBSP__PUBLICDEC extern "C"
+#define prb_STBSP__PUBLICDEF extern "C" prb_STBSP__ASAN
 #else
-#define STBSP__PUBLICDEC extern
-#define STBSP__PUBLICDEF STBSP__ASAN
+#define prb_STBSP__PUBLICDEC extern
+#define prb_STBSP__PUBLICDEF prb_STBSP__ASAN
 #endif
 #endif
 
 #if defined(__has_attribute)
 #if __has_attribute(format)
-#define STBSP__ATTRIBUTE_FORMAT(fmt, va) __attribute__((format(printf, fmt, va)))
+#define prb_STBSP__ATTRIBUTE_FORMAT(fmt, va) __attribute__((format(printf, fmt, va)))
 #endif
 #endif
 
-#ifndef STBSP__ATTRIBUTE_FORMAT
-#define STBSP__ATTRIBUTE_FORMAT(fmt, va)
+#ifndef prb_STBSP__ATTRIBUTE_FORMAT
+#define prb_STBSP__ATTRIBUTE_FORMAT(fmt, va)
 #endif
 
 #ifdef _MSC_VER
-#define STBSP__NOTUSED(v) (void)(v)
+#define prb_STBSP__NOTUSED(v) (void)(v)
 #else
-#define STBSP__NOTUSED(v) (void)sizeof(v)
+#define prb_STBSP__NOTUSED(v) (void)sizeof(v)
 #endif
 
-#ifndef STB_SPRINTF_MIN
-#define STB_SPRINTF_MIN 512  // how many characters per callback
+#ifndef prb_STB_SPRINTF_MIN
+#define prb_STB_SPRINTF_MIN 512  // how many characters per callback
 #endif
-typedef char* STBSP_SPRINTFCB(const char* buf, void* user, int len);
+typedef char* prb_STBSP_SPRINTFCB(const char* buf, void* user, int len);
 
-#ifndef STB_SPRINTF_DECORATE
-#define STB_SPRINTF_DECORATE(name) stbsp_##name  // define this before including if you want to change the names
+#ifndef prb_STB_SPRINTF_DECORATE
+#define prb_STB_SPRINTF_DECORATE(name) prb_stbsp_##name  // define this before including if you want to change the names
 #endif
 
-STBSP__PUBLICDEC int STB_SPRINTF_DECORATE(vsprintf)(char* buf, char const* fmt, va_list va);
-STBSP__PUBLICDEC int STB_SPRINTF_DECORATE(vsnprintf)(char* buf, int count, char const* fmt, va_list va);
-STBSP__PUBLICDEC int STB_SPRINTF_DECORATE(sprintf)(char* buf, char const* fmt, ...) STBSP__ATTRIBUTE_FORMAT(2, 3);
-STBSP__PUBLICDEC int STB_SPRINTF_DECORATE(snprintf)(char* buf, int count, char const* fmt, ...)
-    STBSP__ATTRIBUTE_FORMAT(3, 4);
+prb_STBSP__PUBLICDEC int prb_STB_SPRINTF_DECORATE(vsprintf)(char* buf, char const* fmt, va_list va);
+prb_STBSP__PUBLICDEC int prb_STB_SPRINTF_DECORATE(vsnprintf)(char* buf, int count, char const* fmt, va_list va);
+prb_STBSP__PUBLICDEC int prb_STB_SPRINTF_DECORATE(sprintf)(char* buf, char const* fmt, ...) prb_STBSP__ATTRIBUTE_FORMAT(2, 3);
+prb_STBSP__PUBLICDEC int prb_STB_SPRINTF_DECORATE(snprintf)(char* buf, int count, char const* fmt, ...)
+    prb_STBSP__ATTRIBUTE_FORMAT(3, 4);
 
-STBSP__PUBLICDEC int  STB_SPRINTF_DECORATE(vsprintfcb
-)(STBSP_SPRINTFCB* callback, void* user, char* buf, char const* fmt, va_list va);
-STBSP__PUBLICDEC void STB_SPRINTF_DECORATE(set_separators)(char comma, char period);
+prb_STBSP__PUBLICDEC int  prb_STB_SPRINTF_DECORATE(vsprintfcb
+)(prb_STBSP_SPRINTFCB* callback, void* user, char* buf, char const* fmt, va_list va);
+prb_STBSP__PUBLICDEC void prb_STB_SPRINTF_DECORATE(set_separators)(char comma, char period);
 
 //
 // SECTION stb ds
 //
 
-#ifndef STBDS_NO_SHORT_NAMES
-#define arrlen stbds_arrlen
-#define arrlenu stbds_arrlenu
-#define arrput stbds_arrput
-#define arrpush stbds_arrput
-#define arrpop stbds_arrpop
-#define arrfree stbds_arrfree
-#define arraddn stbds_arraddn  // deprecated, use one of the following instead:
-#define arraddnptr stbds_arraddnptr
-#define arraddnindex stbds_arraddnindex
-#define arrsetlen stbds_arrsetlen
-#define arrlast stbds_arrlast
-#define arrins stbds_arrins
-#define arrinsn stbds_arrinsn
-#define arrdel stbds_arrdel
-#define arrdeln stbds_arrdeln
-#define arrdelswap stbds_arrdelswap
-#define arrcap stbds_arrcap
-#define arrsetcap stbds_arrsetcap
+#ifndef prb_STBDS_NO_SHORT_NAMES
+#define arrlen prb_stbds_arrlen
+#define arrlenu prb_stbds_arrlenu
+#define arrput prb_stbds_arrput
+#define arrpush prb_stbds_arrput
+#define arrpop prb_stbds_arrpop
+#define arrfree prb_stbds_arrfree
+#define arraddn prb_stbds_arraddn  // deprecated, use one of the following instead:
+#define arraddnptr prb_stbds_arraddnptr
+#define arraddnindex prb_stbds_arraddnindex
+#define arrsetlen prb_stbds_arrsetlen
+#define arrlast prb_stbds_arrlast
+#define arrins prb_stbds_arrins
+#define arrinsn prb_stbds_arrinsn
+#define arrdel prb_stbds_arrdel
+#define arrdeln prb_stbds_arrdeln
+#define arrdelswap prb_stbds_arrdelswap
+#define arrcap prb_stbds_arrcap
+#define arrsetcap prb_stbds_arrsetcap
 
-#define hmput stbds_hmput
-#define hmputs stbds_hmputs
-#define hmget stbds_hmget
-#define hmget_ts stbds_hmget_ts
-#define hmgets stbds_hmgets
-#define hmgetp stbds_hmgetp
-#define hmgetp_ts stbds_hmgetp_ts
-#define hmgetp_null stbds_hmgetp_null
-#define hmgeti stbds_hmgeti
-#define hmgeti_ts stbds_hmgeti_ts
-#define hmdel stbds_hmdel
-#define hmlen stbds_hmlen
-#define hmlenu stbds_hmlenu
-#define hmfree stbds_hmfree
-#define hmdefault stbds_hmdefault
-#define hmdefaults stbds_hmdefaults
+#define hmput prb_stbds_hmput
+#define hmputs prb_stbds_hmputs
+#define hmget prb_stbds_hmget
+#define hmget_ts prb_stbds_hmget_ts
+#define hmgets prb_stbds_hmgets
+#define hmgetp prb_stbds_hmgetp
+#define hmgetp_ts prb_stbds_hmgetp_ts
+#define hmgetp_null prb_stbds_hmgetp_null
+#define hmgeti prb_stbds_hmgeti
+#define hmgeti_ts prb_stbds_hmgeti_ts
+#define hmdel prb_stbds_hmdel
+#define hmlen prb_stbds_hmlen
+#define hmlenu prb_stbds_hmlenu
+#define hmfree prb_stbds_hmfree
+#define hmdefault prb_stbds_hmdefault
+#define hmdefaults prb_stbds_hmdefaults
 
-#define shput stbds_shput
-#define shputi stbds_shputi
-#define shputs stbds_shputs
-#define shget stbds_shget
-#define shgeti stbds_shgeti
-#define shgets stbds_shgets
-#define shgetp stbds_shgetp
-#define shgetp_null stbds_shgetp_null
-#define shdel stbds_shdel
-#define shlen stbds_shlen
-#define shlenu stbds_shlenu
-#define shfree stbds_shfree
-#define shdefault stbds_shdefault
-#define shdefaults stbds_shdefaults
-#define sh_new_arena stbds_sh_new_arena
-#define sh_new_strdup stbds_sh_new_strdup
+#define shput prb_stbds_shput
+#define shputi prb_stbds_shputi
+#define shputs prb_stbds_shputs
+#define shget prb_stbds_shget
+#define shgeti prb_stbds_shgeti
+#define shgets prb_stbds_shgets
+#define shgetp prb_stbds_shgetp
+#define shgetp_null prb_stbds_shgetp_null
+#define shdel prb_stbds_shdel
+#define shlen prb_stbds_shlen
+#define shlenu prb_stbds_shlenu
+#define shfree prb_stbds_shfree
+#define shdefault prb_stbds_shdefault
+#define shdefaults prb_stbds_shdefaults
+#define sh_new_arena prb_stbds_sh_new_arena
+#define sh_new_strdup prb_stbds_sh_new_strdup
 
-#define stralloc stbds_stralloc
-#define strreset stbds_strreset
+#define stralloc prb_stbds_stralloc
+#define strreset prb_stbds_strreset
 #endif
 
-#if !defined(STBDS_REALLOC) && !defined(STBDS_FREE)
-#define STBDS_REALLOC(c, p, s) prb_realloc(p, s)
-#define STBDS_FREE(c, p) prb_free(p)
+#if !defined(prb_STBDS_REALLOC) && !defined(prb_STBDS_FREE)
+#define prb_STBDS_REALLOC(c, p, s) prb_realloc(p, s)
+#define prb_STBDS_FREE(c, p) prb_free(p)
 #endif
 
 #ifdef _MSC_VER
-#define STBDS_NOTUSED(v) (void)(v)
+#define prb_STBDS_NOTUSED(v) (void)(v)
 #else
-#define STBDS_NOTUSED(v) (void)sizeof(v)
+#define prb_STBDS_NOTUSED(v) (void)sizeof(v)
 #endif
 
 #ifdef prb_NOT_STATIC
-#define STBDS__PUBLICDEC
-#define STBDS__PUBLICDEF
+#define prb_STBDS__PUBLICDEC
+#define prb_STBDS__PUBLICDEF
 #else
-#define STBDS__PUBLICDEC static
-#define STBDS__PUBLICDEF static
+#define prb_STBDS__PUBLICDEC static
+#define prb_STBDS__PUBLICDEF static
 #endif
 
 #ifdef __cplusplus
@@ -740,185 +740,185 @@ extern "C" {
 #endif
 
 // for security against attackers, seed the library with a random number, at least time() but stronger is better
-STBDS__PUBLICDEC void stbds_rand_seed(size_t seed);
+prb_STBDS__PUBLICDEC void prb_stbds_rand_seed(size_t seed);
 
 // these are the hash functions used internally if you want to test them or use them for other purposes
-STBDS__PUBLICDEC size_t stbds_hash_bytes(void* p, size_t len, size_t seed);
-STBDS__PUBLICDEC size_t stbds_hash_string(char* str, size_t seed);
+prb_STBDS__PUBLICDEC size_t prb_stbds_hash_bytes(void* p, size_t len, size_t seed);
+prb_STBDS__PUBLICDEC size_t prb_stbds_hash_string(char* str, size_t seed);
 
-// this is a simple string arena allocator, initialize with e.g. 'stbds_string_arena my_arena={0}'.
-typedef struct stbds_string_arena stbds_string_arena;
-STBDS__PUBLICDEC char*            stbds_stralloc(stbds_string_arena* a, char* str);
-STBDS__PUBLICDEC void             stbds_strreset(stbds_string_arena* a);
+// this is a simple string arena allocator, initialize with e.g. 'prb_stbds_string_arena my_arena={0}'.
+typedef struct prb_stbds_string_arena prb_stbds_string_arena;
+prb_STBDS__PUBLICDEC char*            prb_stbds_stralloc(prb_stbds_string_arena* a, char* str);
+prb_STBDS__PUBLICDEC void             prb_stbds_strreset(prb_stbds_string_arena* a);
 
 ///////////////
 //
 // Everything below here is implementation details
 //
 
-STBDS__PUBLICDEC void* stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap);
-STBDS__PUBLICDEC void  stbds_arrfreef(void* a);
-STBDS__PUBLICDEC void  stbds_hmfree_func(void* p, size_t elemsize);
-STBDS__PUBLICDEC void* stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
-STBDS__PUBLICDEC void* stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode);
-STBDS__PUBLICDEC void* stbds_hmput_default(void* a, size_t elemsize);
-STBDS__PUBLICDEC void* stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
-STBDS__PUBLICDEC void* stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode);
-STBDS__PUBLICDEC void* stbds_shmode_func(size_t elemsize, int mode);
+prb_STBDS__PUBLICDEC void* prb_stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap);
+prb_STBDS__PUBLICDEC void  prb_stbds_arrfreef(void* a);
+prb_STBDS__PUBLICDEC void  prb_stbds_hmfree_func(void* p, size_t elemsize);
+prb_STBDS__PUBLICDEC void* prb_stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
+prb_STBDS__PUBLICDEC void* prb_stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode);
+prb_STBDS__PUBLICDEC void* prb_stbds_hmput_default(void* a, size_t elemsize);
+prb_STBDS__PUBLICDEC void* prb_stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode);
+prb_STBDS__PUBLICDEC void* prb_stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode);
+prb_STBDS__PUBLICDEC void* prb_stbds_shmode_func(size_t elemsize, int mode);
 
 #ifdef __cplusplus
 }
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
-#define STBDS_HAS_TYPEOF
+#define prb_STBDS_HAS_TYPEOF
 #ifdef __cplusplus
-//#define STBDS_HAS_LITERAL_ARRAY  // this is currently broken for clang
+//#define prb_STBDS_HAS_LITERAL_ARRAY  // this is currently broken for clang
 #endif
 #endif
 
 #if !defined(__cplusplus)
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-#define STBDS_HAS_LITERAL_ARRAY
+#define prb_STBDS_HAS_LITERAL_ARRAY
 #endif
 #endif
 
 // clang-format off
 // this macro takes the address of the argument, but on gcc/clang can accept rvalues
-#if defined(STBDS_HAS_LITERAL_ARRAY) && defined(STBDS_HAS_TYPEOF)
+#if defined(prb_STBDS_HAS_LITERAL_ARRAY) && defined(prb_STBDS_HAS_TYPEOF)
   #if __clang__
-  #define STBDS_ADDRESSOF(typevar, value)     ((__typeof__(typevar)[1]){value}) // literal array decays to pointer to value
+  #define prb_STBDS_ADDRESSOF(typevar, value)     ((__typeof__(typevar)[1]){value}) // literal array decays to pointer to value
   #else
-  #define STBDS_ADDRESSOF(typevar, value)     ((typeof(typevar)[1]){value}) // literal array decays to pointer to value
+  #define prb_STBDS_ADDRESSOF(typevar, value)     ((typeof(typevar)[1]){value}) // literal array decays to pointer to value
   #endif
 #else
-#define STBDS_ADDRESSOF(typevar, value)     &(value)
+#define prb_STBDS_ADDRESSOF(typevar, value)     &(value)
 #endif
 
-#define STBDS_OFFSETOF(var,field)           ((char *) &(var)->field - (char *) (var))
+#define prb_STBDS_OFFSETOF(var,field)           ((char *) &(var)->field - (char *) (var))
 
-#define stbds_header(t)  ((stbds_array_header *) (t) - 1)
-#define stbds_temp(t)    stbds_header(t)->temp
-#define stbds_temp_key(t) (*(char **) stbds_header(t)->hash_table)
+#define prb_stbds_header(t)  ((prb_stbds_array_header *) (t) - 1)
+#define prb_stbds_temp(t)    prb_stbds_header(t)->temp
+#define prb_stbds_temp_key(t) (*(char **) prb_stbds_header(t)->hash_table)
 
-#define stbds_arrsetcap(a,n)   (stbds_arrgrow(a,0,n))
-#define stbds_arrsetlen(a,n)   ((stbds_arrcap(a) < (size_t) (n) ? stbds_arrsetcap((a),(size_t)(n)),0 : 0), (a) ? stbds_header(a)->length = (size_t) (n) : 0)
-#define stbds_arrcap(a)        ((a) ? stbds_header(a)->capacity : 0)
-#define stbds_arrlen(a)        ((a) ? (ptrdiff_t) stbds_header(a)->length : 0)
-#define stbds_arrlenu(a)       ((a) ?             stbds_header(a)->length : 0)
-#define stbds_arrput(a,v)      (stbds_arrmaybegrow(a,1), (a)[stbds_header(a)->length++] = (v))
-#define stbds_arrpush          stbds_arrput  // synonym
-#define stbds_arrpop(a)        (stbds_header(a)->length--, (a)[stbds_header(a)->length])
-#define stbds_arraddn(a,n)     ((void)(stbds_arraddnindex(a, n)))    // deprecated, use one of the following instead:
-#define stbds_arraddnptr(a,n)  (stbds_arrmaybegrow(a,n), (n) ? (stbds_header(a)->length += (n), &(a)[stbds_header(a)->length-(n)]) : (a))
-#define stbds_arraddnindex(a,n)(stbds_arrmaybegrow(a,n), (n) ? (stbds_header(a)->length += (n), stbds_header(a)->length-(n)) : stbds_arrlen(a))
-#define stbds_arraddnoff       stbds_arraddnindex
-#define stbds_arrlast(a)       ((a)[stbds_header(a)->length-1])
-#define stbds_arrfree(a)       ((void) ((a) ? STBDS_FREE(NULL,stbds_header(a)) : (void)0), (a)=NULL)
-#define stbds_arrdel(a,i)      stbds_arrdeln(a,i,1)
-#define stbds_arrdeln(a,i,n)   (memmove(&(a)[i], &(a)[(i)+(n)], sizeof *(a) * (stbds_header(a)->length-(n)-(i))), stbds_header(a)->length -= (n))
-#define stbds_arrdelswap(a,i)  ((a)[i] = stbds_arrlast(a), stbds_header(a)->length -= 1)
-#define stbds_arrinsn(a,i,n)   (stbds_arraddn((a),(n)), memmove(&(a)[(i)+(n)], &(a)[i], sizeof *(a) * (stbds_header(a)->length-(n)-(i))))
-#define stbds_arrins(a,i,v)    (stbds_arrinsn((a),(i),1), (a)[i]=(v))
+#define prb_stbds_arrsetcap(a,n)   (prb_stbds_arrgrow(a,0,n))
+#define prb_stbds_arrsetlen(a,n)   ((prb_stbds_arrcap(a) < (size_t) (n) ? prb_stbds_arrsetcap((a),(size_t)(n)),0 : 0), (a) ? prb_stbds_header(a)->length = (size_t) (n) : 0)
+#define prb_stbds_arrcap(a)        ((a) ? prb_stbds_header(a)->capacity : 0)
+#define prb_stbds_arrlen(a)        ((a) ? (ptrdiff_t) prb_stbds_header(a)->length : 0)
+#define prb_stbds_arrlenu(a)       ((a) ?             prb_stbds_header(a)->length : 0)
+#define prb_stbds_arrput(a,v)      (prb_stbds_arrmaybegrow(a,1), (a)[prb_stbds_header(a)->length++] = (v))
+#define prb_stbds_arrpush          prb_stbds_arrput  // synonym
+#define prb_stbds_arrpop(a)        (prb_stbds_header(a)->length--, (a)[prb_stbds_header(a)->length])
+#define prb_stbds_arraddn(a,n)     ((void)(prb_stbds_arraddnindex(a, n)))    // deprecated, use one of the following instead:
+#define prb_stbds_arraddnptr(a,n)  (prb_stbds_arrmaybegrow(a,n), (n) ? (prb_stbds_header(a)->length += (n), &(a)[prb_stbds_header(a)->length-(n)]) : (a))
+#define prb_stbds_arraddnindex(a,n)(prb_stbds_arrmaybegrow(a,n), (n) ? (prb_stbds_header(a)->length += (n), prb_stbds_header(a)->length-(n)) : prb_stbds_arrlen(a))
+#define prb_stbds_arraddnoff       prb_stbds_arraddnindex
+#define prb_stbds_arrlast(a)       ((a)[prb_stbds_header(a)->length-1])
+#define prb_stbds_arrfree(a)       ((void) ((a) ? prb_STBDS_FREE(NULL,prb_stbds_header(a)) : (void)0), (a)=NULL)
+#define prb_stbds_arrdel(a,i)      prb_stbds_arrdeln(a,i,1)
+#define prb_stbds_arrdeln(a,i,n)   (memmove(&(a)[i], &(a)[(i)+(n)], sizeof *(a) * (prb_stbds_header(a)->length-(n)-(i))), prb_stbds_header(a)->length -= (n))
+#define prb_stbds_arrdelswap(a,i)  ((a)[i] = prb_stbds_arrlast(a), prb_stbds_header(a)->length -= 1)
+#define prb_stbds_arrinsn(a,i,n)   (prb_stbds_arraddn((a),(n)), memmove(&(a)[(i)+(n)], &(a)[i], sizeof *(a) * (prb_stbds_header(a)->length-(n)-(i))))
+#define prb_stbds_arrins(a,i,v)    (prb_stbds_arrinsn((a),(i),1), (a)[i]=(v))
 
-#define stbds_arrmaybegrow(a,n)  ((!(a) || stbds_header(a)->length + (n) > stbds_header(a)->capacity) \
-                                  ? (stbds_arrgrow(a,n,0),0) : 0)
+#define prb_stbds_arrmaybegrow(a,n)  ((!(a) || prb_stbds_header(a)->length + (n) > prb_stbds_header(a)->capacity) \
+                                  ? (prb_stbds_arrgrow(a,n,0),0) : 0)
 
-#define stbds_arrgrow(a,b,c)   ((a) = stbds_arrgrowf_wrapper((a), sizeof *(a), (b), (c)))
+#define prb_stbds_arrgrow(a,b,c)   ((a) = prb_stbds_arrgrowf_wrapper((a), sizeof *(a), (b), (c)))
 
-#define stbds_hmput(t, k, v) \
-    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), (void*) STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, 0),   \
-     (t)[stbds_temp((t)-1)].key = (k),    \
-     (t)[stbds_temp((t)-1)].value = (v))
+#define prb_stbds_hmput(t, k, v) \
+    ((t) = prb_stbds_hmput_key_wrapper((t), sizeof *(t), (void*) prb_STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, 0),   \
+     (t)[prb_stbds_temp((t)-1)].key = (k),    \
+     (t)[prb_stbds_temp((t)-1)].value = (v))
 
-#define stbds_hmputs(t, s) \
-    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), &(s).key, sizeof (s).key, STBDS_HM_BINARY), \
-     (t)[stbds_temp((t)-1)] = (s))
+#define prb_stbds_hmputs(t, s) \
+    ((t) = prb_stbds_hmput_key_wrapper((t), sizeof *(t), &(s).key, sizeof (s).key, prb_STBDS_HM_BINARY), \
+     (t)[prb_stbds_temp((t)-1)] = (s))
 
-#define stbds_hmgeti(t,k) \
-    ((t) = stbds_hmget_key_wrapper((t), sizeof *(t), (void*) STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, STBDS_HM_BINARY), \
-      stbds_temp((t)-1))
+#define prb_stbds_hmgeti(t,k) \
+    ((t) = prb_stbds_hmget_key_wrapper((t), sizeof *(t), (void*) prb_STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, prb_STBDS_HM_BINARY), \
+      prb_stbds_temp((t)-1))
 
-#define stbds_hmgeti_ts(t,k,temp) \
-    ((t) = stbds_hmget_key_ts_wrapper((t), sizeof *(t), (void*) STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, &(temp), STBDS_HM_BINARY), \
+#define prb_stbds_hmgeti_ts(t,k,temp) \
+    ((t) = prb_stbds_hmget_key_ts_wrapper((t), sizeof *(t), (void*) prb_STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, &(temp), prb_STBDS_HM_BINARY), \
       (temp))
 
-#define stbds_hmgetp(t, k) \
-    ((void) stbds_hmgeti(t,k), &(t)[stbds_temp((t)-1)])
+#define prb_stbds_hmgetp(t, k) \
+    ((void) prb_stbds_hmgeti(t,k), &(t)[prb_stbds_temp((t)-1)])
 
-#define stbds_hmgetp_ts(t, k, temp) \
-    ((void) stbds_hmgeti_ts(t,k,temp), &(t)[temp])
+#define prb_stbds_hmgetp_ts(t, k, temp) \
+    ((void) prb_stbds_hmgeti_ts(t,k,temp), &(t)[temp])
 
-#define stbds_hmdel(t,k) \
-    (((t) = stbds_hmdel_key_wrapper((t),sizeof *(t), (void*) STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, STBDS_OFFSETOF((t),key), STBDS_HM_BINARY)),(t)?stbds_temp((t)-1):0)
+#define prb_stbds_hmdel(t,k) \
+    (((t) = prb_stbds_hmdel_key_wrapper((t),sizeof *(t), (void*) prb_STBDS_ADDRESSOF((t)->key, (k)), sizeof (t)->key, prb_STBDS_OFFSETOF((t),key), prb_STBDS_HM_BINARY)),(t)?prb_stbds_temp((t)-1):0)
 
-#define stbds_hmdefault(t, v) \
-    ((t) = stbds_hmput_default_wrapper((t), sizeof *(t)), (t)[-1].value = (v))
+#define prb_stbds_hmdefault(t, v) \
+    ((t) = prb_stbds_hmput_default_wrapper((t), sizeof *(t)), (t)[-1].value = (v))
 
-#define stbds_hmdefaults(t, s) \
-    ((t) = stbds_hmput_default_wrapper((t), sizeof *(t)), (t)[-1] = (s))
+#define prb_stbds_hmdefaults(t, s) \
+    ((t) = prb_stbds_hmput_default_wrapper((t), sizeof *(t)), (t)[-1] = (s))
 
-#define stbds_hmfree(p)        \
-    ((void) ((p) != NULL ? stbds_hmfree_func((p)-1,sizeof*(p)),0 : 0),(p)=NULL)
+#define prb_stbds_hmfree(p)        \
+    ((void) ((p) != NULL ? prb_stbds_hmfree_func((p)-1,sizeof*(p)),0 : 0),(p)=NULL)
 
-#define stbds_hmgets(t, k)    (*stbds_hmgetp(t,k))
-#define stbds_hmget(t, k)     (stbds_hmgetp(t,k)->value)
-#define stbds_hmget_ts(t, k, temp)  (stbds_hmgetp_ts(t,k,temp)->value)
-#define stbds_hmlen(t)        ((t) ? (ptrdiff_t) stbds_header((t)-1)->length-1 : 0)
-#define stbds_hmlenu(t)       ((t) ?             stbds_header((t)-1)->length-1 : 0)
-#define stbds_hmgetp_null(t,k)  (stbds_hmgeti(t,k) == -1 ? NULL : &(t)[stbds_temp((t)-1)])
+#define prb_stbds_hmgets(t, k)    (*prb_stbds_hmgetp(t,k))
+#define prb_stbds_hmget(t, k)     (prb_stbds_hmgetp(t,k)->value)
+#define prb_stbds_hmget_ts(t, k, temp)  (prb_stbds_hmgetp_ts(t,k,temp)->value)
+#define prb_stbds_hmlen(t)        ((t) ? (ptrdiff_t) prb_stbds_header((t)-1)->length-1 : 0)
+#define prb_stbds_hmlenu(t)       ((t) ?             prb_stbds_header((t)-1)->length-1 : 0)
+#define prb_stbds_hmgetp_null(t,k)  (prb_stbds_hmgeti(t,k) == -1 ? NULL : &(t)[prb_stbds_temp((t)-1)])
 
-#define stbds_shput(t, k, v) \
-    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (t)->key, STBDS_HM_STRING),   \
-     (t)[stbds_temp((t)-1)].value = (v))
+#define prb_stbds_shput(t, k, v) \
+    ((t) = prb_stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (t)->key, prb_STBDS_HM_STRING),   \
+     (t)[prb_stbds_temp((t)-1)].value = (v))
 
-#define stbds_shputi(t, k, v) \
-    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (t)->key, STBDS_HM_STRING),   \
-     (t)[stbds_temp((t)-1)].value = (v), stbds_temp((t)-1))
+#define prb_stbds_shputi(t, k, v) \
+    ((t) = prb_stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (t)->key, prb_STBDS_HM_STRING),   \
+     (t)[prb_stbds_temp((t)-1)].value = (v), prb_stbds_temp((t)-1))
 
-#define stbds_shputs(t, s) \
-    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (s).key, sizeof (s).key, STBDS_HM_STRING), \
-     (t)[stbds_temp((t)-1)] = (s), \
-     (t)[stbds_temp((t)-1)].key = stbds_temp_key((t)-1)) // above line overwrites whole structure, so must rewrite key here if it was allocated internally
+#define prb_stbds_shputs(t, s) \
+    ((t) = prb_stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (s).key, sizeof (s).key, prb_STBDS_HM_STRING), \
+     (t)[prb_stbds_temp((t)-1)] = (s), \
+     (t)[prb_stbds_temp((t)-1)].key = prb_stbds_temp_key((t)-1)) // above line overwrites whole structure, so must rewrite key here if it was allocated internally
 
-#define stbds_pshput(t, p) \
-    ((t) = stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (p)->key, sizeof (p)->key, STBDS_HM_PTR_TO_STRING), \
-     (t)[stbds_temp((t)-1)] = (p))
+#define prb_stbds_pshput(t, p) \
+    ((t) = prb_stbds_hmput_key_wrapper((t), sizeof *(t), (void*) (p)->key, sizeof (p)->key, prb_STBDS_HM_PTR_TO_STRING), \
+     (t)[prb_stbds_temp((t)-1)] = (p))
 
-#define stbds_shgeti(t,k) \
-     ((t) = stbds_hmget_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (t)->key, STBDS_HM_STRING), \
-      stbds_temp((t)-1))
+#define prb_stbds_shgeti(t,k) \
+     ((t) = prb_stbds_hmget_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (t)->key, prb_STBDS_HM_STRING), \
+      prb_stbds_temp((t)-1))
 
-#define stbds_pshgeti(t,k) \
-     ((t) = stbds_hmget_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (*(t))->key, STBDS_HM_PTR_TO_STRING), \
-      stbds_temp((t)-1))
+#define prb_stbds_pshgeti(t,k) \
+     ((t) = prb_stbds_hmget_key_wrapper((t), sizeof *(t), (void*) (k), sizeof (*(t))->key, prb_STBDS_HM_PTR_TO_STRING), \
+      prb_stbds_temp((t)-1))
 
-#define stbds_shgetp(t, k) \
-    ((void) stbds_shgeti(t,k), &(t)[stbds_temp((t)-1)])
+#define prb_stbds_shgetp(t, k) \
+    ((void) prb_stbds_shgeti(t,k), &(t)[prb_stbds_temp((t)-1)])
 
-#define stbds_pshget(t, k) \
-    ((void) stbds_pshgeti(t,k), (t)[stbds_temp((t)-1)])
+#define prb_stbds_pshget(t, k) \
+    ((void) prb_stbds_pshgeti(t,k), (t)[prb_stbds_temp((t)-1)])
 
-#define stbds_shdel(t,k) \
-    (((t) = stbds_hmdel_key_wrapper((t),sizeof *(t), (void*) (k), sizeof (t)->key, STBDS_OFFSETOF((t),key), STBDS_HM_STRING)),(t)?stbds_temp((t)-1):0)
-#define stbds_pshdel(t,k) \
-    (((t) = stbds_hmdel_key_wrapper((t),sizeof *(t), (void*) (k), sizeof (*(t))->key, STBDS_OFFSETOF(*(t),key), STBDS_HM_PTR_TO_STRING)),(t)?stbds_temp((t)-1):0)
+#define prb_stbds_shdel(t,k) \
+    (((t) = prb_stbds_hmdel_key_wrapper((t),sizeof *(t), (void*) (k), sizeof (t)->key, prb_STBDS_OFFSETOF((t),key), prb_STBDS_HM_STRING)),(t)?prb_stbds_temp((t)-1):0)
+#define prb_stbds_pshdel(t,k) \
+    (((t) = prb_stbds_hmdel_key_wrapper((t),sizeof *(t), (void*) (k), sizeof (*(t))->key, prb_STBDS_OFFSETOF(*(t),key), prb_STBDS_HM_PTR_TO_STRING)),(t)?prb_stbds_temp((t)-1):0)
 
-#define stbds_sh_new_arena(t)  \
-    ((t) = stbds_shmode_func_wrapper(t, sizeof *(t), STBDS_SH_ARENA))
-#define stbds_sh_new_strdup(t) \
-    ((t) = stbds_shmode_func_wrapper(t, sizeof *(t), STBDS_SH_STRDUP))
+#define prb_stbds_sh_new_arena(t)  \
+    ((t) = prb_stbds_shmode_func_wrapper(t, sizeof *(t), prb_STBDS_SH_ARENA))
+#define prb_stbds_sh_new_strdup(t) \
+    ((t) = prb_stbds_shmode_func_wrapper(t, sizeof *(t), prb_STBDS_SH_STRDUP))
 
-#define stbds_shdefault(t, v)  stbds_hmdefault(t,v)
-#define stbds_shdefaults(t, s) stbds_hmdefaults(t,s)
+#define prb_stbds_shdefault(t, v)  prb_stbds_hmdefault(t,v)
+#define prb_stbds_shdefaults(t, s) prb_stbds_hmdefaults(t,s)
 
-#define stbds_shfree       stbds_hmfree
-#define stbds_shlenu       stbds_hmlenu
+#define prb_stbds_shfree       prb_stbds_hmfree
+#define prb_stbds_shlenu       prb_stbds_hmlenu
 
-#define stbds_shgets(t, k) (*stbds_shgetp(t,k))
-#define stbds_shget(t, k)  (stbds_shgetp(t,k)->value)
-#define stbds_shgetp_null(t,k)  (stbds_shgeti(t,k) == -1 ? NULL : &(t)[stbds_temp((t)-1)])
-#define stbds_shlen        stbds_hmlen
+#define prb_stbds_shgets(t, k) (*prb_stbds_shgetp(t,k))
+#define prb_stbds_shget(t, k)  (prb_stbds_shgetp(t,k)->value)
+#define prb_stbds_shgetp_null(t,k)  (prb_stbds_shgeti(t,k) == -1 ? NULL : &(t)[prb_stbds_temp((t)-1)])
+#define prb_stbds_shlen        prb_stbds_hmlen
 
 // clang-format on
 
@@ -927,28 +927,28 @@ typedef struct {
     size_t    capacity;
     void*     hash_table;
     ptrdiff_t temp;
-} stbds_array_header;
+} prb_stbds_array_header;
 
-typedef struct stbds_string_block {
-    struct stbds_string_block* next;
+typedef struct prb_stbds_string_block {
+    struct prb_stbds_string_block* next;
     char                       storage[8];
-} stbds_string_block;
+} prb_stbds_string_block;
 
-struct stbds_string_arena {
-    stbds_string_block* storage;
+struct prb_stbds_string_arena {
+    prb_stbds_string_block* storage;
     size_t              remaining;
     unsigned char       block;
     unsigned char       mode;  // this isn't used by the string arena itself
 };
 
-#define STBDS_HM_BINARY 0
-#define STBDS_HM_STRING 1
+#define prb_STBDS_HM_BINARY 0
+#define prb_STBDS_HM_STRING 1
 
 enum {
-    STBDS_SH_NONE,
-    STBDS_SH_DEFAULT,
-    STBDS_SH_STRDUP,
-    STBDS_SH_ARENA,
+    prb_STBDS_SH_NONE,
+    prb_STBDS_SH_DEFAULT,
+    prb_STBDS_SH_STRDUP,
+    prb_STBDS_SH_ARENA,
 };
 
 #ifdef __cplusplus
@@ -956,47 +956,47 @@ enum {
 // in C++ these templates make the same code work
 template<class T>
 static T*
-stbds_arrgrowf_wrapper(T* a, size_t elemsize, size_t addlen, size_t min_cap) {
-    return (T*)stbds_arrgrowf((void*)a, elemsize, addlen, min_cap);
+prb_stbds_arrgrowf_wrapper(T* a, size_t elemsize, size_t addlen, size_t min_cap) {
+    return (T*)prb_stbds_arrgrowf((void*)a, elemsize, addlen, min_cap);
 }
 template<class T>
 static T*
-stbds_hmget_key_wrapper(T* a, size_t elemsize, void* key, size_t keysize, int mode) {
-    return (T*)stbds_hmget_key((void*)a, elemsize, key, keysize, mode);
+prb_stbds_hmget_key_wrapper(T* a, size_t elemsize, void* key, size_t keysize, int mode) {
+    return (T*)prb_stbds_hmget_key((void*)a, elemsize, key, keysize, mode);
 }
 template<class T>
 static T*
-stbds_hmget_key_ts_wrapper(T* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode) {
-    return (T*)stbds_hmget_key_ts((void*)a, elemsize, key, keysize, temp, mode);
+prb_stbds_hmget_key_ts_wrapper(T* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode) {
+    return (T*)prb_stbds_hmget_key_ts((void*)a, elemsize, key, keysize, temp, mode);
 }
 template<class T>
 static T*
-stbds_hmput_default_wrapper(T* a, size_t elemsize) {
-    return (T*)stbds_hmput_default((void*)a, elemsize);
+prb_stbds_hmput_default_wrapper(T* a, size_t elemsize) {
+    return (T*)prb_stbds_hmput_default((void*)a, elemsize);
 }
 template<class T>
 static T*
-stbds_hmput_key_wrapper(T* a, size_t elemsize, void* key, size_t keysize, int mode) {
-    return (T*)stbds_hmput_key((void*)a, elemsize, key, keysize, mode);
+prb_stbds_hmput_key_wrapper(T* a, size_t elemsize, void* key, size_t keysize, int mode) {
+    return (T*)prb_stbds_hmput_key((void*)a, elemsize, key, keysize, mode);
 }
 template<class T>
 static T*
-stbds_hmdel_key_wrapper(T* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode) {
-    return (T*)stbds_hmdel_key((void*)a, elemsize, key, keysize, keyoffset, mode);
+prb_stbds_hmdel_key_wrapper(T* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode) {
+    return (T*)prb_stbds_hmdel_key((void*)a, elemsize, key, keysize, keyoffset, mode);
 }
 template<class T>
 static T*
-stbds_shmode_func_wrapper(T*, size_t elemsize, int mode) {
-    return (T*)stbds_shmode_func(elemsize, mode);
+prb_stbds_shmode_func_wrapper(T*, size_t elemsize, int mode) {
+    return (T*)prb_stbds_shmode_func(elemsize, mode);
 }
 #else
-#define stbds_arrgrowf_wrapper stbds_arrgrowf
-#define stbds_hmget_key_wrapper stbds_hmget_key
-#define stbds_hmget_key_ts_wrapper stbds_hmget_key_ts
-#define stbds_hmput_default_wrapper stbds_hmput_default
-#define stbds_hmput_key_wrapper stbds_hmput_key
-#define stbds_hmdel_key_wrapper stbds_hmdel_key
-#define stbds_shmode_func_wrapper(t, e, m) stbds_shmode_func(e, m)
+#define prb_stbds_arrgrowf_wrapper prb_stbds_arrgrowf
+#define prb_stbds_hmget_key_wrapper prb_stbds_hmget_key
+#define prb_stbds_hmget_key_ts_wrapper prb_stbds_hmget_key_ts
+#define prb_stbds_hmput_default_wrapper prb_stbds_hmput_default
+#define prb_stbds_hmput_key_wrapper prb_stbds_hmput_key
+#define prb_stbds_hmdel_key_wrapper prb_stbds_hmdel_key
+#define prb_stbds_shmode_func_wrapper(t, e, m) prb_stbds_shmode_func(e, m)
 #endif
 
 #endif  // PROGRAMMABLE_BUILD_H
@@ -1916,7 +1916,7 @@ prb_getFileHash(prb_Arena* arena, prb_String filepath) {
     prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, filepath);
     if (readRes.success) {
         result.valid = true;
-        result.hash = stbds_hash_bytes(readRes.content.data, readRes.content.len, 1);
+        result.hash = prb_stbds_hash_bytes(readRes.content.data, readRes.content.len, 1);
     }
     prb_endTempMemory(temp);
     return result;
@@ -2275,7 +2275,7 @@ prb_endString(prb_GrowingString* gstr) {
 
 prb_PUBLICDEF prb_String
 prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args) {
-    int32_t    len = stbsp_vsnprintf((char*)buf, bufSize, fmt, args);
+    int32_t    len = prb_stbsp_vsnprintf((char*)buf, bufSize, fmt, args);
     prb_String result = {(const char*)buf, len};
     return result;
 }
@@ -2388,26 +2388,26 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
 
         result = prb_Success;
 
-        uint8_t firstByte = iter->str.ptr[iter->curByteOffset];
-        int32_t leading1s = prb_countLeading1sU8(firstByte);
+        uint8_t firprb_stByte = iter->str.ptr[iter->curByteOffset];
+        int32_t leading1s = prb_countLeading1sU8(firprb_stByte);
 
-        bool firstByteValid = false;
+        bool firprb_stByteValid = false;
         switch (iter->direction) {
             case prb_StringDirection_FromStart:
-                firstByteValid = (leading1s == 0 || leading1s == 2 || leading1s == 3 || leading1s == 4);
+                firprb_stByteValid = (leading1s == 0 || leading1s == 2 || leading1s == 3 || leading1s == 4);
                 break;
             case prb_StringDirection_FromEnd:
-                firstByteValid = (leading1s == 0 || leading1s == 1);
+                firprb_stByteValid = (leading1s == 0 || leading1s == 1);
                 break;
         }
 
-        if (firstByteValid) {
+        if (firprb_stByteValid) {
             if (leading1s == 0) {
                 chValid = true;
-                ch = firstByte;
+                ch = firprb_stByte;
                 chBytes = 1;
             } else {
-                uint8_t firstByteMask[] = {
+                uint8_t firprb_stByteMask[] = {
                     0b01111111,
                     0b00011111,
                     0b00001111,
@@ -2419,7 +2419,7 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
                         chValid = true;
                         chBytes = leading1s;
                         prb_assert(chBytes == 2 || chBytes == 3 || chBytes == 4);
-                        ch = firstByte & firstByteMask[chBytes - 1];
+                        ch = firprb_stByte & firprb_stByteMask[chBytes - 1];
                         for (int32_t byteIndex = 1; byteIndex < chBytes; byteIndex++) {
                             uint8_t byte = iter->str.ptr[iter->curByteOffset + byteIndex];
                             if (prb_countLeading1sU8(byte) == 1) {
@@ -2434,7 +2434,7 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
 
                     case prb_StringDirection_FromEnd: {
                         prb_assert(leading1s == 1);
-                        ch = firstByte & 0b00111111;
+                        ch = firprb_stByte & 0b00111111;
                         int32_t maxExtraBytes = prb_min(3, iter->curByteOffset);
                         for (int32_t byteIndex = 0; byteIndex < maxExtraBytes; byteIndex++) {
                             uint8_t byte = iter->str.ptr[--iter->curByteOffset];
@@ -2445,7 +2445,7 @@ prb_utf8CharIterNext(prb_Utf8CharIterator* iter) {
                             } else if (byteLeading1s == byteIndex + 2) {
                                 chValid = true;
                                 chBytes = byteLeading1s;
-                                ch = ((byte & firstByteMask[byteLeading1s - 1]) << chBytesTaken) | ch;
+                                ch = ((byte & firprb_stByteMask[byteLeading1s - 1]) << chBytesTaken) | ch;
                                 break;
                             } else {
                                 break;
@@ -2981,111 +2981,111 @@ prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
 // SECTION stb snprintf (implementation)
 //
 
-#define stbsp__uint32 unsigned int
-#define stbsp__int32 signed int
+#define prb_stbsp__uint32 unsigned int
+#define prb_stbsp__int32 signed int
 
 #ifdef _MSC_VER
-#define stbsp__uint64 unsigned __int64
-#define stbsp__int64 signed __int64
+#define prb_stbsp__uint64 unsigned __int64
+#define prb_stbsp__int64 signed __int64
 #else
-#define stbsp__uint64 unsigned long long
-#define stbsp__int64 signed long long
+#define prb_stbsp__uint64 unsigned long long
+#define prb_stbsp__int64 signed long long
 #endif
-#define stbsp__uint16 unsigned short
+#define prb_stbsp__uint16 unsigned short
 
-#ifndef stbsp__uintptr
+#ifndef prb_stbsp__uintptr
 #if defined(__ppc64__) || defined(__powerpc64__) || defined(__aarch64__) || defined(_M_X64) || defined(__x86_64__) \
     || defined(__x86_64) || defined(__s390x__)
-#define stbsp__uintptr stbsp__uint64
+#define prb_stbsp__uintptr prb_stbsp__uint64
 #else
-#define stbsp__uintptr stbsp__uint32
+#define prb_stbsp__uintptr prb_stbsp__uint32
 #endif
 #endif
 
-#ifndef STB_SPRINTF_MSVC_MODE  // used for MSVC2013 and earlier (MSVC2015 matches GCC)
+#ifndef prb_STB_SPRINTF_MSVC_MODE  // used for MSVC2013 and earlier (MSVC2015 matches GCC)
 #if defined(_MSC_VER) && (_MSC_VER < 1900)
-#define STB_SPRINTF_MSVC_MODE
+#define prb_STB_SPRINTF_MSVC_MODE
 #endif
 #endif
 
-#ifdef STB_SPRINTF_NOUNALIGNED  // define this before inclusion to force stbsp_sprintf to always use aligned accesses
-#define STBSP__UNALIGNED(code)
+#ifdef prb_STB_SPRINTF_NOUNALIGNED  // define this before inclusion to force prb_stbsp_sprintf to always use aligned accesses
+#define prb_STBSP__UNALIGNED(code)
 #else
-#define STBSP__UNALIGNED(code) code
+#define prb_STBSP__UNALIGNED(code) code
 #endif
 
-#ifndef STB_SPRINTF_NOFLOAT
+#ifndef prb_STB_SPRINTF_NOFLOAT
 // internal float utility functions
-static stbsp__int32 stbsp__real_to_str(
+static prb_stbsp__int32 prb_stbsp__real_to_str(
     char const**   start,
-    stbsp__uint32* len,
+    prb_stbsp__uint32* len,
     char*          out,
-    stbsp__int32*  decimal_pos,
+    prb_stbsp__int32*  decimal_pos,
     double         value,
-    stbsp__uint32  frac_digits
+    prb_stbsp__uint32  frac_digits
 );
-static stbsp__int32 stbsp__real_to_parts(stbsp__int64* bits, stbsp__int32* expo, double value);
-#define STBSP__SPECIAL 0x7000
+static prb_stbsp__int32 prb_stbsp__real_to_parts(prb_stbsp__int64* bits, prb_stbsp__int32* expo, double value);
+#define prb_STBSP__SPECIAL 0x7000
 #endif
 
-static char stbsp__period = '.';
-static char stbsp__comma = ',';
+static char prb_stbsp__period = '.';
+static char prb_stbsp__comma = ',';
 static struct {
     short temp;  // force next field to be 2-byte aligned
     char  pair[201];
-} stbsp__digitpair = {
+} prb_stbsp__digitpair = {
     0,
     "00010203040506070809101112131415161718192021222324"
     "25262728293031323334353637383940414243444546474849"
     "50515253545556575859606162636465666768697071727374"
     "75767778798081828384858687888990919293949596979899"};
 
-STBSP__PUBLICDEF void
-STB_SPRINTF_DECORATE(set_separators)(char pcomma, char pperiod) {
-    stbsp__period = pperiod;
-    stbsp__comma = pcomma;
+prb_STBSP__PUBLICDEF void
+prb_STB_SPRINTF_DECORATE(set_separators)(char pcomma, char pperiod) {
+    prb_stbsp__period = pperiod;
+    prb_stbsp__comma = pcomma;
 }
 
-#define STBSP__LEFTJUST 1
-#define STBSP__LEADINGPLUS 2
-#define STBSP__LEADINGSPACE 4
-#define STBSP__LEADING_0X 8
-#define STBSP__LEADINGZERO 16
-#define STBSP__INTMAX 32
-#define STBSP__TRIPLET_COMMA 64
-#define STBSP__NEGATIVE 128
-#define STBSP__METRIC_SUFFIX 256
-#define STBSP__HALFWIDTH 512
-#define STBSP__METRIC_NOSPACE 1024
-#define STBSP__METRIC_1024 2048
-#define STBSP__METRIC_JEDEC 4096
+#define prb_STBSP__LEFTJUST 1
+#define prb_STBSP__LEADINGPLUS 2
+#define prb_STBSP__LEADINGSPACE 4
+#define prb_STBSP__LEADING_0X 8
+#define prb_STBSP__LEADINGZERO 16
+#define prb_STBSP__INTMAX 32
+#define prb_STBSP__TRIPLET_COMMA 64
+#define prb_STBSP__NEGATIVE 128
+#define prb_STBSP__METRIC_SUFFIX 256
+#define prb_STBSP__HALFWIDTH 512
+#define prb_STBSP__METRIC_NOSPACE 1024
+#define prb_STBSP__METRIC_1024 2048
+#define prb_STBSP__METRIC_JEDEC 4096
 
 static void
-stbsp__lead_sign(stbsp__uint32 fl, char* sign) {
+prb_stbsp__lead_sign(prb_stbsp__uint32 fl, char* sign) {
     sign[0] = 0;
-    if (fl & STBSP__NEGATIVE) {
+    if (fl & prb_STBSP__NEGATIVE) {
         sign[0] = 1;
         sign[1] = '-';
-    } else if (fl & STBSP__LEADINGSPACE) {
+    } else if (fl & prb_STBSP__LEADINGSPACE) {
         sign[0] = 1;
         sign[1] = ' ';
-    } else if (fl & STBSP__LEADINGPLUS) {
+    } else if (fl & prb_STBSP__LEADINGPLUS) {
         sign[0] = 1;
         sign[1] = '+';
     }
 }
 
-static STBSP__ASAN stbsp__uint32
-stbsp__strlen_limited(char const* s, stbsp__uint32 limit) {
+static prb_STBSP__ASAN prb_stbsp__uint32
+prb_stbsp__strlen_limited(char const* s, prb_stbsp__uint32 limit) {
     char const* sn = s;
 
     // get up to 4-byte alignment
     for (;;) {
-        if (((stbsp__uintptr)sn & 3) == 0)
+        if (((prb_stbsp__uintptr)sn & 3) == 0)
             break;
 
         if (!limit || *sn == 0)
-            return (stbsp__uint32)(sn - s);
+            return (prb_stbsp__uint32)(sn - s);
 
         ++sn;
         --limit;
@@ -3094,10 +3094,10 @@ stbsp__strlen_limited(char const* s, stbsp__uint32 limit) {
     // scan over 4 bytes at a time to find terminating 0
     // this will intentionally scan up to 3 bytes past the end of buffers,
     // but becase it works 4B aligned, it will never cross page boundaries
-    // (hence the STBSP__ASAN markup; the over-read here is intentional
+    // (hence the prb_STBSP__ASAN markup; the over-read here is intentional
     // and harmless)
     while (limit >= 4) {
-        stbsp__uint32 v = *(stbsp__uint32*)sn;
+        prb_stbsp__uint32 v = *(prb_stbsp__uint32*)sn;
         // bit hack to find if there's a 0 byte in there
         if ((v - 0x01010101) & (~v) & 0x80808080UL)
             break;
@@ -3112,11 +3112,11 @@ stbsp__strlen_limited(char const* s, stbsp__uint32 limit) {
         --limit;
     }
 
-    return (stbsp__uint32)(sn - s);
+    return (prb_stbsp__uint32)(sn - s);
 }
 
-STBSP__PUBLICDEF int
-STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* buf, char const* fmt, va_list va) {
+prb_STBSP__PUBLICDEF int
+prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, char* buf, char const* fmt, va_list va) {
     static char hex[] = "0123456789abcdefxp";
     static char hexu[] = "0123456789ABCDEFXP";
     char*       bf;
@@ -3126,45 +3126,45 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
     bf = buf;
     f = fmt;
     for (;;) {
-        stbsp__int32  fw, pr, tz;
-        stbsp__uint32 fl;
+        prb_stbsp__int32  fw, pr, tz;
+        prb_stbsp__uint32 fl;
 
 // macros for the callback buffer stuff
-#define stbsp__chk_cb_bufL(bytes) \
+#define prb_stbsp__chk_cb_bufL(bytes) \
     { \
         int len = (int)(bf - buf); \
-        if ((len + (bytes)) >= STB_SPRINTF_MIN) { \
+        if ((len + (bytes)) >= prb_STB_SPRINTF_MIN) { \
             tlen += len; \
             if (0 == (bf = buf = callback(buf, user, len))) \
                 goto done; \
         } \
     }
-#define stbsp__chk_cb_buf(bytes) \
+#define prb_stbsp__chk_cb_buf(bytes) \
     { \
         if (callback) { \
-            stbsp__chk_cb_bufL(bytes); \
+            prb_stbsp__chk_cb_bufL(bytes); \
         } \
     }
-#define stbsp__flush_cb() \
-    { stbsp__chk_cb_bufL(STB_SPRINTF_MIN - 1); }  // flush if there is even one byte in the buffer
-#define stbsp__cb_buf_clamp(cl, v) \
+#define prb_stbsp__flush_cb() \
+    { prb_stbsp__chk_cb_bufL(prb_STB_SPRINTF_MIN - 1); }  // flush if there is even one byte in the buffer
+#define prb_stbsp__cb_buf_clamp(cl, v) \
     cl = v; \
     if (callback) { \
-        int lg = STB_SPRINTF_MIN - (int)(bf - buf); \
+        int lg = prb_STB_SPRINTF_MIN - (int)(bf - buf); \
         if (cl > lg) \
             cl = lg; \
     }
 
         // fast copy everything up to the next % (or end of string)
         for (;;) {
-            while (((stbsp__uintptr)f) & 3) {
+            while (((prb_stbsp__uintptr)f) & 3) {
             schk1:
                 if (f[0] == '%')
                     goto scandd;
             schk2:
                 if (f[0] == 0)
                     goto endfmt;
-                stbsp__chk_cb_buf(1);
+                prb_stbsp__chk_cb_buf(1);
                 *bf++ = f[0];
                 ++f;
             }
@@ -3172,18 +3172,18 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 // Check if the next 4 bytes contain %(0x25) or end of string.
                 // Using the 'hasless' trick:
                 // https://graphics.stanford.edu/~seander/bithacks.html#HasLessInWord
-                stbsp__uint32 v, c;
-                v = *(stbsp__uint32*)f;
+                prb_stbsp__uint32 v, c;
+                v = *(prb_stbsp__uint32*)f;
                 c = (~v) & 0x80808080;
                 if (((v ^ 0x25252525) - 0x01010101) & c)
                     goto schk1;
                 if ((v - 0x01010101) & c)
                     goto schk2;
                 if (callback)
-                    if ((STB_SPRINTF_MIN - (int)(bf - buf)) < 4)
+                    if ((prb_STB_SPRINTF_MIN - (int)(bf - buf)) < 4)
                         goto schk1;
-#ifdef STB_SPRINTF_NOUNALIGNED
-                if (((stbsp__uintptr)bf) & 3) {
+#ifdef prb_STB_SPRINTF_NOUNALIGNED
+                if (((prb_stbsp__uintptr)bf) & 3) {
                     bf[0] = f[0];
                     bf[1] = f[1];
                     bf[2] = f[2];
@@ -3191,7 +3191,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 } else
 #endif
                 {
-                    *(stbsp__uint32*)bf = v;
+                    *(prb_stbsp__uint32*)bf = v;
                 }
                 bf += 4;
                 f += 4;
@@ -3212,50 +3212,50 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
             switch (f[0]) {
                 // if we have left justify
                 case '-':
-                    fl |= STBSP__LEFTJUST;
+                    fl |= prb_STBSP__LEFTJUST;
                     ++f;
                     continue;
                 // if we have leading plus
                 case '+':
-                    fl |= STBSP__LEADINGPLUS;
+                    fl |= prb_STBSP__LEADINGPLUS;
                     ++f;
                     continue;
                 // if we have leading space
                 case ' ':
-                    fl |= STBSP__LEADINGSPACE;
+                    fl |= prb_STBSP__LEADINGSPACE;
                     ++f;
                     continue;
                 // if we have leading 0x
                 case '#':
-                    fl |= STBSP__LEADING_0X;
+                    fl |= prb_STBSP__LEADING_0X;
                     ++f;
                     continue;
                 // if we have thousand commas
                 case '\'':
-                    fl |= STBSP__TRIPLET_COMMA;
+                    fl |= prb_STBSP__TRIPLET_COMMA;
                     ++f;
                     continue;
                 // if we have kilo marker (none->kilo->kibi->jedec)
                 case '$':
-                    if (fl & STBSP__METRIC_SUFFIX) {
-                        if (fl & STBSP__METRIC_1024) {
-                            fl |= STBSP__METRIC_JEDEC;
+                    if (fl & prb_STBSP__METRIC_SUFFIX) {
+                        if (fl & prb_STBSP__METRIC_1024) {
+                            fl |= prb_STBSP__METRIC_JEDEC;
                         } else {
-                            fl |= STBSP__METRIC_1024;
+                            fl |= prb_STBSP__METRIC_1024;
                         }
                     } else {
-                        fl |= STBSP__METRIC_SUFFIX;
+                        fl |= prb_STBSP__METRIC_SUFFIX;
                     }
                     ++f;
                     continue;
                 // if we don't want space between metric suffix and number
                 case '_':
-                    fl |= STBSP__METRIC_NOSPACE;
+                    fl |= prb_STBSP__METRIC_NOSPACE;
                     ++f;
                     continue;
                 // if we have leading zero
                 case '0':
-                    fl |= STBSP__LEADINGZERO;
+                    fl |= prb_STBSP__LEADINGZERO;
                     ++f;
                     goto flags_done;
                 default: goto flags_done;
@@ -3265,7 +3265,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
 
         // get the field width
         if (f[0] == '*') {
-            fw = va_arg(va, stbsp__uint32);
+            fw = va_arg(va, prb_stbsp__uint32);
             ++f;
         } else {
             while ((f[0] >= '0') && (f[0] <= '9')) {
@@ -3277,7 +3277,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
         if (f[0] == '.') {
             ++f;
             if (f[0] == '*') {
-                pr = va_arg(va, stbsp__uint32);
+                pr = va_arg(va, prb_stbsp__uint32);
                 ++f;
             } else {
                 pr = 0;
@@ -3292,43 +3292,43 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
         switch (f[0]) {
             // are we halfwidth?
             case 'h':
-                fl |= STBSP__HALFWIDTH;
+                fl |= prb_STBSP__HALFWIDTH;
                 ++f;
                 if (f[0] == 'h')
                     ++f;  // QUARTERWIDTH
                 break;
             // are we 64-bit (unix style)
             case 'l':
-                fl |= ((sizeof(long) == 8) ? STBSP__INTMAX : 0);
+                fl |= ((sizeof(long) == 8) ? prb_STBSP__INTMAX : 0);
                 ++f;
                 if (f[0] == 'l') {
-                    fl |= STBSP__INTMAX;
+                    fl |= prb_STBSP__INTMAX;
                     ++f;
                 }
                 break;
             // are we 64-bit on intmax? (c99)
             case 'j':
-                fl |= (sizeof(size_t) == 8) ? STBSP__INTMAX : 0;
+                fl |= (sizeof(size_t) == 8) ? prb_STBSP__INTMAX : 0;
                 ++f;
                 break;
             // are we 64-bit on size_t or ptrdiff_t? (c99)
             case 'z':
-                fl |= (sizeof(ptrdiff_t) == 8) ? STBSP__INTMAX : 0;
+                fl |= (sizeof(ptrdiff_t) == 8) ? prb_STBSP__INTMAX : 0;
                 ++f;
                 break;
             case 't':
-                fl |= (sizeof(ptrdiff_t) == 8) ? STBSP__INTMAX : 0;
+                fl |= (sizeof(ptrdiff_t) == 8) ? prb_STBSP__INTMAX : 0;
                 ++f;
                 break;
             // are we 64-bit (msft style)
             case 'I':
                 if ((f[1] == '6') && (f[2] == '4')) {
-                    fl |= STBSP__INTMAX;
+                    fl |= prb_STBSP__INTMAX;
                     f += 3;
                 } else if ((f[1] == '3') && (f[2] == '2')) {
                     f += 3;
                 } else {
-                    fl |= ((sizeof(void*) == 8) ? STBSP__INTMAX : 0);
+                    fl |= ((sizeof(void*) == 8) ? prb_STBSP__INTMAX : 0);
                     ++f;
                 }
                 break;
@@ -3337,18 +3337,18 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
 
         // handle each replacement
         switch (f[0]) {
-#define STBSP__NUMSZ 512  // big enough for e308 (with commas) or e-307
-            char          num[STBSP__NUMSZ];
+#define prb_STBSP__NUMSZ 512  // big enough for e308 (with commas) or e-307
+            char          num[prb_STBSP__NUMSZ];
             char          lead[8];
             char          tail[8];
             char*         s;
             char const*   h;
-            stbsp__uint32 l, n, cs;
-            stbsp__uint64 n64;
-#ifndef STB_SPRINTF_NOFLOAT
+            prb_stbsp__uint32 l, n, cs;
+            prb_stbsp__uint64 n64;
+#ifndef prb_STB_SPRINTF_NOFLOAT
             double fv;
 #endif
-            stbsp__int32 dp;
+            prb_stbsp__int32 dp;
             char const*  sn;
 
             case 's':
@@ -3358,7 +3358,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                     s = (char*)"null";
                 // get the length, limited to desired precision
                 // always limit to ~0u chars since our counts are 32b
-                l = stbsp__strlen_limited(s, (pr >= 0) ? (stbsp__uint32)pr : ~0u);
+                l = prb_stbsp__strlen_limited(s, (pr >= 0) ? (prb_stbsp__uint32)pr : ~0u);
                 lead[0] = 0;
                 tail[0] = 0;
                 pr = 0;
@@ -3369,7 +3369,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
 
             case 'c':  // char
                 // get the character
-                s = num + STBSP__NUMSZ - 1;
+                s = num + prb_STBSP__NUMSZ - 1;
                 *s = (char)va_arg(va, int);
                 l = 1;
                 lead[0] = 0;
@@ -3385,7 +3385,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 *d = tlen + (int)(bf - buf);
             } break;
 
-#ifdef STB_SPRINTF_NOFLOAT
+#ifdef prb_STB_SPRINTF_NOFLOAT
             case 'A':  // float
             case 'a':  // hex float
             case 'G':  // float
@@ -3400,7 +3400,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 tail[0] = 0;
                 pr = 0;
                 cs = 0;
-                STBSP__NOTUSED(dp);
+                prb_STBSP__NOTUSED(dp);
                 goto scopy;
 #else
             case 'A':  // hex float
@@ -3410,23 +3410,23 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 if (pr == -1)
                     pr = 6;  // default is 6
                 // read the double into a string
-                if (stbsp__real_to_parts((stbsp__int64*)&n64, &dp, fv))
-                    fl |= STBSP__NEGATIVE;
+                if (prb_stbsp__real_to_parts((prb_stbsp__int64*)&n64, &dp, fv))
+                    fl |= prb_STBSP__NEGATIVE;
 
                 s = num + 64;
 
-                stbsp__lead_sign(fl, lead);
+                prb_stbsp__lead_sign(fl, lead);
 
                 if (dp == -1023)
                     dp = (n64) ? -1022 : 0;
                 else
-                    n64 |= (((stbsp__uint64)1) << 52);
+                    n64 |= (((prb_stbsp__uint64)1) << 52);
                 n64 <<= (64 - 56);
                 if (pr < 15)
-                    n64 += ((((stbsp__uint64)8) << 56) >> (pr * 4));
+                    n64 += ((((prb_stbsp__uint64)8) << 56) >> (pr * 4));
                     // add leading chars
 
-#ifdef STB_SPRINTF_MSVC_MODE
+#ifdef prb_STB_SPRINTF_MSVC_MODE
                 *s++ = '0';
                 *s++ = 'x';
 #else
@@ -3437,14 +3437,14 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 *s++ = h[(n64 >> 60) & 15];
                 n64 <<= 4;
                 if (pr)
-                    *s++ = stbsp__period;
+                    *s++ = prb_stbsp__period;
                 sn = s;
 
                 // print the bits
                 n = pr;
                 if (n > 13)
                     n = 13;
-                if (pr > (stbsp__int32)n)
+                if (pr > (prb_stbsp__int32)n)
                     tz = pr - n;
                 pr = 0;
                 while (n--) {
@@ -3484,12 +3484,12 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 else if (pr == 0)
                     pr = 1;  // default is 6
                 // read the double into a string
-                if (stbsp__real_to_str(&sn, &l, num, &dp, fv, (pr - 1) | 0x80000000))
-                    fl |= STBSP__NEGATIVE;
+                if (prb_stbsp__real_to_str(&sn, &l, num, &dp, fv, (pr - 1) | 0x80000000))
+                    fl |= prb_STBSP__NEGATIVE;
 
                 // clamp the precision and delete extra zeros after clamp
                 n = pr;
-                if (l > (stbsp__uint32)pr)
+                if (l > (prb_stbsp__uint32)pr)
                     l = pr;
                 while ((l > 1) && (pr) && (sn[l - 1] == '0')) {
                     --pr;
@@ -3497,8 +3497,8 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 }
 
                 // should we use %e
-                if ((dp <= -4) || (dp > (stbsp__int32)n)) {
-                    if (pr > (stbsp__int32)l)
+                if ((dp <= -4) || (dp > (prb_stbsp__int32)n)) {
+                    if (pr > (prb_stbsp__int32)l)
                         pr = l - 1;
                     else if (pr)
                         --pr;  // when using %e, there is one digit before the decimal
@@ -3506,9 +3506,9 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 }
                 // this is the insane action to get the pr to match %g semantics for %f
                 if (dp > 0) {
-                    pr = (dp < (stbsp__int32)l) ? l - dp : 0;
+                    pr = (dp < (prb_stbsp__int32)l) ? l - dp : 0;
                 } else {
-                    pr = -dp + ((pr > (stbsp__int32)l) ? (stbsp__int32)l : pr);
+                    pr = -dp + ((pr > (prb_stbsp__int32)l) ? (prb_stbsp__int32)l : pr);
                 }
                 goto dofloatfromg;
 
@@ -3519,12 +3519,12 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 if (pr == -1)
                     pr = 6;  // default is 6
                 // read the double into a string
-                if (stbsp__real_to_str(&sn, &l, num, &dp, fv, pr | 0x80000000))
-                    fl |= STBSP__NEGATIVE;
+                if (prb_stbsp__real_to_str(&sn, &l, num, &dp, fv, pr | 0x80000000))
+                    fl |= prb_STBSP__NEGATIVE;
             doexpfromg:
                 tail[0] = 0;
-                stbsp__lead_sign(fl, lead);
-                if (dp == STBSP__SPECIAL) {
+                prb_stbsp__lead_sign(fl, lead);
+                if (dp == prb_STBSP__SPECIAL) {
                     s = (char*)sn;
                     cs = 0;
                     pr = 0;
@@ -3535,10 +3535,10 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 *s++ = sn[0];
 
                 if (pr)
-                    *s++ = stbsp__period;
+                    *s++ = prb_stbsp__period;
 
                 // handle after decimal
-                if ((l - 1) > (stbsp__uint32)pr)
+                if ((l - 1) > (prb_stbsp__uint32)pr)
                     l = pr + 1;
                 for (n = 1; n < l; n++)
                     *s++ = sn[n];
@@ -3553,7 +3553,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                     dp = -dp;
                 } else
                     tail[2] = '+';
-#ifdef STB_SPRINTF_MSVC_MODE
+#ifdef prb_STB_SPRINTF_MSVC_MODE
                 n = 5;
 #else
                 n = (dp >= 100) ? 5 : 4;
@@ -3573,10 +3573,10 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 fv = va_arg(va, double);
             doafloat:
                 // do kilos
-                if (fl & STBSP__METRIC_SUFFIX) {
+                if (fl & prb_STBSP__METRIC_SUFFIX) {
                     double divisor;
                     divisor = 1000.0f;
-                    if (fl & STBSP__METRIC_1024)
+                    if (fl & prb_STBSP__METRIC_1024)
                         divisor = 1024.0;
                     while (fl < 0x4000000) {
                         if ((fv < divisor) && (fv > -divisor))
@@ -3588,12 +3588,12 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 if (pr == -1)
                     pr = 6;  // default is 6
                 // read the double into a string
-                if (stbsp__real_to_str(&sn, &l, num, &dp, fv, pr))
-                    fl |= STBSP__NEGATIVE;
+                if (prb_stbsp__real_to_str(&sn, &l, num, &dp, fv, pr))
+                    fl |= prb_STBSP__NEGATIVE;
             dofloatfromg:
                 tail[0] = 0;
-                stbsp__lead_sign(fl, lead);
-                if (dp == STBSP__SPECIAL) {
+                prb_stbsp__lead_sign(fl, lead);
+                if (dp == prb_STBSP__SPECIAL) {
                     s = (char*)sn;
                     cs = 0;
                     pr = 0;
@@ -3603,23 +3603,23 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
 
                 // handle the three decimal varieties
                 if (dp <= 0) {
-                    stbsp__int32 i;
+                    prb_stbsp__int32 i;
                     // handle 0.000*000xxxx
                     *s++ = '0';
                     if (pr)
-                        *s++ = stbsp__period;
+                        *s++ = prb_stbsp__period;
                     n = -dp;
-                    if ((stbsp__int32)n > pr)
+                    if ((prb_stbsp__int32)n > pr)
                         n = pr;
                     i = n;
                     while (i) {
-                        if ((((stbsp__uintptr)s) & 3) == 0)
+                        if ((((prb_stbsp__uintptr)s) & 3) == 0)
                             break;
                         *s++ = '0';
                         --i;
                     }
                     while (i >= 4) {
-                        *(stbsp__uint32*)s = 0x30303030;
+                        *(prb_stbsp__uint32*)s = 0x30303030;
                         s += 4;
                         i -= 4;
                     }
@@ -3627,7 +3627,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                         *s++ = '0';
                         --i;
                     }
-                    if ((stbsp__int32)(l + n) > pr)
+                    if ((prb_stbsp__int32)(l + n) > pr)
                         l = pr - n;
                     i = l;
                     while (i) {
@@ -3637,14 +3637,14 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                     tz = pr - (n + l);
                     cs = 1 + (3 << 24);  // how many tens did we write (for commas below)
                 } else {
-                    cs = (fl & STBSP__TRIPLET_COMMA) ? ((600 - (stbsp__uint32)dp) % 3) : 0;
-                    if ((stbsp__uint32)dp >= l) {
+                    cs = (fl & prb_STBSP__TRIPLET_COMMA) ? ((600 - (prb_stbsp__uint32)dp) % 3) : 0;
+                    if ((prb_stbsp__uint32)dp >= l) {
                         // handle xxxx000*000.0
                         n = 0;
                         for (;;) {
-                            if ((fl & STBSP__TRIPLET_COMMA) && (++cs == 4)) {
+                            if ((fl & prb_STBSP__TRIPLET_COMMA) && (++cs == 4)) {
                                 cs = 0;
-                                *s++ = stbsp__comma;
+                                *s++ = prb_stbsp__comma;
                             } else {
                                 *s++ = sn[n];
                                 ++n;
@@ -3652,25 +3652,25 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                                     break;
                             }
                         }
-                        if (n < (stbsp__uint32)dp) {
+                        if (n < (prb_stbsp__uint32)dp) {
                             n = dp - n;
-                            if ((fl & STBSP__TRIPLET_COMMA) == 0) {
+                            if ((fl & prb_STBSP__TRIPLET_COMMA) == 0) {
                                 while (n) {
-                                    if ((((stbsp__uintptr)s) & 3) == 0)
+                                    if ((((prb_stbsp__uintptr)s) & 3) == 0)
                                         break;
                                     *s++ = '0';
                                     --n;
                                 }
                                 while (n >= 4) {
-                                    *(stbsp__uint32*)s = 0x30303030;
+                                    *(prb_stbsp__uint32*)s = 0x30303030;
                                     s += 4;
                                     n -= 4;
                                 }
                             }
                             while (n) {
-                                if ((fl & STBSP__TRIPLET_COMMA) && (++cs == 4)) {
+                                if ((fl & prb_STBSP__TRIPLET_COMMA) && (++cs == 4)) {
                                     cs = 0;
-                                    *s++ = stbsp__comma;
+                                    *s++ = prb_stbsp__comma;
                                 } else {
                                     *s++ = '0';
                                     --n;
@@ -3679,27 +3679,27 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                         }
                         cs = (int)(s - (num + 64)) + (3 << 24);  // cs is how many tens
                         if (pr) {
-                            *s++ = stbsp__period;
+                            *s++ = prb_stbsp__period;
                             tz = pr;
                         }
                     } else {
                         // handle xxxxx.xxxx000*000
                         n = 0;
                         for (;;) {
-                            if ((fl & STBSP__TRIPLET_COMMA) && (++cs == 4)) {
+                            if ((fl & prb_STBSP__TRIPLET_COMMA) && (++cs == 4)) {
                                 cs = 0;
-                                *s++ = stbsp__comma;
+                                *s++ = prb_stbsp__comma;
                             } else {
                                 *s++ = sn[n];
                                 ++n;
-                                if (n >= (stbsp__uint32)dp)
+                                if (n >= (prb_stbsp__uint32)dp)
                                     break;
                             }
                         }
                         cs = (int)(s - (num + 64)) + (3 << 24);  // cs is how many tens
                         if (pr)
-                            *s++ = stbsp__period;
-                        if ((l - dp) > (stbsp__uint32)pr)
+                            *s++ = prb_stbsp__period;
+                        if ((l - dp) > (prb_stbsp__uint32)pr)
                             l = pr + dp;
                         while (n < l) {
                             *s++ = sn[n];
@@ -3711,22 +3711,22 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 pr = 0;
 
                 // handle k,m,g,t
-                if (fl & STBSP__METRIC_SUFFIX) {
+                if (fl & prb_STBSP__METRIC_SUFFIX) {
                     char idx;
                     idx = 1;
-                    if (fl & STBSP__METRIC_NOSPACE)
+                    if (fl & prb_STBSP__METRIC_NOSPACE)
                         idx = 0;
                     tail[0] = idx;
                     tail[1] = ' ';
                     {
                         if (fl >> 24) {  // SI kilo is 'k', JEDEC and SI kibits are 'K'.
-                            if (fl & STBSP__METRIC_1024)
+                            if (fl & prb_STBSP__METRIC_1024)
                                 tail[idx + 1] = "_KMGT"[fl >> 24];
                             else
                                 tail[idx + 1] = "_kMGT"[fl >> 24];
                             idx++;
                             // If printing kibits and not in jedec, add the 'i'.
-                            if (fl & STBSP__METRIC_1024 && !(fl & STBSP__METRIC_JEDEC)) {
+                            if (fl & prb_STBSP__METRIC_1024 && !(fl & prb_STBSP__METRIC_JEDEC)) {
                                 tail[idx + 1] = 'i';
                                 idx++;
                             }
@@ -3737,7 +3737,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
 
             flt_lead:
                 // get the length that we copied
-                l = (stbsp__uint32)(s - (num + 64));
+                l = (prb_stbsp__uint32)(s - (num + 64));
                 s = num + 64;
                 goto scopy;
 #endif
@@ -3746,7 +3746,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
             case 'b':  // lower binary
                 h = (f[0] == 'B') ? hexu : hex;
                 lead[0] = 0;
-                if (fl & STBSP__LEADING_0X) {
+                if (fl & prb_STBSP__LEADING_0X) {
                     lead[0] = 2;
                     lead[1] = '0';
                     lead[2] = h[0xb];
@@ -3757,7 +3757,7 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
             case 'o':  // octal
                 h = hexu;
                 lead[0] = 0;
-                if (fl & STBSP__LEADING_0X) {
+                if (fl & prb_STBSP__LEADING_0X) {
                     lead[0] = 1;
                     lead[1] = '0';
                 }
@@ -3765,9 +3765,9 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 goto radixnum;
 
             case 'p':  // pointer
-                fl |= (sizeof(void*) == 8) ? STBSP__INTMAX : 0;
+                fl |= (sizeof(void*) == 8) ? prb_STBSP__INTMAX : 0;
                 pr = sizeof(void*) * 2;
-                fl &= ~STBSP__LEADINGZERO;  // 'p' only prints the pointer with zeros
+                fl &= ~prb_STBSP__LEADINGZERO;  // 'p' only prints the pointer with zeros
                     // fall through - to X
 
             case 'X':  // upper hex
@@ -3775,19 +3775,19 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 h = (f[0] == 'X') ? hexu : hex;
                 l = (4 << 4) | (4 << 8);
                 lead[0] = 0;
-                if (fl & STBSP__LEADING_0X) {
+                if (fl & prb_STBSP__LEADING_0X) {
                     lead[0] = 2;
                     lead[1] = '0';
                     lead[2] = h[16];
                 }
             radixnum:
                 // get the number
-                if (fl & STBSP__INTMAX)
-                    n64 = va_arg(va, stbsp__uint64);
+                if (fl & prb_STBSP__INTMAX)
+                    n64 = va_arg(va, prb_stbsp__uint64);
                 else
-                    n64 = va_arg(va, stbsp__uint32);
+                    n64 = va_arg(va, prb_stbsp__uint32);
 
-                s = num + STBSP__NUMSZ;
+                s = num + prb_STBSP__NUMSZ;
                 dp = 0;
                 // clear tail, and clear leading if value is zero
                 tail[0] = 0;
@@ -3803,20 +3803,20 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 for (;;) {
                     *--s = h[n64 & ((1 << (l >> 8)) - 1)];
                     n64 >>= (l >> 8);
-                    if (!((n64) || ((stbsp__int32)((num + STBSP__NUMSZ) - s) < pr)))
+                    if (!((n64) || ((prb_stbsp__int32)((num + prb_STBSP__NUMSZ) - s) < pr)))
                         break;
-                    if (fl & STBSP__TRIPLET_COMMA) {
+                    if (fl & prb_STBSP__TRIPLET_COMMA) {
                         ++l;
                         if ((l & 15) == ((l >> 4) & 15)) {
                             l &= ~15;
-                            *--s = stbsp__comma;
+                            *--s = prb_stbsp__comma;
                         }
                     }
                 };
                 // get the tens and the comma pos
-                cs = (stbsp__uint32)((num + STBSP__NUMSZ) - s) + ((((l >> 4) & 15)) << 24);
+                cs = (prb_stbsp__uint32)((num + prb_STBSP__NUMSZ) - s) + ((((l >> 4) & 15)) << 24);
                 // get the length that we copied
-                l = (stbsp__uint32)((num + STBSP__NUMSZ) - s);
+                l = (prb_stbsp__uint32)((num + prb_STBSP__NUMSZ) - s);
                 // copy it
                 goto scopy;
 
@@ -3824,58 +3824,58 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
             case 'i':
             case 'd':  // integer
                 // get the integer and abs it
-                if (fl & STBSP__INTMAX) {
-                    stbsp__int64 i64 = va_arg(va, stbsp__int64);
-                    n64 = (stbsp__uint64)i64;
+                if (fl & prb_STBSP__INTMAX) {
+                    prb_stbsp__int64 i64 = va_arg(va, prb_stbsp__int64);
+                    n64 = (prb_stbsp__uint64)i64;
                     if ((f[0] != 'u') && (i64 < 0)) {
-                        n64 = (stbsp__uint64)-i64;
-                        fl |= STBSP__NEGATIVE;
+                        n64 = (prb_stbsp__uint64)-i64;
+                        fl |= prb_STBSP__NEGATIVE;
                     }
                 } else {
-                    stbsp__int32 i = va_arg(va, stbsp__int32);
-                    n64 = (stbsp__uint32)i;
+                    prb_stbsp__int32 i = va_arg(va, prb_stbsp__int32);
+                    n64 = (prb_stbsp__uint32)i;
                     if ((f[0] != 'u') && (i < 0)) {
-                        n64 = (stbsp__uint32)-i;
-                        fl |= STBSP__NEGATIVE;
+                        n64 = (prb_stbsp__uint32)-i;
+                        fl |= prb_STBSP__NEGATIVE;
                     }
                 }
 
-#ifndef STB_SPRINTF_NOFLOAT
-                if (fl & STBSP__METRIC_SUFFIX) {
+#ifndef prb_STB_SPRINTF_NOFLOAT
+                if (fl & prb_STBSP__METRIC_SUFFIX) {
                     if (n64 < 1024)
                         pr = 0;
                     else if (pr == -1)
                         pr = 1;
-                    fv = (double)(stbsp__int64)n64;
+                    fv = (double)(prb_stbsp__int64)n64;
                     goto doafloat;
                 }
 #endif
 
                 // convert to string
-                s = num + STBSP__NUMSZ;
+                s = num + prb_STBSP__NUMSZ;
                 l = 0;
 
                 for (;;) {
                     // do in 32-bit chunks (avoid lots of 64-bit divides even with constant denominators)
                     char* o = s - 8;
                     if (n64 >= 100000000) {
-                        n = (stbsp__uint32)(n64 % 100000000);
+                        n = (prb_stbsp__uint32)(n64 % 100000000);
                         n64 /= 100000000;
                     } else {
-                        n = (stbsp__uint32)n64;
+                        n = (prb_stbsp__uint32)n64;
                         n64 = 0;
                     }
-                    if ((fl & STBSP__TRIPLET_COMMA) == 0) {
+                    if ((fl & prb_STBSP__TRIPLET_COMMA) == 0) {
                         do {
                             s -= 2;
-                            *(stbsp__uint16*)s = *(stbsp__uint16*)&stbsp__digitpair.pair[(n % 100) * 2];
+                            *(prb_stbsp__uint16*)s = *(prb_stbsp__uint16*)&prb_stbsp__digitpair.pair[(n % 100) * 2];
                             n /= 100;
                         } while (n);
                     }
                     while (n) {
-                        if ((fl & STBSP__TRIPLET_COMMA) && (l++ == 3)) {
+                        if ((fl & prb_STBSP__TRIPLET_COMMA) && (l++ == 3)) {
                             l = 0;
-                            *--s = stbsp__comma;
+                            *--s = prb_stbsp__comma;
                             --o;
                         } else {
                             *--s = (char)(n % 10) + '0';
@@ -3883,14 +3883,14 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                         }
                     }
                     if (n64 == 0) {
-                        if ((s[0] == '0') && (s != (num + STBSP__NUMSZ)))
+                        if ((s[0] == '0') && (s != (num + prb_STBSP__NUMSZ)))
                             ++s;
                         break;
                     }
                     while (s != o)
-                        if ((fl & STBSP__TRIPLET_COMMA) && (l++ == 3)) {
+                        if ((fl & prb_STBSP__TRIPLET_COMMA) && (l++ == 3)) {
                             l = 0;
-                            *--s = stbsp__comma;
+                            *--s = prb_stbsp__comma;
                             --o;
                         } else {
                             *--s = '0';
@@ -3898,10 +3898,10 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                 }
 
                 tail[0] = 0;
-                stbsp__lead_sign(fl, lead);
+                prb_stbsp__lead_sign(fl, lead);
 
                 // get the length that we copied
-                l = (stbsp__uint32)((num + STBSP__NUMSZ) - s);
+                l = (prb_stbsp__uint32)((num + prb_STBSP__NUMSZ) - s);
                 if (l == 0) {
                     *--s = '0';
                     l = 1;
@@ -3912,43 +3912,43 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
 
             scopy:
                 // get fw=leading/trailing space, pr=leading zeros
-                if (pr < (stbsp__int32)l)
+                if (pr < (prb_stbsp__int32)l)
                     pr = l;
                 n = pr + lead[0] + tail[0] + tz;
-                if (fw < (stbsp__int32)n)
+                if (fw < (prb_stbsp__int32)n)
                     fw = n;
                 fw -= n;
                 pr -= l;
 
                 // handle right justify and leading zeros
-                if ((fl & STBSP__LEFTJUST) == 0) {
-                    if (fl & STBSP__LEADINGZERO)  // if leading zeros, everything is in pr
+                if ((fl & prb_STBSP__LEFTJUST) == 0) {
+                    if (fl & prb_STBSP__LEADINGZERO)  // if leading zeros, everything is in pr
                     {
                         pr = (fw > pr) ? fw : pr;
                         fw = 0;
                     } else {
-                        fl &= ~STBSP__TRIPLET_COMMA;  // if no leading zeros, then no commas
+                        fl &= ~prb_STBSP__TRIPLET_COMMA;  // if no leading zeros, then no commas
                     }
                 }
 
                 // copy the spaces and/or zeros
                 if (fw + pr) {
-                    stbsp__int32  i;
-                    stbsp__uint32 c;
+                    prb_stbsp__int32  i;
+                    prb_stbsp__uint32 c;
 
                     // copy leading spaces (or when doing %8.4d stuff)
-                    if ((fl & STBSP__LEFTJUST) == 0)
+                    if ((fl & prb_STBSP__LEFTJUST) == 0)
                         while (fw > 0) {
-                            stbsp__cb_buf_clamp(i, fw);
+                            prb_stbsp__cb_buf_clamp(i, fw);
                             fw -= i;
                             while (i) {
-                                if ((((stbsp__uintptr)bf) & 3) == 0)
+                                if ((((prb_stbsp__uintptr)bf) & 3) == 0)
                                     break;
                                 *bf++ = ' ';
                                 --i;
                             }
                             while (i >= 4) {
-                                *(stbsp__uint32*)bf = 0x20202020;
+                                *(prb_stbsp__uint32*)bf = 0x20202020;
                                 bf += 4;
                                 i -= 4;
                             }
@@ -3956,13 +3956,13 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                                 *bf++ = ' ';
                                 --i;
                             }
-                            stbsp__chk_cb_buf(1);
+                            prb_stbsp__chk_cb_buf(1);
                         }
 
                     // copy leader
                     sn = lead + 1;
                     while (lead[0]) {
-                        stbsp__cb_buf_clamp(i, lead[0]);
+                        prb_stbsp__cb_buf_clamp(i, lead[0]);
                         lead[0] -= (char)i;
                         while (i) {
                             // NOLINTBEGIN(clang-analyzer-core.uninitialized.Assign)
@@ -3970,62 +3970,62 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                             // NOLINTEND(clang-analyzer-core.uninitialized.Assign)
                             --i;
                         }
-                        stbsp__chk_cb_buf(1);
+                        prb_stbsp__chk_cb_buf(1);
                     }
 
                     // copy leading zeros
                     c = cs >> 24;
                     cs &= 0xffffff;
-                    cs = (fl & STBSP__TRIPLET_COMMA) ? ((stbsp__uint32)(c - ((pr + cs) % (c + 1)))) : 0;
+                    cs = (fl & prb_STBSP__TRIPLET_COMMA) ? ((prb_stbsp__uint32)(c - ((pr + cs) % (c + 1)))) : 0;
                     while (pr > 0) {
-                        stbsp__cb_buf_clamp(i, pr);
+                        prb_stbsp__cb_buf_clamp(i, pr);
                         pr -= i;
-                        if ((fl & STBSP__TRIPLET_COMMA) == 0) {
+                        if ((fl & prb_STBSP__TRIPLET_COMMA) == 0) {
                             while (i) {
-                                if ((((stbsp__uintptr)bf) & 3) == 0)
+                                if ((((prb_stbsp__uintptr)bf) & 3) == 0)
                                     break;
                                 *bf++ = '0';
                                 --i;
                             }
                             while (i >= 4) {
-                                *(stbsp__uint32*)bf = 0x30303030;
+                                *(prb_stbsp__uint32*)bf = 0x30303030;
                                 bf += 4;
                                 i -= 4;
                             }
                         }
                         while (i) {
-                            if ((fl & STBSP__TRIPLET_COMMA) && (cs++ == c)) {
+                            if ((fl & prb_STBSP__TRIPLET_COMMA) && (cs++ == c)) {
                                 cs = 0;
-                                *bf++ = stbsp__comma;
+                                *bf++ = prb_stbsp__comma;
                             } else
                                 *bf++ = '0';
                             --i;
                         }
-                        stbsp__chk_cb_buf(1);
+                        prb_stbsp__chk_cb_buf(1);
                     }
                 }
 
                 // copy leader if there is still one
                 sn = lead + 1;
                 while (lead[0]) {
-                    stbsp__int32 i;
-                    stbsp__cb_buf_clamp(i, lead[0]);
+                    prb_stbsp__int32 i;
+                    prb_stbsp__cb_buf_clamp(i, lead[0]);
                     lead[0] -= (char)i;
                     while (i) {
                         *bf++ = *sn++;
                         --i;
                     }
-                    stbsp__chk_cb_buf(1);
+                    prb_stbsp__chk_cb_buf(1);
                 }
 
                 // copy the string
                 n = l;
                 while (n) {
-                    stbsp__int32 i;
-                    stbsp__cb_buf_clamp(i, n);
+                    prb_stbsp__int32 i;
+                    prb_stbsp__cb_buf_clamp(i, n);
                     n -= i;
-                    STBSP__UNALIGNED(while (i >= 4) {
-                        *(stbsp__uint32 volatile*)bf = *(stbsp__uint32 volatile*)s;
+                    prb_STBSP__UNALIGNED(while (i >= 4) {
+                        *(prb_stbsp__uint32 volatile*)bf = *(prb_stbsp__uint32 volatile*)s;
                         bf += 4;
                         s += 4;
                         i -= 4;
@@ -4036,22 +4036,22 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                         // NOLINTEND(clang-analyzer-core.uninitialized.Assign)
                         --i;
                     }
-                    stbsp__chk_cb_buf(1);
+                    prb_stbsp__chk_cb_buf(1);
                 }
 
                 // copy trailing zeros
                 while (tz) {
-                    stbsp__int32 i;
-                    stbsp__cb_buf_clamp(i, tz);
+                    prb_stbsp__int32 i;
+                    prb_stbsp__cb_buf_clamp(i, tz);
                     tz -= i;
                     while (i) {
-                        if ((((stbsp__uintptr)bf) & 3) == 0)
+                        if ((((prb_stbsp__uintptr)bf) & 3) == 0)
                             break;
                         *bf++ = '0';
                         --i;
                     }
                     while (i >= 4) {
-                        *(stbsp__uint32*)bf = 0x30303030;
+                        *(prb_stbsp__uint32*)bf = 0x30303030;
                         bf += 4;
                         i -= 4;
                     }
@@ -4059,49 +4059,49 @@ STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB* callback, void* user, char* bu
                         *bf++ = '0';
                         --i;
                     }
-                    stbsp__chk_cb_buf(1);
+                    prb_stbsp__chk_cb_buf(1);
                 }
 
                 // copy tail if there is one
                 sn = tail + 1;
                 while (tail[0]) {
-                    stbsp__int32 i;
-                    stbsp__cb_buf_clamp(i, tail[0]);
+                    prb_stbsp__int32 i;
+                    prb_stbsp__cb_buf_clamp(i, tail[0]);
                     tail[0] -= (char)i;
                     while (i) {
                         *bf++ = *sn++;
                         --i;
                     }
-                    stbsp__chk_cb_buf(1);
+                    prb_stbsp__chk_cb_buf(1);
                 }
 
                 // handle the left justify
-                if (fl & STBSP__LEFTJUST)
+                if (fl & prb_STBSP__LEFTJUST)
                     if (fw > 0) {
                         while (fw) {
-                            stbsp__int32 i;
-                            stbsp__cb_buf_clamp(i, fw);
+                            prb_stbsp__int32 i;
+                            prb_stbsp__cb_buf_clamp(i, fw);
                             fw -= i;
                             while (i) {
-                                if ((((stbsp__uintptr)bf) & 3) == 0)
+                                if ((((prb_stbsp__uintptr)bf) & 3) == 0)
                                     break;
                                 *bf++ = ' ';
                                 --i;
                             }
                             while (i >= 4) {
-                                *(stbsp__uint32*)bf = 0x20202020;
+                                *(prb_stbsp__uint32*)bf = 0x20202020;
                                 bf += 4;
                                 i -= 4;
                             }
                             while (i--)
                                 *bf++ = ' ';
-                            stbsp__chk_cb_buf(1);
+                            prb_stbsp__chk_cb_buf(1);
                         }
                     }
                 break;
 
             default:  // unknown, just copy code
-                s = num + STBSP__NUMSZ - 1;
+                s = num + prb_STBSP__NUMSZ - 1;
                 *s = f[0];
                 l = 1;
                 fw = fl = 0;
@@ -4119,51 +4119,51 @@ endfmt:
     if (!callback)
         *bf = 0;
     else
-        stbsp__flush_cb();
+        prb_stbsp__flush_cb();
 
 done:
     return tlen + (int)(bf - buf);
 }
 
 // cleanup
-#undef STBSP__LEFTJUST
-#undef STBSP__LEADINGPLUS
-#undef STBSP__LEADINGSPACE
-#undef STBSP__LEADING_0X
-#undef STBSP__LEADINGZERO
-#undef STBSP__INTMAX
-#undef STBSP__TRIPLET_COMMA
-#undef STBSP__NEGATIVE
-#undef STBSP__METRIC_SUFFIX
-#undef STBSP__NUMSZ
-#undef stbsp__chk_cb_bufL
-#undef stbsp__chk_cb_buf
-#undef stbsp__flush_cb
-#undef stbsp__cb_buf_clamp
+#undef prb_STBSP__LEFTJUST
+#undef prb_STBSP__LEADINGPLUS
+#undef prb_STBSP__LEADINGSPACE
+#undef prb_STBSP__LEADING_0X
+#undef prb_STBSP__LEADINGZERO
+#undef prb_STBSP__INTMAX
+#undef prb_STBSP__TRIPLET_COMMA
+#undef prb_STBSP__NEGATIVE
+#undef prb_STBSP__METRIC_SUFFIX
+#undef prb_STBSP__NUMSZ
+#undef prb_stbsp__chk_cb_bufL
+#undef prb_stbsp__chk_cb_buf
+#undef prb_stbsp__flush_cb
+#undef prb_stbsp__cb_buf_clamp
 
 // ============================================================================
 //   wrapper functions
 
-STBSP__PUBLICDEF int
-STB_SPRINTF_DECORATE(sprintf)(char* buf, char const* fmt, ...) {
+prb_STBSP__PUBLICDEF int
+prb_STB_SPRINTF_DECORATE(sprintf)(char* buf, char const* fmt, ...) {
     int     result;
     va_list va;
     va_start(va, fmt);
-    result = STB_SPRINTF_DECORATE(vsprintfcb)(0, 0, buf, fmt, va);
+    result = prb_STB_SPRINTF_DECORATE(vsprintfcb)(0, 0, buf, fmt, va);
     va_end(va);
     return result;
 }
 
-typedef struct stbsp__context {
+typedef struct prb_stbsp__context {
     char* buf;
     int   count;
     int   length;
-    char  tmp[STB_SPRINTF_MIN];
-} stbsp__context;
+    char  tmp[prb_STB_SPRINTF_MIN];
+} prb_stbsp__context;
 
 static char*
-stbsp__clamp_callback(const char* buf, void* user, int len) {
-    stbsp__context* c = (stbsp__context*)user;
+prb_stbsp__clamp_callback(const char* buf, void* user, int len) {
+    prb_stbsp__context* c = (prb_stbsp__context*)user;
     c->length += len;
 
     if (len > c->count)
@@ -4186,28 +4186,28 @@ stbsp__clamp_callback(const char* buf, void* user, int len) {
 
     if (c->count <= 0)
         return c->tmp;
-    return (c->count >= STB_SPRINTF_MIN) ? c->buf : c->tmp;  // go direct into buffer if you can
+    return (c->count >= prb_STB_SPRINTF_MIN) ? c->buf : c->tmp;  // go direct into buffer if you can
 }
 
 static char*
-stbsp__count_clamp_callback(const char* buf, void* user, int len) {
-    stbsp__context* c = (stbsp__context*)user;
+prb_stbsp__count_clamp_callback(const char* buf, void* user, int len) {
+    prb_stbsp__context* c = (prb_stbsp__context*)user;
     (void)sizeof(buf);
 
     c->length += len;
     return c->tmp;  // go direct into buffer if you can
 }
 
-STBSP__PUBLICDEF int
-STB_SPRINTF_DECORATE(vsnprintf)(char* buf, int count, char const* fmt, va_list va) {
+prb_STBSP__PUBLICDEF int
+prb_STB_SPRINTF_DECORATE(vsnprintf)(char* buf, int count, char const* fmt, va_list va) {
     prb_assert(count >= 0);
-    stbsp__context c;
+    prb_stbsp__context c;
 
     if ((count == 0) && !buf) {
         c.length = 0;
 
-        STB_SPRINTF_DECORATE(vsprintfcb)
-        (stbsp__count_clamp_callback, &c, c.tmp, fmt, va);
+        prb_STB_SPRINTF_DECORATE(vsprintfcb)
+        (prb_stbsp__count_clamp_callback, &c, c.tmp, fmt, va);
     } else {
         int l;
 
@@ -4215,8 +4215,8 @@ STB_SPRINTF_DECORATE(vsnprintf)(char* buf, int count, char const* fmt, va_list v
         c.count = count;
         c.length = 0;
 
-        STB_SPRINTF_DECORATE(vsprintfcb)
-        (stbsp__clamp_callback, &c, stbsp__clamp_callback(0, &c, 0), fmt, va);
+        prb_STB_SPRINTF_DECORATE(vsprintfcb)
+        (prb_stbsp__clamp_callback, &c, prb_stbsp__clamp_callback(0, &c, 0), fmt, va);
 
         // zero-terminate
         l = (int)(c.buf - buf);
@@ -4228,30 +4228,30 @@ STB_SPRINTF_DECORATE(vsnprintf)(char* buf, int count, char const* fmt, va_list v
     return c.length;
 }
 
-STBSP__PUBLICDEF int
-STB_SPRINTF_DECORATE(snprintf)(char* buf, int count, char const* fmt, ...) {
+prb_STBSP__PUBLICDEF int
+prb_STB_SPRINTF_DECORATE(snprintf)(char* buf, int count, char const* fmt, ...) {
     int     result;
     va_list va;
     va_start(va, fmt);
 
-    result = STB_SPRINTF_DECORATE(vsnprintf)(buf, count, fmt, va);
+    result = prb_STB_SPRINTF_DECORATE(vsnprintf)(buf, count, fmt, va);
     va_end(va);
 
     return result;
 }
 
-STBSP__PUBLICDEF int
-STB_SPRINTF_DECORATE(vsprintf)(char* buf, char const* fmt, va_list va) {
-    return STB_SPRINTF_DECORATE(vsprintfcb)(0, 0, buf, fmt, va);
+prb_STBSP__PUBLICDEF int
+prb_STB_SPRINTF_DECORATE(vsprintf)(char* buf, char const* fmt, va_list va) {
+    return prb_STB_SPRINTF_DECORATE(vsprintfcb)(0, 0, buf, fmt, va);
 }
 
 // =======================================================================
 //   low level float utility functions
 
-#ifndef STB_SPRINTF_NOFLOAT
+#ifndef prb_STB_SPRINTF_NOFLOAT
 
 // copies d to bits w/ strict aliasing (this compiles to nothing on /Ox)
-#define STBSP__COPYFP(dest, src) \
+#define prb_STBSP__COPYFP(dest, src) \
     { \
         int cn; \
         for (cn = 0; cn < 8; cn++) \
@@ -4259,46 +4259,46 @@ STB_SPRINTF_DECORATE(vsprintf)(char* buf, char const* fmt, va_list va) {
     }
 
 // get float info
-static stbsp__int32
-stbsp__real_to_parts(stbsp__int64* bits, stbsp__int32* expo, double value) {
+static prb_stbsp__int32
+prb_stbsp__real_to_parts(prb_stbsp__int64* bits, prb_stbsp__int32* expo, double value) {
     double       d;
-    stbsp__int64 b = 0;
+    prb_stbsp__int64 b = 0;
 
     // load value and round at the frac_digits
     d = value;
 
-    STBSP__COPYFP(b, d);
+    prb_STBSP__COPYFP(b, d);
 
-    *bits = b & ((((stbsp__uint64)1) << 52) - 1);
-    *expo = (stbsp__int32)(((b >> 52) & 2047) - 1023);
+    *bits = b & ((((prb_stbsp__uint64)1) << 52) - 1);
+    *expo = (prb_stbsp__int32)(((b >> 52) & 2047) - 1023);
 
-    return (stbsp__int32)((stbsp__uint64)b >> 63);
+    return (prb_stbsp__int32)((prb_stbsp__uint64)b >> 63);
 }
 
 // clang-format off
-static double const stbsp__bot[23] = {1e+000, 1e+001, 1e+002, 1e+003, 1e+004, 1e+005, 1e+006, 1e+007,
+static double const prb_stbsp__bot[23] = {1e+000, 1e+001, 1e+002, 1e+003, 1e+004, 1e+005, 1e+006, 1e+007,
                                       1e+008, 1e+009, 1e+010, 1e+011, 1e+012, 1e+013, 1e+014, 1e+015,
                                       1e+016, 1e+017, 1e+018, 1e+019, 1e+020, 1e+021, 1e+022};
-static double const stbsp__negbot[22] = {1e-001, 1e-002, 1e-003, 1e-004, 1e-005, 1e-006, 1e-007, 1e-008,
+static double const prb_stbsp__negbot[22] = {1e-001, 1e-002, 1e-003, 1e-004, 1e-005, 1e-006, 1e-007, 1e-008,
                                          1e-009, 1e-010, 1e-011, 1e-012, 1e-013, 1e-014, 1e-015, 1e-016,
                                          1e-017, 1e-018, 1e-019, 1e-020, 1e-021, 1e-022};
-static double const stbsp__negboterr[22] = {
+static double const prb_stbsp__negboterr[22] = {
     -5.551115123125783e-018,  -2.0816681711721684e-019, -2.0816681711721686e-020, -4.7921736023859299e-021,
     -8.1803053914031305e-022, 4.5251888174113741e-023,  4.5251888174113739e-024,  -2.0922560830128471e-025,
     -6.2281591457779853e-026, -3.6432197315497743e-027, 6.0503030718060191e-028,  2.0113352370744385e-029,
     -3.0373745563400371e-030, 1.1806906454401013e-032,  -7.7705399876661076e-032, 2.0902213275965398e-033,
     -7.1542424054621921e-034, -7.1542424054621926e-035, 2.4754073164739869e-036,  5.4846728545790429e-037,
     9.2462547772103625e-038,  -4.8596774326570872e-039};
-static double const stbsp__top[13] =
+static double const prb_stbsp__top[13] =
     {1e+023, 1e+046, 1e+069, 1e+092, 1e+115, 1e+138, 1e+161, 1e+184, 1e+207, 1e+230, 1e+253, 1e+276, 1e+299};
-static double const stbsp__negtop[13] =
+static double const prb_stbsp__negtop[13] =
     {1e-023, 1e-046, 1e-069, 1e-092, 1e-115, 1e-138, 1e-161, 1e-184, 1e-207, 1e-230, 1e-253, 1e-276, 1e-299};
-static double const stbsp__toperr[13] = {
+static double const prb_stbsp__toperr[13] = {
     8388608, 6.8601809640529717e+028, -7.253143638152921e+052,
     -4.3377296974619174e+075, -1.5559416129466825e+098, -3.2841562489204913e+121, -3.7745893248228135e+144,
     -1.7356668416969134e+167, -3.8893577551088374e+190, -9.9566444326005119e+213, 6.3641293062232429e+236,
     -5.2069140800249813e+259, -5.2504760255204387e+282};
-static double const stbsp__negtoperr[13] = {
+static double const prb_stbsp__negtoperr[13] = {
    3.9565301985100693e-040,  -2.299904345391321e-063,  3.6506201437945798e-086,  1.1875228833981544e-109,
    -5.0644902316928607e-132, -6.7156837247865426e-155, -2.812077463003139e-178,  -5.7778912386589953e-201,
    7.4997100559334532e-224,  -4.6439668915134491e-247, -6.3691100762962136e-270, -9.436808465446358e-293,
@@ -4306,7 +4306,7 @@ static double const stbsp__negtoperr[13] = {
 // clang-format on
 
 #if defined(_MSC_VER) && (_MSC_VER <= 1200)
-static stbsp__uint64 const stbsp__powten[20] = {
+static prb_stbsp__uint64 const prb_stbsp__powten[20] = {
     1,
     10,
     100,
@@ -4327,9 +4327,9 @@ static stbsp__uint64 const stbsp__powten[20] = {
     100000000000000000,
     1000000000000000000,
     10000000000000000000U};
-#define stbsp__tento19th ((stbsp__uint64)1000000000000000000)
+#define prb_stbsp__tento19th ((prb_stbsp__uint64)1000000000000000000)
 #else
-static stbsp__uint64 const stbsp__powten[20] = {
+static prb_stbsp__uint64 const prb_stbsp__powten[20] = {
     1,
     10,
     100,
@@ -4350,37 +4350,37 @@ static stbsp__uint64 const stbsp__powten[20] = {
     100000000000000000ULL,
     1000000000000000000ULL,
     10000000000000000000ULL};
-#define stbsp__tento19th (1000000000000000000ULL)
+#define prb_stbsp__tento19th (1000000000000000000ULL)
 #endif
 
-#define stbsp__ddmulthi(oh, ol, xh, yh) \
+#define prb_stbsp__ddmulthi(oh, ol, xh, yh) \
     { \
         double       ahi = 0, alo, bhi = 0, blo; \
-        stbsp__int64 bt; \
+        prb_stbsp__int64 bt; \
         oh = xh * yh; \
-        STBSP__COPYFP(bt, xh); \
-        bt &= ((~(stbsp__uint64)0) << 27); \
-        STBSP__COPYFP(ahi, bt); \
+        prb_STBSP__COPYFP(bt, xh); \
+        bt &= ((~(prb_stbsp__uint64)0) << 27); \
+        prb_STBSP__COPYFP(ahi, bt); \
         alo = xh - ahi; \
-        STBSP__COPYFP(bt, yh); \
-        bt &= ((~(stbsp__uint64)0) << 27); \
-        STBSP__COPYFP(bhi, bt); \
+        prb_STBSP__COPYFP(bt, yh); \
+        bt &= ((~(prb_stbsp__uint64)0) << 27); \
+        prb_STBSP__COPYFP(bhi, bt); \
         blo = yh - bhi; \
         ol = ((ahi * bhi - oh) + ahi * blo + alo * bhi) + alo * blo; \
     }
 
-#define stbsp__ddtoS64(ob, xh, xl) \
+#define prb_stbsp__ddtoS64(ob, xh, xl) \
     { \
         double ahi = 0, alo, vh, t; \
-        ob = (stbsp__int64)xh; \
+        ob = (prb_stbsp__int64)xh; \
         vh = (double)ob; \
         ahi = (xh - vh); \
         t = (ahi - xh); \
         alo = (xh - (ahi - t)) - (vh + t); \
-        ob += (stbsp__int64)(ahi + alo + xl); \
+        ob += (prb_stbsp__int64)(ahi + alo + xl); \
     }
 
-#define stbsp__ddrenorm(oh, ol) \
+#define prb_stbsp__ddrenorm(oh, ol) \
     { \
         double s; \
         s = oh + ol; \
@@ -4388,18 +4388,18 @@ static stbsp__uint64 const stbsp__powten[20] = {
         oh = s; \
     }
 
-#define stbsp__ddmultlo(oh, ol, xh, xl, yh, yl) ol = ol + (xh * yl + xl * yh);
+#define prb_stbsp__ddmultlo(oh, ol, xh, xl, yh, yl) ol = ol + (xh * yl + xl * yh);
 
-#define stbsp__ddmultlos(oh, ol, xh, yl) ol = ol + (xh * yl);
+#define prb_stbsp__ddmultlos(oh, ol, xh, yl) ol = ol + (xh * yl);
 
 static void
-stbsp__raise_to_power10(double* ohi, double* olo, double d, stbsp__int32 power)  // power can be -323 to +350
+prb_stbsp__raise_to_power10(double* ohi, double* olo, double d, prb_stbsp__int32 power)  // power can be -323 to +350
 {
     double ph, pl;
     if ((power >= 0) && (power <= 22)) {
-        stbsp__ddmulthi(ph, pl, d, stbsp__bot[power]);
+        prb_stbsp__ddmulthi(ph, pl, d, prb_stbsp__bot[power]);
     } else {
-        stbsp__int32 e, et, eb;
+        prb_stbsp__int32 e, et, eb;
         double       p2h, p2l;
 
         e = power;
@@ -4415,14 +4415,14 @@ stbsp__raise_to_power10(double* ohi, double* olo, double d, stbsp__int32 power) 
         if (power < 0) {
             if (eb) {
                 --eb;
-                stbsp__ddmulthi(ph, pl, d, stbsp__negbot[eb]);
-                stbsp__ddmultlos(ph, pl, d, stbsp__negboterr[eb]);
+                prb_stbsp__ddmulthi(ph, pl, d, prb_stbsp__negbot[eb]);
+                prb_stbsp__ddmultlos(ph, pl, d, prb_stbsp__negboterr[eb]);
             }
             if (et) {
-                stbsp__ddrenorm(ph, pl);
+                prb_stbsp__ddrenorm(ph, pl);
                 --et;
-                stbsp__ddmulthi(p2h, p2l, ph, stbsp__negtop[et]);
-                stbsp__ddmultlo(p2h, p2l, ph, pl, stbsp__negtop[et], stbsp__negtoperr[et]);
+                prb_stbsp__ddmulthi(p2h, p2l, ph, prb_stbsp__negtop[et]);
+                prb_stbsp__ddmultlo(p2h, p2l, ph, pl, prb_stbsp__negtop[et], prb_stbsp__negtoperr[et]);
                 ph = p2h;
                 pl = p2l;
             }
@@ -4432,26 +4432,26 @@ stbsp__raise_to_power10(double* ohi, double* olo, double d, stbsp__int32 power) 
                 if (eb > 22)
                     eb = 22;
                 e -= eb;
-                stbsp__ddmulthi(ph, pl, d, stbsp__bot[eb]);
+                prb_stbsp__ddmulthi(ph, pl, d, prb_stbsp__bot[eb]);
                 if (e) {
-                    stbsp__ddrenorm(ph, pl);
-                    stbsp__ddmulthi(p2h, p2l, ph, stbsp__bot[e]);
-                    stbsp__ddmultlos(p2h, p2l, stbsp__bot[e], pl);
+                    prb_stbsp__ddrenorm(ph, pl);
+                    prb_stbsp__ddmulthi(p2h, p2l, ph, prb_stbsp__bot[e]);
+                    prb_stbsp__ddmultlos(p2h, p2l, prb_stbsp__bot[e], pl);
                     ph = p2h;
                     pl = p2l;
                 }
             }
             if (et) {
-                stbsp__ddrenorm(ph, pl);
+                prb_stbsp__ddrenorm(ph, pl);
                 --et;
-                stbsp__ddmulthi(p2h, p2l, ph, stbsp__top[et]);
-                stbsp__ddmultlo(p2h, p2l, ph, pl, stbsp__top[et], stbsp__toperr[et]);
+                prb_stbsp__ddmulthi(p2h, p2l, ph, prb_stbsp__top[et]);
+                prb_stbsp__ddmultlo(p2h, p2l, ph, pl, prb_stbsp__top[et], prb_stbsp__toperr[et]);
                 ph = p2h;
                 pl = p2l;
             }
         }
     }
-    stbsp__ddrenorm(ph, pl);
+    prb_stbsp__ddrenorm(ph, pl);
     *ohi = ph;
     *olo = pl;
 }
@@ -4460,37 +4460,37 @@ stbsp__raise_to_power10(double* ohi, double* olo, double d, stbsp__int32 power) 
 //   decimal point in decimal_pos.  +/-INF and NAN are specified by special values
 //   returned in the decimal_pos parameter.
 // frac_digits is absolute normally, but if you want from first significant digits (got %g and %e), or in 0x80000000
-static stbsp__int32
-stbsp__real_to_str(
+static prb_stbsp__int32
+prb_stbsp__real_to_str(
     char const**   start,
-    stbsp__uint32* len,
+    prb_stbsp__uint32* len,
     char*          out,
-    stbsp__int32*  decimal_pos,
+    prb_stbsp__int32*  decimal_pos,
     double         value,
-    stbsp__uint32  frac_digits
+    prb_stbsp__uint32  frac_digits
 ) {
     double       d;
-    stbsp__int64 bits = 0;
-    stbsp__int32 expo, e, ng, tens;
+    prb_stbsp__int64 bits = 0;
+    prb_stbsp__int32 expo, e, ng, tens;
 
     d = value;
-    STBSP__COPYFP(bits, d);
-    expo = (stbsp__int32)((bits >> 52) & 2047);
-    ng = (stbsp__int32)((stbsp__uint64)bits >> 63);
+    prb_STBSP__COPYFP(bits, d);
+    expo = (prb_stbsp__int32)((bits >> 52) & 2047);
+    ng = (prb_stbsp__int32)((prb_stbsp__uint64)bits >> 63);
     if (ng)
         d = -d;
 
     if (expo == 2047)  // is nan or inf?
     {
-        *start = (bits & ((((stbsp__uint64)1) << 52) - 1)) ? "NaN" : "Inf";
-        *decimal_pos = STBSP__SPECIAL;
+        *start = (bits & ((((prb_stbsp__uint64)1) << 52) - 1)) ? "NaN" : "Inf";
+        *decimal_pos = prb_STBSP__SPECIAL;
         *len = 3;
         return ng;
     }
 
     if (expo == 0)  // is zero or denormal
     {
-        if (((stbsp__uint64)bits << 1) == 0)  // do zero
+        if (((prb_stbsp__uint64)bits << 1) == 0)  // do zero
         {
             *decimal_pos = 1;
             *start = out;
@@ -4500,7 +4500,7 @@ stbsp__real_to_str(
         }
         // find the right expo for denormals
         {
-            stbsp__int64 v = ((stbsp__uint64)1) << 51;
+            prb_stbsp__int64 v = ((prb_stbsp__uint64)1) << 51;
             while ((bits & v) == 0) {
                 --expo;
                 v >>= 1;
@@ -4517,36 +4517,36 @@ stbsp__real_to_str(
         tens = (tens < 0) ? ((tens * 617) / 2048) : (((tens * 1233) / 4096) + 1);
 
         // move the significant bits into position and stick them into an int
-        stbsp__raise_to_power10(&ph, &pl, d, 18 - tens);
+        prb_stbsp__raise_to_power10(&ph, &pl, d, 18 - tens);
 
         // get full as much precision from double-double as possible
-        stbsp__ddtoS64(bits, ph, pl);
+        prb_stbsp__ddtoS64(bits, ph, pl);
 
         // check if we undershot
-        if (((stbsp__uint64)bits) >= stbsp__tento19th)
+        if (((prb_stbsp__uint64)bits) >= prb_stbsp__tento19th)
             ++tens;
     }
 
     // now do the rounding in integer land
     frac_digits = (frac_digits & 0x80000000) ? ((frac_digits & 0x7ffffff) + 1) : (tens + frac_digits);
     if ((frac_digits < 24)) {
-        stbsp__uint32 dg = 1;
-        if ((stbsp__uint64)bits >= stbsp__powten[9])
+        prb_stbsp__uint32 dg = 1;
+        if ((prb_stbsp__uint64)bits >= prb_stbsp__powten[9])
             dg = 10;
-        while ((stbsp__uint64)bits >= stbsp__powten[dg]) {
+        while ((prb_stbsp__uint64)bits >= prb_stbsp__powten[dg]) {
             ++dg;
             if (dg == 20)
                 goto noround;
         }
         if (frac_digits < dg) {
-            stbsp__uint64 r;
+            prb_stbsp__uint64 r;
             // add 0.5 at the right position and round
             e = dg - frac_digits;
-            if ((stbsp__uint32)e >= 24)
+            if ((prb_stbsp__uint32)e >= 24)
                 goto noround;
-            r = stbsp__powten[e];
+            r = prb_stbsp__powten[e];
             bits = bits + (r / 2);
-            if ((stbsp__uint64)bits >= stbsp__powten[dg])
+            if ((prb_stbsp__uint64)bits >= prb_stbsp__powten[dg])
                 ++tens;
             bits /= r;
         }
@@ -4555,7 +4555,7 @@ stbsp__real_to_str(
 
     // kill long trailing runs of zeros
     if (bits) {
-        stbsp__uint32 n;
+        prb_stbsp__uint32 n;
         for (;;) {
             if (bits <= 0xffffffff)
                 break;
@@ -4563,7 +4563,7 @@ stbsp__real_to_str(
                 goto donez;
             bits /= 1000;
         }
-        n = (stbsp__uint32)bits;
+        n = (prb_stbsp__uint32)bits;
         while ((n % 1000) == 0)
             n /= 1000;
         bits = n;
@@ -4574,19 +4574,19 @@ stbsp__real_to_str(
     out += 64;
     e = 0;
     for (;;) {
-        stbsp__uint32 n;
+        prb_stbsp__uint32 n;
         char*         o = out - 8;
         // do the conversion in chunks of U32s (avoid most 64-bit divides, worth it, constant denomiators be damned)
         if (bits >= 100000000) {
-            n = (stbsp__uint32)(bits % 100000000);
+            n = (prb_stbsp__uint32)(bits % 100000000);
             bits /= 100000000;
         } else {
-            n = (stbsp__uint32)bits;
+            n = (prb_stbsp__uint32)bits;
             bits = 0;
         }
         while (n) {
             out -= 2;
-            *(stbsp__uint16*)out = *(stbsp__uint16*)&stbsp__digitpair.pair[(n % 100) * 2];
+            *(prb_stbsp__uint16*)out = *(prb_stbsp__uint16*)&prb_stbsp__digitpair.pair[(n % 100) * 2];
             n /= 100;
             e += 2;
         }
@@ -4609,113 +4609,113 @@ stbsp__real_to_str(
     return ng;
 }
 
-#undef stbsp__ddmulthi
-#undef stbsp__ddrenorm
-#undef stbsp__ddmultlo
-#undef stbsp__ddmultlos
-#undef STBSP__SPECIAL
-#undef STBSP__COPYFP
+#undef prb_stbsp__ddmulthi
+#undef prb_stbsp__ddrenorm
+#undef prb_stbsp__ddmultlo
+#undef prb_stbsp__ddmultlos
+#undef prb_STBSP__SPECIAL
+#undef prb_STBSP__COPYFP
 
-#endif  // STB_SPRINTF_NOFLOAT
+#endif  // prb_STB_SPRINTF_NOFLOAT
 
 // clean up
-#undef stbsp__uint16
-#undef stbsp__uint32
-#undef stbsp__int32
-#undef stbsp__uint64
-#undef stbsp__int64
-#undef STBSP__UNALIGNED
+#undef prb_stbsp__uint16
+#undef prb_stbsp__uint32
+#undef prb_stbsp__int32
+#undef prb_stbsp__uint64
+#undef prb_stbsp__int64
+#undef prb_STBSP__UNALIGNED
 
 //
 // SECTION stb ds (implementation)
 //
 
-#define STBDS_ASSERT(x) prb_assert(x)
+#define prb_STBDS_ASSERT(x) prb_assert(x)
 
-#ifdef STBDS_STATISTICS
-#define STBDS_STATS(x) x
-size_t stbds_array_grow;
-size_t stbds_hash_grow;
-size_t stbds_hash_shrink;
-size_t stbds_hash_rebuild;
-size_t stbds_hash_probes;
-size_t stbds_hash_alloc;
-size_t stbds_rehash_probes;
-size_t stbds_rehash_items;
+#ifdef prb_STBDS_STATISTICS
+#define prb_STBDS_STATS(x) x
+size_t prb_stbds_array_grow;
+size_t prb_stbds_hash_grow;
+size_t prb_stbds_hash_shrink;
+size_t prb_stbds_hash_rebuild;
+size_t prb_stbds_hash_probes;
+size_t prb_stbds_hash_alloc;
+size_t prb_stbds_rehash_probes;
+size_t prb_stbds_rehash_items;
 #else
-#define STBDS_STATS(x)
+#define prb_STBDS_STATS(x)
 #endif
 
 //
-// stbds_arr implementation
+// prb_stbds_arr implementation
 //
 
 //int *prev_allocs[65536];
 //int num_prev;
 
-STBDS__PUBLICDEF void*
-stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap) {
-    stbds_array_header temp = {};  // force debugging
+prb_STBDS__PUBLICDEF void*
+prb_stbds_arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap) {
+    prb_stbds_array_header temp = {};  // force debugging
     void*              b;
-    size_t             min_len = stbds_arrlen(a) + addlen;
+    size_t             min_len = prb_stbds_arrlen(a) + addlen;
     (void)sizeof(temp);
 
     // compute the minimum capacity needed
     if (min_len > min_cap)
         min_cap = min_len;
 
-    if (min_cap <= stbds_arrcap(a))
+    if (min_cap <= prb_stbds_arrcap(a))
         return a;
 
     // increase needed capacity to guarantee O(1) amortized
-    if (min_cap < 2 * stbds_arrcap(a))
-        min_cap = 2 * stbds_arrcap(a);
+    if (min_cap < 2 * prb_stbds_arrcap(a))
+        min_cap = 2 * prb_stbds_arrcap(a);
     else if (min_cap < 4)
         min_cap = 4;
 
     //if (num_prev < 65536) if (a) prev_allocs[num_prev++] = (int *) ((char *) a+1);
     //if (num_prev == 2201)
     //  num_prev = num_prev;
-    b = STBDS_REALLOC(NULL, (a) ? stbds_header(a) : 0, elemsize * min_cap + sizeof(stbds_array_header));
+    b = prb_STBDS_REALLOC(NULL, (a) ? prb_stbds_header(a) : 0, elemsize * min_cap + sizeof(prb_stbds_array_header));
     //if (num_prev < 65536) prev_allocs[num_prev++] = (int *) (char *) b;
-    b = (char*)b + sizeof(stbds_array_header);
+    b = (char*)b + sizeof(prb_stbds_array_header);
     if (a == NULL) {
-        stbds_header(b)->length = 0;
-        stbds_header(b)->hash_table = 0;
-        stbds_header(b)->temp = 0;
+        prb_stbds_header(b)->length = 0;
+        prb_stbds_header(b)->hash_table = 0;
+        prb_stbds_header(b)->temp = 0;
     } else {
-        STBDS_STATS(++stbds_array_grow);
+        prb_STBDS_STATS(++prb_stbds_array_grow);
     }
-    stbds_header(b)->capacity = min_cap;
+    prb_stbds_header(b)->capacity = min_cap;
 
     return b;
 }
 
-STBDS__PUBLICDEF void
-stbds_arrfreef(void* a) {
-    STBDS_FREE(NULL, stbds_header(a));
+prb_STBDS__PUBLICDEF void
+prb_stbds_arrfreef(void* a) {
+    prb_STBDS_FREE(NULL, prb_stbds_header(a));
 }
 
 //
 // stbds_hm hash table implementation
 //
 
-#ifdef STBDS_INTERNAL_SMALL_BUCKET
-#define STBDS_BUCKET_LENGTH 4
+#ifdef prb_STBDS_INTERNAL_SMALL_BUCKET
+#define prb_STBDS_BUCKET_LENGTH 4
 #else
-#define STBDS_BUCKET_LENGTH 8
+#define prb_STBDS_BUCKET_LENGTH 8
 #endif
 
-#define STBDS_BUCKET_SHIFT (STBDS_BUCKET_LENGTH == 8 ? 3 : 2)
-#define STBDS_BUCKET_MASK (STBDS_BUCKET_LENGTH - 1)
-#define STBDS_CACHE_LINE_SIZE 64
+#define prb_STBDS_BUCKET_SHIFT (prb_STBDS_BUCKET_LENGTH == 8 ? 3 : 2)
+#define prb_STBDS_BUCKET_MASK (prb_STBDS_BUCKET_LENGTH - 1)
+#define prb_STBDS_CACHE_LINE_SIZE 64
 
-#define STBDS_ALIGN_FWD(n, a) (((n) + (a)-1) & ~((a)-1))
+#define prb_STBDS_ALIGN_FWD(n, a) (((n) + (a)-1) & ~((a)-1))
 
 typedef struct {
-    size_t    hash[STBDS_BUCKET_LENGTH];
-    ptrdiff_t index[STBDS_BUCKET_LENGTH];
-} stbds_hash_bucket;  // in 32-bit, this is one 64-byte cache line; in 64-bit, each array is one 64-byte cache line
+    size_t    hash[prb_STBDS_BUCKET_LENGTH];
+    ptrdiff_t index[prb_STBDS_BUCKET_LENGTH];
+} prb_stbds_hash_bucket;  // in 32-bit, this is one 64-byte cache line; in 64-bit, each array is one 64-byte cache line
 
 typedef struct {
     char*              temp_key;  // this MUST be the first field of the hash table
@@ -4727,44 +4727,44 @@ typedef struct {
     size_t             tombstone_count_threshold;
     size_t             seed;
     size_t             slot_count_log2;
-    stbds_string_arena string;
-    stbds_hash_bucket* storage;  // not a separate allocation, just 64-byte aligned storage after this struct
-} stbds_hash_index;
+    prb_stbds_string_arena string;
+    prb_stbds_hash_bucket* storage;  // not a separate allocation, just 64-byte aligned storage after this struct
+} prb_stbds_hash_index;
 
-#define STBDS_INDEX_EMPTY -1
-#define STBDS_INDEX_DELETED -2
-#define STBDS_INDEX_IN_USE(x) ((x) >= 0)
+#define prb_STBDS_INDEX_EMPTY -1
+#define prb_STBDS_INDEX_DELETED -2
+#define prb_STBDS_INDEX_IN_USE(x) ((x) >= 0)
 
-#define STBDS_HASH_EMPTY 0
-#define STBDS_HASH_DELETED 1
+#define prb_STBDS_HASH_EMPTY 0
+#define prb_STBDS_HASH_DELETED 1
 
-static size_t stbds_hash_seed = 0x31415926;
+static size_t prb_stbds_hash_seed = 0x31415926;
 
-STBDS__PUBLICDEF void
-stbds_rand_seed(size_t seed) {
-    stbds_hash_seed = seed;
+prb_STBDS__PUBLICDEF void
+prb_stbds_rand_seed(size_t seed) {
+    prb_stbds_hash_seed = seed;
 }
 
-#define stbds_load_32_or_64(var, temp, v32, v64_hi, v64_lo) \
+#define prb_stbds_load_32_or_64(var, temp, v32, v64_hi, v64_lo) \
     temp = v64_lo ^ v32, temp <<= 16, temp <<= 16, temp >>= 16, temp >>= 16, /* discard if 32-bit */ \
         var = v64_hi, var <<= 16, var <<= 16, /* discard if 32-bit */ \
         var ^= temp ^ v32
 
-#define STBDS_SIZE_T_BITS ((sizeof(size_t)) * 8)
+#define prb_STBDS_SIZE_T_BITS ((sizeof(size_t)) * 8)
 
 static size_t
-stbds_probe_position(size_t hash, size_t slot_count, size_t slot_log2) {
+prb_stbds_probe_position(size_t hash, size_t slot_count, size_t slot_log2) {
     size_t pos;
-    STBDS_NOTUSED(slot_log2);
+    prb_STBDS_NOTUSED(slot_log2);
     pos = hash & (slot_count - 1);
-#ifdef STBDS_INTERNAL_BUCKET_START
-    pos &= ~STBDS_BUCKET_MASK;
+#ifdef prb_STBDS_INTERNAL_BUCKET_START
+    pos &= ~prb_STBDS_BUCKET_MASK;
 #endif
     return pos;
 }
 
 static size_t
-stbds_log2(size_t slot_count) {
+prb_stbds_log2(size_t slot_count) {
     size_t n = 0;
     while (slot_count > 1) {
         slot_count >>= 1;
@@ -4773,18 +4773,18 @@ stbds_log2(size_t slot_count) {
     return n;
 }
 
-static stbds_hash_index*
-stbds_make_hash_index(size_t slot_count, stbds_hash_index* ot) {
-    stbds_hash_index* t;
-    t = (stbds_hash_index*)STBDS_REALLOC(
+static prb_stbds_hash_index*
+prb_stbds_make_hash_index(size_t slot_count, prb_stbds_hash_index* ot) {
+    prb_stbds_hash_index* t;
+    t = (prb_stbds_hash_index*)prb_STBDS_REALLOC(
         NULL,
         0,
-        (slot_count >> STBDS_BUCKET_SHIFT) * sizeof(stbds_hash_bucket) + sizeof(stbds_hash_index)
-            + STBDS_CACHE_LINE_SIZE - 1
+        (slot_count >> prb_STBDS_BUCKET_SHIFT) * sizeof(prb_stbds_hash_bucket) + sizeof(prb_stbds_hash_index)
+            + prb_STBDS_CACHE_LINE_SIZE - 1
     );
-    t->storage = (stbds_hash_bucket*)STBDS_ALIGN_FWD((size_t)(t + 1), STBDS_CACHE_LINE_SIZE);
+    t->storage = (prb_stbds_hash_bucket*)prb_STBDS_ALIGN_FWD((size_t)(t + 1), prb_STBDS_CACHE_LINE_SIZE);
     t->slot_count = slot_count;
-    t->slot_count_log2 = stbds_log2(slot_count);
+    t->slot_count_log2 = prb_stbds_log2(slot_count);
     t->tombstone_count = 0;
     t->used_count = 0;
 
@@ -4826,11 +4826,11 @@ stbds_make_hash_index(size_t slot_count, stbds_hash_index* ot) {
     //  118.61ms :   119.62ms :   120.16ms :   118.86ms : 500,000 inserts & deletes in 20M table
     //  192.11ms :   194.39ms :   196.38ms :   195.73ms : 500,000 inserts & deletes in 200M table
 
-    if (slot_count <= STBDS_BUCKET_LENGTH)
+    if (slot_count <= prb_STBDS_BUCKET_LENGTH)
         t->used_count_shrink_threshold = 0;
     // to avoid infinite loop, we need to guarantee that at least one slot is empty and will terminate probes
-    STBDS_ASSERT(t->used_count_threshold + t->tombstone_count_threshold < t->slot_count);
-    STBDS_STATS(++stbds_hash_alloc);
+    prb_STBDS_ASSERT(t->used_count_threshold + t->tombstone_count_threshold < t->slot_count);
+    prb_STBDS_STATS(++prb_stbds_hash_alloc);
     if (ot) {
         t->string = ot->string;
         // reuse old seed so we can reuse old hashes so below "copy out old data" doesn't do any hashing
@@ -4838,23 +4838,23 @@ stbds_make_hash_index(size_t slot_count, stbds_hash_index* ot) {
     } else {
         size_t a, b, temp;
         prb_memset(&t->string, 0, sizeof(t->string));
-        t->seed = stbds_hash_seed;
+        t->seed = prb_stbds_hash_seed;
         // LCG
         // in 32-bit, a =          2147001325   b =  715136305
         // in 64-bit, a = 2862933555777941757   b = 3037000493
-        stbds_load_32_or_64(a, temp, 2147001325, 0x27bb2ee6, 0x87b0b0fd);
-        stbds_load_32_or_64(b, temp, 715136305, 0, 0xb504f32d);
-        stbds_hash_seed = stbds_hash_seed * a + b;
+        prb_stbds_load_32_or_64(a, temp, 2147001325, 0x27bb2ee6, 0x87b0b0fd);
+        prb_stbds_load_32_or_64(b, temp, 715136305, 0, 0xb504f32d);
+        prb_stbds_hash_seed = prb_stbds_hash_seed * a + b;
     }
 
     {
         size_t i, j;
-        for (i = 0; i < slot_count >> STBDS_BUCKET_SHIFT; ++i) {
-            stbds_hash_bucket* b = &t->storage[i];
-            for (j = 0; j < STBDS_BUCKET_LENGTH; ++j)
-                b->hash[j] = STBDS_HASH_EMPTY;
-            for (j = 0; j < STBDS_BUCKET_LENGTH; ++j)
-                b->index[j] = STBDS_INDEX_EMPTY;
+        for (i = 0; i < slot_count >> prb_STBDS_BUCKET_SHIFT; ++i) {
+            prb_stbds_hash_bucket* b = &t->storage[i];
+            for (j = 0; j < prb_STBDS_BUCKET_LENGTH; ++j)
+                b->hash[j] = prb_STBDS_HASH_EMPTY;
+            for (j = 0; j < prb_STBDS_BUCKET_LENGTH; ++j)
+                b->index[j] = prb_STBDS_INDEX_EMPTY;
         }
     }
 
@@ -4862,21 +4862,21 @@ stbds_make_hash_index(size_t slot_count, stbds_hash_index* ot) {
     if (ot) {
         size_t i, j;
         t->used_count = ot->used_count;
-        for (i = 0; i < ot->slot_count >> STBDS_BUCKET_SHIFT; ++i) {
-            stbds_hash_bucket* ob = &ot->storage[i];
-            for (j = 0; j < STBDS_BUCKET_LENGTH; ++j) {
-                if (STBDS_INDEX_IN_USE(ob->index[j])) {
+        for (i = 0; i < ot->slot_count >> prb_STBDS_BUCKET_SHIFT; ++i) {
+            prb_stbds_hash_bucket* ob = &ot->storage[i];
+            for (j = 0; j < prb_STBDS_BUCKET_LENGTH; ++j) {
+                if (prb_STBDS_INDEX_IN_USE(ob->index[j])) {
                     size_t hash = ob->hash[j];
-                    size_t pos = stbds_probe_position(hash, t->slot_count, t->slot_count_log2);
-                    size_t step = STBDS_BUCKET_LENGTH;
-                    STBDS_STATS(++stbds_rehash_items);
+                    size_t pos = prb_stbds_probe_position(hash, t->slot_count, t->slot_count_log2);
+                    size_t step = prb_STBDS_BUCKET_LENGTH;
+                    prb_STBDS_STATS(++prb_stbds_rehash_items);
                     for (;;) {
                         size_t             limit, z;
-                        stbds_hash_bucket* bucket;
-                        bucket = &t->storage[pos >> STBDS_BUCKET_SHIFT];
-                        STBDS_STATS(++stbds_rehash_probes);
+                        prb_stbds_hash_bucket* bucket;
+                        bucket = &t->storage[pos >> prb_STBDS_BUCKET_SHIFT];
+                        prb_STBDS_STATS(++prb_stbds_rehash_probes);
 
-                        for (z = pos & STBDS_BUCKET_MASK; z < STBDS_BUCKET_LENGTH; ++z) {
+                        for (z = pos & prb_STBDS_BUCKET_MASK; z < prb_STBDS_BUCKET_LENGTH; ++z) {
                             if (bucket->hash[z] == 0) {
                                 bucket->hash[z] = hash;
                                 bucket->index[z] = ob->index[j];
@@ -4884,7 +4884,7 @@ stbds_make_hash_index(size_t slot_count, stbds_hash_index* ot) {
                             }
                         }
 
-                        limit = pos & STBDS_BUCKET_MASK;
+                        limit = pos & prb_STBDS_BUCKET_MASK;
                         for (z = 0; z < limit; ++z) {
                             if (bucket->hash[z] == 0) {
                                 bucket->hash[z] = hash;
@@ -4894,7 +4894,7 @@ stbds_make_hash_index(size_t slot_count, stbds_hash_index* ot) {
                         }
 
                         pos += step;  // quadratic probing
-                        step += STBDS_BUCKET_LENGTH;
+                        step += prb_STBDS_BUCKET_LENGTH;
                         pos &= (t->slot_count - 1);
                     }
                 }
@@ -4906,37 +4906,37 @@ stbds_make_hash_index(size_t slot_count, stbds_hash_index* ot) {
     return t;
 }
 
-#define STBDS_ROTATE_LEFT(val, n) (((val) << (n)) | ((val) >> (STBDS_SIZE_T_BITS - (n))))
-#define STBDS_ROTATE_RIGHT(val, n) (((val) >> (n)) | ((val) << (STBDS_SIZE_T_BITS - (n))))
+#define prb_STBDS_ROTATE_LEFT(val, n) (((val) << (n)) | ((val) >> (prb_STBDS_SIZE_T_BITS - (n))))
+#define prb_STBDS_ROTATE_RIGHT(val, n) (((val) >> (n)) | ((val) << (prb_STBDS_SIZE_T_BITS - (n))))
 
-STBDS__PUBLICDEF size_t
-stbds_hash_string(char* str, size_t seed) {
+prb_STBDS__PUBLICDEF size_t
+prb_stbds_hash_string(char* str, size_t seed) {
     size_t hash = seed;
     while (*str)
-        hash = STBDS_ROTATE_LEFT(hash, 9) + (unsigned char)*str++;
+        hash = prb_STBDS_ROTATE_LEFT(hash, 9) + (unsigned char)*str++;
 
     // Thomas Wang 64-to-32 bit mix function, hopefully also works in 32 bits
     hash ^= seed;
     hash = (~hash) + (hash << 18);
-    hash ^= hash ^ STBDS_ROTATE_RIGHT(hash, 31);
+    hash ^= hash ^ prb_STBDS_ROTATE_RIGHT(hash, 31);
     hash = hash * 21;
-    hash ^= hash ^ STBDS_ROTATE_RIGHT(hash, 11);
+    hash ^= hash ^ prb_STBDS_ROTATE_RIGHT(hash, 11);
     hash += (hash << 6);
-    hash ^= STBDS_ROTATE_RIGHT(hash, 22);
+    hash ^= prb_STBDS_ROTATE_RIGHT(hash, 22);
     return hash + seed;
 }
 
-#ifdef STBDS_SIPHASH_2_4
-#define STBDS_SIPHASH_C_ROUNDS 2
-#define STBDS_SIPHASH_D_ROUNDS 4
-typedef int STBDS_SIPHASH_2_4_can_only_be_used_in_64_bit_builds[sizeof(size_t) == 8 ? 1 : -1];
+#ifdef prb_STBDS_SIPHASH_2_4
+#define prb_STBDS_SIPHASH_C_ROUNDS 2
+#define prb_STBDS_SIPHASH_D_ROUNDS 4
+typedef int prb_STBDS_SIPHASH_2_4_can_only_be_used_in_64_bit_builds[sizeof(size_t) == 8 ? 1 : -1];
 #endif
 
-#ifndef STBDS_SIPHASH_C_ROUNDS
-#define STBDS_SIPHASH_C_ROUNDS 1
+#ifndef prb_STBDS_SIPHASH_C_ROUNDS
+#define prb_STBDS_SIPHASH_C_ROUNDS 1
 #endif
-#ifndef STBDS_SIPHASH_D_ROUNDS
-#define STBDS_SIPHASH_D_ROUNDS 1
+#ifndef prb_STBDS_SIPHASH_D_ROUNDS
+#define prb_STBDS_SIPHASH_D_ROUNDS 1
 #endif
 
 #ifdef _MSC_VER
@@ -4945,7 +4945,7 @@ typedef int STBDS_SIPHASH_2_4_can_only_be_used_in_64_bit_builds[sizeof(size_t) =
 #endif
 
 static size_t
-stbds_siphash_bytes(void* p, size_t len, size_t seed) {
+prb_stbds_siphash_bytes(void* p, size_t len, size_t seed) {
     unsigned char* d = (unsigned char*)p;
     size_t         i, j;
     size_t         v0, v1, v2, v3, data;
@@ -4958,7 +4958,7 @@ stbds_siphash_bytes(void* p, size_t len, size_t seed) {
     v2 = ((((size_t)0x6c796765 << 16) << 16) + 0x6e657261) ^ seed;
     v3 = ((((size_t)0x74656462 << 16) << 16) + 0x79746573) ^ ~seed;
 
-#ifdef STBDS_TEST_SIPHASH_2_4
+#ifdef prb_STBDS_TEST_SIPHASH_2_4
     // hardcoded with key material in the siphash test vectors
     v0 ^= 0x0706050403020100ull ^ seed;
     v1 ^= 0x0f0e0d0c0b0a0908ull ^ ~seed;
@@ -4966,21 +4966,21 @@ stbds_siphash_bytes(void* p, size_t len, size_t seed) {
     v3 ^= 0x0f0e0d0c0b0a0908ull ^ ~seed;
 #endif
 
-#define STBDS_SIPROUND() \
+#define prb_STBDS_SIPROUND() \
     do { \
         v0 += v1; \
-        v1 = STBDS_ROTATE_LEFT(v1, 13); \
+        v1 = prb_STBDS_ROTATE_LEFT(v1, 13); \
         v1 ^= v0; \
-        v0 = STBDS_ROTATE_LEFT(v0, STBDS_SIZE_T_BITS / 2); \
+        v0 = prb_STBDS_ROTATE_LEFT(v0, prb_STBDS_SIZE_T_BITS / 2); \
         v2 += v3; \
-        v3 = STBDS_ROTATE_LEFT(v3, 16); \
+        v3 = prb_STBDS_ROTATE_LEFT(v3, 16); \
         v3 ^= v2; \
         v2 += v1; \
-        v1 = STBDS_ROTATE_LEFT(v1, 17); \
+        v1 = prb_STBDS_ROTATE_LEFT(v1, 17); \
         v1 ^= v2; \
-        v2 = STBDS_ROTATE_LEFT(v2, STBDS_SIZE_T_BITS / 2); \
+        v2 = prb_STBDS_ROTATE_LEFT(v2, prb_STBDS_SIZE_T_BITS / 2); \
         v0 += v3; \
-        v3 = STBDS_ROTATE_LEFT(v3, 21); \
+        v3 = prb_STBDS_ROTATE_LEFT(v3, 21); \
         v3 ^= v0; \
     } while (0)
 
@@ -4989,11 +4989,11 @@ stbds_siphash_bytes(void* p, size_t len, size_t seed) {
         data |= (size_t)(d[4] | (d[5] << 8) | (d[6] << 16) | (d[7] << 24)) << 16 << 16;  // discarded if size_t == 4
 
         v3 ^= data;
-        for (j = 0; j < STBDS_SIPHASH_C_ROUNDS; ++j)
-            STBDS_SIPROUND();
+        for (j = 0; j < prb_STBDS_SIPHASH_C_ROUNDS; ++j)
+            prb_STBDS_SIPROUND();
         v0 ^= data;
     }
-    data = len << (STBDS_SIZE_T_BITS - 8);
+    data = len << (prb_STBDS_SIZE_T_BITS - 8);
     switch (len - i) {
         case 7: data |= ((size_t)d[6] << 24) << 24;  // fall through
         case 6: data |= ((size_t)d[5] << 20) << 20;  // fall through
@@ -5005,14 +5005,14 @@ stbds_siphash_bytes(void* p, size_t len, size_t seed) {
         case 0: break;
     }
     v3 ^= data;
-    for (j = 0; j < STBDS_SIPHASH_C_ROUNDS; ++j)
-        STBDS_SIPROUND();
+    for (j = 0; j < prb_STBDS_SIPHASH_C_ROUNDS; ++j)
+        prb_STBDS_SIPROUND();
     v0 ^= data;
     v2 ^= 0xff;
-    for (j = 0; j < STBDS_SIPHASH_D_ROUNDS; ++j)
-        STBDS_SIPROUND();
+    for (j = 0; j < prb_STBDS_SIPHASH_D_ROUNDS; ++j)
+        prb_STBDS_SIPROUND();
 
-#ifdef STBDS_SIPHASH_2_4
+#ifdef prb_STBDS_SIPHASH_2_4
     return v0 ^ v1 ^ v2 ^ v3;
 #else
     return v1 ^ v2
@@ -5020,10 +5020,10 @@ stbds_siphash_bytes(void* p, size_t len, size_t seed) {
 #endif
 }
 
-STBDS__PUBLICDEF size_t
-stbds_hash_bytes(void* p, size_t len, size_t seed) {
-#ifdef STBDS_SIPHASH_2_4
-    return stbds_siphash_bytes(p, len, seed);
+prb_STBDS__PUBLICDEF size_t
+prb_stbds_hash_bytes(void* p, size_t len, size_t seed) {
+#ifdef prb_STBDS_SIPHASH_2_4
+    return prb_stbds_siphash_bytes(p, len, seed);
 #else
     unsigned char* d = (unsigned char*)p;
 
@@ -5088,17 +5088,17 @@ stbds_hash_bytes(void* p, size_t len, size_t seed) {
         hash |= (size_t)(d[4] | (d[5] << 8) | (d[6] << 16) | (d[7] << 24)) << 16 << 16;  // avoid warning if size_t == 4
         hash ^= seed;
         hash = (~hash) + (hash << 21);
-        hash ^= STBDS_ROTATE_RIGHT(hash, 24);
+        hash ^= prb_STBDS_ROTATE_RIGHT(hash, 24);
         hash *= 265;
-        hash ^= STBDS_ROTATE_RIGHT(hash, 14);
+        hash ^= prb_STBDS_ROTATE_RIGHT(hash, 14);
         hash ^= seed;
         hash *= 21;
-        hash ^= STBDS_ROTATE_RIGHT(hash, 28);
+        hash ^= prb_STBDS_ROTATE_RIGHT(hash, 28);
         hash += (hash << 31);
         hash = (~hash) + (hash << 18);
         return hash;
     } else {
-        return stbds_siphash_bytes(p, len, seed);
+        return prb_stbds_siphash_bytes(p, len, seed);
     }
 #endif
 }
@@ -5107,235 +5107,235 @@ stbds_hash_bytes(void* p, size_t len, size_t seed) {
 #endif
 
 static int
-stbds_is_key_equal(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode, size_t i) {
-    if (mode >= STBDS_HM_STRING)
+prb_stbds_is_key_equal(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode, size_t i) {
+    if (mode >= prb_STBDS_HM_STRING)
         return 0 == prb_strcmp((char*)key, *(char**)((char*)a + elemsize * i + keyoffset));
     else
         return prb_memeq(key, (char*)a + elemsize * i + keyoffset, keysize);
 }
 
-#define STBDS_HASH_TO_ARR(x, elemsize) ((char*)(x) - (elemsize))
-#define STBDS_ARR_TO_HASH(x, elemsize) ((char*)(x) + (elemsize))
+#define prb_STBDS_HASH_TO_ARR(x, elemsize) ((char*)(x) - (elemsize))
+#define prb_STBDS_ARR_TO_HASH(x, elemsize) ((char*)(x) + (elemsize))
 
-#define stbds_hash_table(a) ((stbds_hash_index*)stbds_header(a)->hash_table)
+#define prb_stbds_hash_table(a) ((prb_stbds_hash_index*)prb_stbds_header(a)->hash_table)
 
-STBDS__PUBLICDEF void
-stbds_hmfree_func(void* a, size_t elemsize) {
-    STBDS_NOTUSED(elemsize);
+prb_STBDS__PUBLICDEF void
+prb_stbds_hmfree_func(void* a, size_t elemsize) {
+    prb_STBDS_NOTUSED(elemsize);
     if (a == NULL)
         return;
-    if (stbds_hash_table(a) != NULL) {
-        if (stbds_hash_table(a)->string.mode == STBDS_SH_STRDUP) {
+    if (prb_stbds_hash_table(a) != NULL) {
+        if (prb_stbds_hash_table(a)->string.mode == prb_STBDS_SH_STRDUP) {
             size_t i;
             // skip 0th element, which is default
-            for (i = 1; i < stbds_header(a)->length; ++i)
-                STBDS_FREE(NULL, *(char**)((char*)a + elemsize * i));
+            for (i = 1; i < prb_stbds_header(a)->length; ++i)
+                prb_STBDS_FREE(NULL, *(char**)((char*)a + elemsize * i));
         }
-        stbds_strreset(&stbds_hash_table(a)->string);
+        prb_stbds_strreset(&prb_stbds_hash_table(a)->string);
     }
-    STBDS_FREE(NULL, stbds_header(a)->hash_table);
-    STBDS_FREE(NULL, stbds_header(a));
+    prb_STBDS_FREE(NULL, prb_stbds_header(a)->hash_table);
+    prb_STBDS_FREE(NULL, prb_stbds_header(a));
 }
 
 static ptrdiff_t
-stbds_hm_find_slot(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode) {
-    void*              raw_a = STBDS_HASH_TO_ARR(a, elemsize);
-    stbds_hash_index*  table = stbds_hash_table(raw_a);
-    size_t             hash = mode >= STBDS_HM_STRING ? stbds_hash_string((char*)key, table->seed)
-                                                      : stbds_hash_bytes(key, keysize, table->seed);
-    size_t             step = STBDS_BUCKET_LENGTH;
+prb_stbds_hm_find_slot(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode) {
+    void*              raw_a = prb_STBDS_HASH_TO_ARR(a, elemsize);
+    prb_stbds_hash_index*  table = prb_stbds_hash_table(raw_a);
+    size_t             hash = mode >= prb_STBDS_HM_STRING ? prb_stbds_hash_string((char*)key, table->seed)
+                                                      : prb_stbds_hash_bytes(key, keysize, table->seed);
+    size_t             step = prb_STBDS_BUCKET_LENGTH;
     size_t             limit, i;
     size_t             pos;
-    stbds_hash_bucket* bucket;
+    prb_stbds_hash_bucket* bucket;
 
     if (hash < 2)
         hash += 2;  // stored hash values are forbidden from being 0, so we can detect empty slots
 
-    pos = stbds_probe_position(hash, table->slot_count, table->slot_count_log2);
+    pos = prb_stbds_probe_position(hash, table->slot_count, table->slot_count_log2);
 
     for (;;) {
-        STBDS_STATS(++stbds_hash_probes);
-        bucket = &table->storage[pos >> STBDS_BUCKET_SHIFT];
+        prb_STBDS_STATS(++prb_stbds_hash_probes);
+        bucket = &table->storage[pos >> prb_STBDS_BUCKET_SHIFT];
 
         // start searching from pos to end of bucket, this should help performance on small hash tables that fit in cache
-        for (i = pos & STBDS_BUCKET_MASK; i < STBDS_BUCKET_LENGTH; ++i) {
+        for (i = pos & prb_STBDS_BUCKET_MASK; i < prb_STBDS_BUCKET_LENGTH; ++i) {
             if (bucket->hash[i] == hash) {
-                if (stbds_is_key_equal(a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
-                    return (pos & ~STBDS_BUCKET_MASK) + i;
+                if (prb_stbds_is_key_equal(a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+                    return (pos & ~prb_STBDS_BUCKET_MASK) + i;
                 }
-            } else if (bucket->hash[i] == STBDS_HASH_EMPTY) {
+            } else if (bucket->hash[i] == prb_STBDS_HASH_EMPTY) {
                 return -1;
             }
         }
 
         // search from beginning of bucket to pos
-        limit = pos & STBDS_BUCKET_MASK;
+        limit = pos & prb_STBDS_BUCKET_MASK;
         for (i = 0; i < limit; ++i) {
             if (bucket->hash[i] == hash) {
-                if (stbds_is_key_equal(a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
-                    return (pos & ~STBDS_BUCKET_MASK) + i;
+                if (prb_stbds_is_key_equal(a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+                    return (pos & ~prb_STBDS_BUCKET_MASK) + i;
                 }
-            } else if (bucket->hash[i] == STBDS_HASH_EMPTY) {
+            } else if (bucket->hash[i] == prb_STBDS_HASH_EMPTY) {
                 return -1;
             }
         }
 
         // quadratic probing
         pos += step;
-        step += STBDS_BUCKET_LENGTH;
+        step += prb_STBDS_BUCKET_LENGTH;
         pos &= (table->slot_count - 1);
     }
     /* NOTREACHED */
 }
 
-STBDS__PUBLICDEF void*
-stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode) {
+prb_STBDS__PUBLICDEF void*
+prb_stbds_hmget_key_ts(void* a, size_t elemsize, void* key, size_t keysize, ptrdiff_t* temp, int mode) {
     size_t keyoffset = 0;
     if (a == NULL) {
         // make it non-empty so we can return a temp
-        a = stbds_arrgrowf(0, elemsize, 0, 1);
-        stbds_header(a)->length += 1;
+        a = prb_stbds_arrgrowf(0, elemsize, 0, 1);
+        prb_stbds_header(a)->length += 1;
         prb_memset(a, 0, elemsize);
-        *temp = STBDS_INDEX_EMPTY;
+        *temp = prb_STBDS_INDEX_EMPTY;
         // adjust a to point after the default element
-        return STBDS_ARR_TO_HASH(a, elemsize);
+        return prb_STBDS_ARR_TO_HASH(a, elemsize);
     } else {
-        stbds_hash_index* table;
-        void*             raw_a = STBDS_HASH_TO_ARR(a, elemsize);
+        prb_stbds_hash_index* table;
+        void*             raw_a = prb_STBDS_HASH_TO_ARR(a, elemsize);
         // adjust a to point to the default element
-        table = (stbds_hash_index*)stbds_header(raw_a)->hash_table;
+        table = (prb_stbds_hash_index*)prb_stbds_header(raw_a)->hash_table;
         if (table == 0) {
             *temp = -1;
         } else {
-            ptrdiff_t slot = stbds_hm_find_slot(a, elemsize, key, keysize, keyoffset, mode);
+            ptrdiff_t slot = prb_stbds_hm_find_slot(a, elemsize, key, keysize, keyoffset, mode);
             if (slot < 0) {
-                *temp = STBDS_INDEX_EMPTY;
+                *temp = prb_STBDS_INDEX_EMPTY;
             } else {
-                stbds_hash_bucket* b = &table->storage[slot >> STBDS_BUCKET_SHIFT];
-                *temp = b->index[slot & STBDS_BUCKET_MASK];
+                prb_stbds_hash_bucket* b = &table->storage[slot >> prb_STBDS_BUCKET_SHIFT];
+                *temp = b->index[slot & prb_STBDS_BUCKET_MASK];
             }
         }
         return a;
     }
 }
 
-STBDS__PUBLICDEF void*
-stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
+prb_STBDS__PUBLICDEF void*
+prb_stbds_hmget_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
     ptrdiff_t temp;
-    void*     p = stbds_hmget_key_ts(a, elemsize, key, keysize, &temp, mode);
-    stbds_temp(STBDS_HASH_TO_ARR(p, elemsize)) = temp;
+    void*     p = prb_stbds_hmget_key_ts(a, elemsize, key, keysize, &temp, mode);
+    prb_stbds_temp(prb_STBDS_HASH_TO_ARR(p, elemsize)) = temp;
     return p;
 }
 
-STBDS__PUBLICDEF void*
-stbds_hmput_default(void* a, size_t elemsize) {
+prb_STBDS__PUBLICDEF void*
+prb_stbds_hmput_default(void* a, size_t elemsize) {
     // three cases:
     //   a is NULL <- allocate
     //   a has a hash table but no entries, because of shmode <- grow
     //   a has entries <- do nothing
-    if (a == NULL || stbds_header(STBDS_HASH_TO_ARR(a, elemsize))->length == 0) {
-        a = stbds_arrgrowf(a ? STBDS_HASH_TO_ARR(a, elemsize) : NULL, elemsize, 0, 1);
-        stbds_header(a)->length += 1;
+    if (a == NULL || prb_stbds_header(prb_STBDS_HASH_TO_ARR(a, elemsize))->length == 0) {
+        a = prb_stbds_arrgrowf(a ? prb_STBDS_HASH_TO_ARR(a, elemsize) : NULL, elemsize, 0, 1);
+        prb_stbds_header(a)->length += 1;
         prb_memset(a, 0, elemsize);
-        a = STBDS_ARR_TO_HASH(a, elemsize);
+        a = prb_STBDS_ARR_TO_HASH(a, elemsize);
     }
     return a;
 }
 
-static char* stbds_strdup(char* str);
+static char* prb_stbds_strdup(char* str);
 
-STBDS__PUBLICDEF void*
-stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
+prb_STBDS__PUBLICDEF void*
+prb_stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
     size_t            keyoffset = 0;
     void*             raw_a;
-    stbds_hash_index* table;
+    prb_stbds_hash_index* table;
 
     if (a == NULL) {
-        a = stbds_arrgrowf(0, elemsize, 0, 1);
+        a = prb_stbds_arrgrowf(0, elemsize, 0, 1);
         prb_memset(a, 0, elemsize);
-        stbds_header(a)->length += 1;
+        prb_stbds_header(a)->length += 1;
         // adjust a to point AFTER the default element
-        a = STBDS_ARR_TO_HASH(a, elemsize);
+        a = prb_STBDS_ARR_TO_HASH(a, elemsize);
     }
 
     // adjust a to point to the default element
     raw_a = a;
-    a = STBDS_HASH_TO_ARR(a, elemsize);
+    a = prb_STBDS_HASH_TO_ARR(a, elemsize);
 
-    table = (stbds_hash_index*)stbds_header(a)->hash_table;
+    table = (prb_stbds_hash_index*)prb_stbds_header(a)->hash_table;
 
     if (table == NULL || table->used_count >= table->used_count_threshold) {
-        stbds_hash_index* nt;
+        prb_stbds_hash_index* nt;
         size_t            slot_count;
 
-        slot_count = (table == NULL) ? STBDS_BUCKET_LENGTH : table->slot_count * 2;
-        nt = stbds_make_hash_index(slot_count, table);
+        slot_count = (table == NULL) ? prb_STBDS_BUCKET_LENGTH : table->slot_count * 2;
+        nt = prb_stbds_make_hash_index(slot_count, table);
         if (table)
-            STBDS_FREE(NULL, table);
+            prb_STBDS_FREE(NULL, table);
         else
-            nt->string.mode = mode >= STBDS_HM_STRING ? STBDS_SH_DEFAULT : 0;
-        stbds_header(a)->hash_table = table = nt;
-        STBDS_STATS(++stbds_hash_grow);
+            nt->string.mode = mode >= prb_STBDS_HM_STRING ? prb_STBDS_SH_DEFAULT : 0;
+        prb_stbds_header(a)->hash_table = table = nt;
+        prb_STBDS_STATS(++prb_stbds_hash_grow);
     }
 
     // we iterate hash table explicitly because we want to track if we saw a tombstone
     {
-        size_t             hash = mode >= STBDS_HM_STRING ? stbds_hash_string((char*)key, table->seed)
-                                                          : stbds_hash_bytes(key, keysize, table->seed);
-        size_t             step = STBDS_BUCKET_LENGTH;
+        size_t             hash = mode >= prb_STBDS_HM_STRING ? prb_stbds_hash_string((char*)key, table->seed)
+                                                          : prb_stbds_hash_bytes(key, keysize, table->seed);
+        size_t             step = prb_STBDS_BUCKET_LENGTH;
         size_t             pos;
         ptrdiff_t          tombstone = -1;
-        stbds_hash_bucket* bucket;
+        prb_stbds_hash_bucket* bucket;
 
         // stored hash values are forbidden from being 0, so we can detect empty slots to early out quickly
         if (hash < 2)
             hash += 2;
 
-        pos = stbds_probe_position(hash, table->slot_count, table->slot_count_log2);
+        pos = prb_stbds_probe_position(hash, table->slot_count, table->slot_count_log2);
 
         for (;;) {
             size_t limit, i;
-            STBDS_STATS(++stbds_hash_probes);
-            bucket = &table->storage[pos >> STBDS_BUCKET_SHIFT];
+            prb_STBDS_STATS(++prb_stbds_hash_probes);
+            bucket = &table->storage[pos >> prb_STBDS_BUCKET_SHIFT];
 
             // start searching from pos to end of bucket
-            for (i = pos & STBDS_BUCKET_MASK; i < STBDS_BUCKET_LENGTH; ++i) {
+            for (i = pos & prb_STBDS_BUCKET_MASK; i < prb_STBDS_BUCKET_LENGTH; ++i) {
                 if (bucket->hash[i] == hash) {
-                    if (stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
-                        stbds_temp(a) = bucket->index[i];
-                        if (mode >= STBDS_HM_STRING)
-                            stbds_temp_key(a) = *(char**)((char*)raw_a + elemsize * bucket->index[i] + keyoffset);
-                        return STBDS_ARR_TO_HASH(a, elemsize);
+                    if (prb_stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+                        prb_stbds_temp(a) = bucket->index[i];
+                        if (mode >= prb_STBDS_HM_STRING)
+                            prb_stbds_temp_key(a) = *(char**)((char*)raw_a + elemsize * bucket->index[i] + keyoffset);
+                        return prb_STBDS_ARR_TO_HASH(a, elemsize);
                     }
                 } else if (bucket->hash[i] == 0) {
-                    pos = (pos & ~STBDS_BUCKET_MASK) + i;
+                    pos = (pos & ~prb_STBDS_BUCKET_MASK) + i;
                     goto found_empty_slot;
                 } else if (tombstone < 0) {
-                    if (bucket->index[i] == STBDS_INDEX_DELETED)
-                        tombstone = (ptrdiff_t)((pos & ~STBDS_BUCKET_MASK) + i);
+                    if (bucket->index[i] == prb_STBDS_INDEX_DELETED)
+                        tombstone = (ptrdiff_t)((pos & ~prb_STBDS_BUCKET_MASK) + i);
                 }
             }
 
             // search from beginning of bucket to pos
-            limit = pos & STBDS_BUCKET_MASK;
+            limit = pos & prb_STBDS_BUCKET_MASK;
             for (i = 0; i < limit; ++i) {
                 if (bucket->hash[i] == hash) {
-                    if (stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
-                        stbds_temp(a) = bucket->index[i];
-                        return STBDS_ARR_TO_HASH(a, elemsize);
+                    if (prb_stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+                        prb_stbds_temp(a) = bucket->index[i];
+                        return prb_STBDS_ARR_TO_HASH(a, elemsize);
                     }
                 } else if (bucket->hash[i] == 0) {
-                    pos = (pos & ~STBDS_BUCKET_MASK) + i;
+                    pos = (pos & ~prb_STBDS_BUCKET_MASK) + i;
                     goto found_empty_slot;
                 } else if (tombstone < 0) {
-                    if (bucket->index[i] == STBDS_INDEX_DELETED)
-                        tombstone = (ptrdiff_t)((pos & ~STBDS_BUCKET_MASK) + i);
+                    if (bucket->index[i] == prb_STBDS_INDEX_DELETED)
+                        tombstone = (ptrdiff_t)((pos & ~prb_STBDS_BUCKET_MASK) + i);
                 }
             }
 
             // quadratic probing
             pos += step;
-            step += STBDS_BUCKET_LENGTH;
+            step += prb_STBDS_BUCKET_LENGTH;
             pos &= (table->slot_count - 1);
         }
     found_empty_slot:
@@ -5346,79 +5346,79 @@ stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mode) {
         ++table->used_count;
 
         {
-            ptrdiff_t i = (ptrdiff_t)stbds_arrlen(a);
-            // we want to do stbds_arraddn(1), but we can't use the macros since we don't have something of the right type
-            if ((size_t)i + 1 > stbds_arrcap(a))
-                *(void**)&a = stbds_arrgrowf(a, elemsize, 1, 0);
-            raw_a = STBDS_ARR_TO_HASH(a, elemsize);
+            ptrdiff_t i = (ptrdiff_t)prb_stbds_arrlen(a);
+            // we want to do prb_stbds_arraddn(1), but we can't use the macros since we don't have something of the right type
+            if ((size_t)i + 1 > prb_stbds_arrcap(a))
+                *(void**)&a = prb_stbds_arrgrowf(a, elemsize, 1, 0);
+            raw_a = prb_STBDS_ARR_TO_HASH(a, elemsize);
             prb_unused(raw_a);
 
-            STBDS_ASSERT((size_t)i + 1 <= stbds_arrcap(a));
-            stbds_header(a)->length = i + 1;
-            bucket = &table->storage[pos >> STBDS_BUCKET_SHIFT];
-            bucket->hash[pos & STBDS_BUCKET_MASK] = hash;
-            bucket->index[pos & STBDS_BUCKET_MASK] = i - 1;
-            stbds_temp(a) = i - 1;
+            prb_STBDS_ASSERT((size_t)i + 1 <= prb_stbds_arrcap(a));
+            prb_stbds_header(a)->length = i + 1;
+            bucket = &table->storage[pos >> prb_STBDS_BUCKET_SHIFT];
+            bucket->hash[pos & prb_STBDS_BUCKET_MASK] = hash;
+            bucket->index[pos & prb_STBDS_BUCKET_MASK] = i - 1;
+            prb_stbds_temp(a) = i - 1;
 
             switch (table->string.mode) {
-                case STBDS_SH_STRDUP:
-                    stbds_temp_key(a) = *(char**)((char*)a + elemsize * i) = stbds_strdup((char*)key);
+                case prb_STBDS_SH_STRDUP:
+                    prb_stbds_temp_key(a) = *(char**)((char*)a + elemsize * i) = prb_stbds_strdup((char*)key);
                     break;
-                case STBDS_SH_ARENA:
-                    stbds_temp_key(a) = *(char**)((char*)a + elemsize * i) = stbds_stralloc(&table->string, (char*)key);
+                case prb_STBDS_SH_ARENA:
+                    prb_stbds_temp_key(a) = *(char**)((char*)a + elemsize * i) = prb_stbds_stralloc(&table->string, (char*)key);
                     break;
-                case STBDS_SH_DEFAULT: stbds_temp_key(a) = *(char**)((char*)a + elemsize * i) = (char*)key; break;
+                case prb_STBDS_SH_DEFAULT: prb_stbds_temp_key(a) = *(char**)((char*)a + elemsize * i) = (char*)key; break;
                 default: prb_memcpy((char*)a + elemsize * i, key, keysize); break;
             }
         }
-        return STBDS_ARR_TO_HASH(a, elemsize);
+        return prb_STBDS_ARR_TO_HASH(a, elemsize);
     }
 }
 
-STBDS__PUBLICDEF void*
-stbds_shmode_func(size_t elemsize, int mode) {
-    void*             a = stbds_arrgrowf(0, elemsize, 0, 1);
-    stbds_hash_index* h;
+prb_STBDS__PUBLICDEF void*
+prb_stbds_shmode_func(size_t elemsize, int mode) {
+    void*             a = prb_stbds_arrgrowf(0, elemsize, 0, 1);
+    prb_stbds_hash_index* h;
     prb_memset(a, 0, elemsize);
-    stbds_header(a)->length = 1;
-    stbds_header(a)->hash_table = h = (stbds_hash_index*)stbds_make_hash_index(STBDS_BUCKET_LENGTH, NULL);
+    prb_stbds_header(a)->length = 1;
+    prb_stbds_header(a)->hash_table = h = (prb_stbds_hash_index*)prb_stbds_make_hash_index(prb_STBDS_BUCKET_LENGTH, NULL);
     h->string.mode = (unsigned char)mode;
-    return STBDS_ARR_TO_HASH(a, elemsize);
+    return prb_STBDS_ARR_TO_HASH(a, elemsize);
 }
 
-STBDS__PUBLICDEF void*
-stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode) {
+prb_STBDS__PUBLICDEF void*
+prb_stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyoffset, int mode) {
     if (a == NULL) {
         return 0;
     } else {
-        stbds_hash_index* table;
-        void*             raw_a = STBDS_HASH_TO_ARR(a, elemsize);
-        table = (stbds_hash_index*)stbds_header(raw_a)->hash_table;
-        stbds_temp(raw_a) = 0;
+        prb_stbds_hash_index* table;
+        void*             raw_a = prb_STBDS_HASH_TO_ARR(a, elemsize);
+        table = (prb_stbds_hash_index*)prb_stbds_header(raw_a)->hash_table;
+        prb_stbds_temp(raw_a) = 0;
         if (table == 0) {
             return a;
         } else {
             ptrdiff_t slot;
-            slot = stbds_hm_find_slot(a, elemsize, key, keysize, keyoffset, mode);
+            slot = prb_stbds_hm_find_slot(a, elemsize, key, keysize, keyoffset, mode);
             if (slot < 0)
                 return a;
             else {
-                stbds_hash_bucket* b = &table->storage[slot >> STBDS_BUCKET_SHIFT];
-                int                i = slot & STBDS_BUCKET_MASK;
+                prb_stbds_hash_bucket* b = &table->storage[slot >> prb_STBDS_BUCKET_SHIFT];
+                int                i = slot & prb_STBDS_BUCKET_MASK;
                 ptrdiff_t          old_index = b->index[i];
                 ptrdiff_t          final_index =
-                    (ptrdiff_t)stbds_arrlen(raw_a) - 1 - 1;  // minus one for the raw_a vs a, and minus one for 'last'
-                STBDS_ASSERT(slot < (ptrdiff_t)table->slot_count);
+                    (ptrdiff_t)prb_stbds_arrlen(raw_a) - 1 - 1;  // minus one for the raw_a vs a, and minus one for 'last'
+                prb_STBDS_ASSERT(slot < (ptrdiff_t)table->slot_count);
                 --table->used_count;
                 ++table->tombstone_count;
-                stbds_temp(raw_a) = 1;
-                // STBDS_ASSERT(table->used_count >= 0);
-                //STBDS_ASSERT(table->tombstone_count < table->slot_count/4);
-                b->hash[i] = STBDS_HASH_DELETED;
-                b->index[i] = STBDS_INDEX_DELETED;
+                prb_stbds_temp(raw_a) = 1;
+                // prb_STBDS_ASSERT(table->used_count >= 0);
+                //prb_STBDS_ASSERT(table->tombstone_count < table->slot_count/4);
+                b->hash[i] = prb_STBDS_HASH_DELETED;
+                b->index[i] = prb_STBDS_INDEX_DELETED;
 
-                if (mode == STBDS_HM_STRING && table->string.mode == STBDS_SH_STRDUP) {
-                    STBDS_FREE(NULL, *(char**)((char*)a + elemsize * old_index));
+                if (mode == prb_STBDS_HM_STRING && table->string.mode == prb_STBDS_SH_STRDUP) {
+                    prb_STBDS_FREE(NULL, *(char**)((char*)a + elemsize * old_index));
                 }
 
                 // if indices are the same, memcpy is a no-op, but back-pointer-fixup will fail, so skip
@@ -5427,8 +5427,8 @@ stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyo
                     prb_memmove((char*)a + elemsize * old_index, (char*)a + elemsize * final_index, elemsize);
 
                     // now find the slot for the last element
-                    if (mode == STBDS_HM_STRING)
-                        slot = stbds_hm_find_slot(
+                    if (mode == prb_STBDS_HM_STRING)
+                        slot = prb_stbds_hm_find_slot(
                             a,
                             elemsize,
                             *(char**)((char*)a + elemsize * old_index + keyoffset),
@@ -5437,7 +5437,7 @@ stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyo
                             mode
                         );
                     else
-                        slot = stbds_hm_find_slot(
+                        slot = prb_stbds_hm_find_slot(
                             a,
                             elemsize,
                             (char*)a + elemsize * old_index + keyoffset,
@@ -5445,22 +5445,22 @@ stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyo
                             keyoffset,
                             mode
                         );
-                    STBDS_ASSERT(slot >= 0);
-                    b = &table->storage[slot >> STBDS_BUCKET_SHIFT];
-                    i = slot & STBDS_BUCKET_MASK;
-                    STBDS_ASSERT(b->index[i] == final_index);
+                    prb_STBDS_ASSERT(slot >= 0);
+                    b = &table->storage[slot >> prb_STBDS_BUCKET_SHIFT];
+                    i = slot & prb_STBDS_BUCKET_MASK;
+                    prb_STBDS_ASSERT(b->index[i] == final_index);
                     b->index[i] = old_index;
                 }
-                stbds_header(raw_a)->length -= 1;
+                prb_stbds_header(raw_a)->length -= 1;
 
-                if (table->used_count < table->used_count_shrink_threshold && table->slot_count > STBDS_BUCKET_LENGTH) {
-                    stbds_header(raw_a)->hash_table = stbds_make_hash_index(table->slot_count >> 1, table);
-                    STBDS_FREE(NULL, table);
-                    STBDS_STATS(++stbds_hash_shrink);
+                if (table->used_count < table->used_count_shrink_threshold && table->slot_count > prb_STBDS_BUCKET_LENGTH) {
+                    prb_stbds_header(raw_a)->hash_table = prb_stbds_make_hash_index(table->slot_count >> 1, table);
+                    prb_STBDS_FREE(NULL, table);
+                    prb_STBDS_STATS(++prb_stbds_hash_shrink);
                 } else if (table->tombstone_count > table->tombstone_count_threshold) {
-                    stbds_header(raw_a)->hash_table = stbds_make_hash_index(table->slot_count, table);
-                    STBDS_FREE(NULL, table);
-                    STBDS_STATS(++stbds_hash_rebuild);
+                    prb_stbds_header(raw_a)->hash_table = prb_stbds_make_hash_index(table->slot_count, table);
+                    prb_STBDS_FREE(NULL, table);
+                    prb_STBDS_STATS(++prb_stbds_hash_rebuild);
                 }
 
                 return a;
@@ -5471,24 +5471,24 @@ stbds_hmdel_key(void* a, size_t elemsize, void* key, size_t keysize, size_t keyo
 }
 
 static char*
-stbds_strdup(char* str) {
+prb_stbds_strdup(char* str) {
     // to keep replaceable allocator simple, we don't want to use strdup.
     // rolling our own also avoids problem of strdup vs _strdup
     size_t len = prb_strlen(str) + 1;
-    char*  p = (char*)STBDS_REALLOC(NULL, 0, len);
+    char*  p = (char*)prb_STBDS_REALLOC(NULL, 0, len);
     prb_memmove(p, str, len);
     return p;
 }
 
-#ifndef STBDS_STRING_ARENA_BLOCKSIZE_MIN
-#define STBDS_STRING_ARENA_BLOCKSIZE_MIN 512u
+#ifndef prb_STBDS_STRING_ARENA_BLOCKSIZE_MIN
+#define prb_STBDS_STRING_ARENA_BLOCKSIZE_MIN 512u
 #endif
-#ifndef STBDS_STRING_ARENA_BLOCKSIZE_MAX
-#define STBDS_STRING_ARENA_BLOCKSIZE_MAX (1u << 20)
+#ifndef prb_STBDS_STRING_ARENA_BLOCKSIZE_MAX
+#define prb_STBDS_STRING_ARENA_BLOCKSIZE_MAX (1u << 20)
 #endif
 
-STBDS__PUBLICDEF char*
-stbds_stralloc(stbds_string_arena* a, char* str) {
+prb_STBDS__PUBLICDEF char*
+prb_stbds_stralloc(prb_stbds_string_arena* a, char* str) {
     char*  p;
     size_t len = prb_strlen(str) + 1;
     if (len > a->remaining) {
@@ -5497,10 +5497,10 @@ stbds_stralloc(stbds_string_arena* a, char* str) {
 
         // size is 512, 512, 1024, 1024, 2048, 2048, 4096, 4096, etc., so that
         // there are log(SIZE) allocations to free when we destroy the table
-        blocksize = (size_t)(STBDS_STRING_ARENA_BLOCKSIZE_MIN) << (blocksize >> 1);
+        blocksize = (size_t)(prb_STBDS_STRING_ARENA_BLOCKSIZE_MIN) << (blocksize >> 1);
 
         // if size is under 1M, advance to next blocktype
-        if (blocksize < (size_t)(STBDS_STRING_ARENA_BLOCKSIZE_MAX))
+        if (blocksize < (size_t)(prb_STBDS_STRING_ARENA_BLOCKSIZE_MAX))
             ++a->block;
 
         if (len > blocksize) {
@@ -5508,7 +5508,7 @@ stbds_stralloc(stbds_string_arena* a, char* str) {
             // note that we still advance string_block so block size will continue
             // increasing, so e.g. if somebody only calls this with 1000-long strings,
             // eventually the arena will start doubling and handling those as well
-            stbds_string_block* sb = (stbds_string_block*)STBDS_REALLOC(NULL, 0, sizeof(*sb) - 8 + len);
+            prb_stbds_string_block* sb = (prb_stbds_string_block*)prb_STBDS_REALLOC(NULL, 0, sizeof(*sb) - 8 + len);
             prb_memmove(sb->storage, str, len);
             if (a->storage) {
                 // insert it after the first element, so that we don't waste the space there
@@ -5521,27 +5521,27 @@ stbds_stralloc(stbds_string_arena* a, char* str) {
             }
             return sb->storage;
         } else {
-            stbds_string_block* sb = (stbds_string_block*)STBDS_REALLOC(NULL, 0, sizeof(*sb) - 8 + blocksize);
+            prb_stbds_string_block* sb = (prb_stbds_string_block*)prb_STBDS_REALLOC(NULL, 0, sizeof(*sb) - 8 + blocksize);
             sb->next = a->storage;
             a->storage = sb;
             a->remaining = blocksize;
         }
     }
 
-    STBDS_ASSERT(len <= a->remaining);
+    prb_STBDS_ASSERT(len <= a->remaining);
     p = a->storage->storage + a->remaining - len;
     a->remaining -= len;
     prb_memmove(p, str, len);
     return p;
 }
 
-STBDS__PUBLICDEF void
-stbds_strreset(stbds_string_arena* a) {
-    stbds_string_block *x, *y;
+prb_STBDS__PUBLICDEF void
+prb_stbds_strreset(prb_stbds_string_arena* a) {
+    prb_stbds_string_block *x, *y;
     x = a->storage;
     while (x) {
         y = x->next;
-        STBDS_FREE(NULL, x);
+        prb_STBDS_FREE(NULL, x);
         x = y;
     }
     prb_memset(a, 0, sizeof(*a));
