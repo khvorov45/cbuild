@@ -151,13 +151,12 @@ constructCompileCmd(prb_Arena* arena, prb_Str input, prb_Str extraInputs, Compil
 }
 
 function void
-compileAndRunTestsWithSan(prb_Arena* arena, prb_Str testsDir, prb_Str testsFile, prb_Str flags, prb_Str outname) {
+compileAndRunTestsWithSan(prb_Arena* arena, prb_Str testsFile, prb_Str flags) {
     CompileCmd cmd = constructCompileCmd(arena, testsFile, prb_STR(""), Compiler_Clang, Lang_C, flags);
     prb_writelnToStdout(arena, cmd.cmd);
     prb_assert(prb_execCmd(arena, cmd.cmd, 0, (prb_Str) {}).status == prb_ProcessStatus_CompletedSuccess);
     prb_writelnToStdout(arena, cmd.output);
-    prb_Str outpath = prb_pathJoin(arena, testsDir, outname);
-    prb_assert(prb_execCmd(arena, cmd.output, prb_ProcessFlag_RedirectStdout | prb_ProcessFlag_RedirectStderr, outpath).status == prb_ProcessStatus_CompletedSuccess);
+    prb_assert(prb_execCmd(arena, cmd.output, 0, (prb_Str) {}).status == prb_ProcessStatus_CompletedSuccess);
 }
 
 function void
@@ -315,23 +314,15 @@ main() {
         prb_assert(prb_setenv(arena, prb_STR("UBSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(ubsanFilepath))));
     }
 
-    compileAndRunTestsWithSan(arena, testsDir, testsFile, prb_STR("-fsanitize=address -fno-omit-frame-pointer"), prb_STR("tests-address-sanitizer.log"));
-    compileAndRunTestsWithSan(arena, testsDir, testsFile, prb_STR("-fsanitize=thread"), prb_STR("tests-thread-sanitizer.log"));
-    compileAndRunTestsWithSan(arena, testsDir, testsFile, prb_STR("-fsanitize=memory -fno-omit-frame-pointer"), prb_STR("tests-memory-sanitizer.log"));
-    compileAndRunTestsWithSan(arena, testsDir, testsFile, prb_STR("-fsanitize=undefined"), prb_STR("tests-ub-sanitizer.log"));
+    compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=address -fno-omit-frame-pointer"));
+    compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=thread"));
+    compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=memory -fno-omit-frame-pointer"));
+    compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=undefined"));
 
     // NOTE(khvorov) Print the one of the test results
     {
         prb_PathFindIter iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = testsDir, .mode = prb_PathFindMode_Glob, .pattern = prb_STR("*.log"), .recursive = false});
         while (prb_pathFindIterNext(&iter)) {
-            // NOTE(khvorov) Print test output from the run with the sanitizers
-            if (prb_strEndsWith(iter.curPath, prb_STR("sanitizer.log"))) {
-                prb_Str filename = prb_getLastEntryInPath(iter.curPath);
-                prb_writelnToStdout(arena, prb_fmt(arena, "%.*s output:", prb_LIT(filename)));
-                prb_ReadEntireFileResult readres = prb_readEntireFile(arena, iter.curPath);
-                prb_assert(readres.success);
-                prb_writelnToStdout(arena, prb_strFromBytes(readres.content));
-            }
             prb_removeFileIfExists(arena, iter.curPath);
         }
     }
