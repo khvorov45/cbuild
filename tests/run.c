@@ -254,11 +254,23 @@ main() {
 
     prb_Str* args = prb_getCmdArgs(arena);
     bool     noexamples = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("noexamples"));
+    bool     runningOnCi = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("ci"));
 
     prb_Str testsDir = prb_getAbsolutePath(arena, prb_getParentDir(arena, prb_STR(__FILE__)));
     prb_Str rootDir = prb_getParentDir(arena, testsDir);
 
     prb_Str testsFile = prb_pathJoin(arena, testsDir, prb_STR("tests.c"));
+
+    if (runningOnCi) {
+        prb_assert(prb_execCmd(arena, prb_STR("clang --version"), 0, (prb_Str) {}).status == prb_ProcessStatus_CompletedSuccess);
+#if prb_PLATFORM_WINDOWS
+#error unimplemented
+#elif prb_PLATFORM_LINUX
+        prb_assert(prb_execCmd(arena, prb_STR("gcc --version"), 0, (prb_Str) {}).status == prb_ProcessStatus_CompletedSuccess);
+#else
+#error unimplemented
+#endif
+    }
 
     // NOTE(khvorov) Static analysis
     prb_Str mainFilePath = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
@@ -297,28 +309,30 @@ main() {
 #endif
     }
 
-    // NOTE(khvorov) Sanitizers
-    prb_execCmd(arena, prb_STR("clang --version"), 0, (prb_Str) {});
+    // NOTE(khvorov) Sanitizers (don't run on ci because stuff is executed in a weird way there and they don't work)
     prb_Str lsanFilepath = {};
-    {
-        prb_Str leakSuppress = prb_STR("leak:regcomp");
-        lsanFilepath = prb_pathJoin(arena, testsDir, prb_STR("lsan.supp"));
-        prb_assert(prb_writeEntireFile(arena, lsanFilepath, leakSuppress.ptr, leakSuppress.len));
-        prb_assert(prb_setenv(arena, prb_STR("LSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(lsanFilepath))));
-    }
-    
     prb_Str ubsanFilepath = {};
-    {
-        prb_Str ubSuppress = prb_STR("alignment:prb_stbsp_vsprintfcb");
-        ubsanFilepath = prb_pathJoin(arena, testsDir, prb_STR("ubsan.supp"));
-        prb_assert(prb_writeEntireFile(arena, ubsanFilepath, ubSuppress.ptr, ubSuppress.len));
-        prb_assert(prb_setenv(arena, prb_STR("UBSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(ubsanFilepath))));
-    }
+    if (!runningOnCi) {
+        
+        {
+            prb_Str leakSuppress = prb_STR("leak:regcomp");
+            lsanFilepath = prb_pathJoin(arena, testsDir, prb_STR("lsan.supp"));
+            prb_assert(prb_writeEntireFile(arena, lsanFilepath, leakSuppress.ptr, leakSuppress.len));
+            prb_assert(prb_setenv(arena, prb_STR("LSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(lsanFilepath))));
+        }
+        
+        {
+            prb_Str ubSuppress = prb_STR("alignment:prb_stbsp_vsprintfcb");
+            ubsanFilepath = prb_pathJoin(arena, testsDir, prb_STR("ubsan.supp"));
+            prb_assert(prb_writeEntireFile(arena, ubsanFilepath, ubSuppress.ptr, ubSuppress.len));
+            prb_assert(prb_setenv(arena, prb_STR("UBSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(ubsanFilepath))));
+        }
 
-    compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=address -fno-omit-frame-pointer"));
-    compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=thread"));
-    compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=memory -fno-omit-frame-pointer"));
-    compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=undefined"));
+        compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=address -fno-omit-frame-pointer"));
+        compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=thread"));
+        compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=memory -fno-omit-frame-pointer"));
+        compileAndRunTestsWithSan(arena, testsFile, prb_STR("-fsanitize=undefined"));
+    }
 
     // NOTE(khvorov) Print the one of the test results
     {

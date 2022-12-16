@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: tests
-      run: ./tests/run.sh
+      run: ./tests/run.sh ci
     - name: coverage
       uses: codecov/codecov-action@v3
       with:
