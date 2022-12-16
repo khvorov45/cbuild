@@ -298,6 +298,7 @@ main() {
     }
 
     // NOTE(khvorov) Sanitizers
+    prb_execCmd(arena, prb_STR("clang --version"), 0, (prb_Str) {});
     prb_Str lsanFilepath = {};
     {
         prb_Str leakSuppress = prb_STR("leak:regcomp");
