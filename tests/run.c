@@ -89,6 +89,8 @@ constructCompileCmd(prb_Arena* arena, prb_Str input, prb_Str extraInputs, Compil
 
     if (!isPrecompile && extraInputs.len == 0 && compiler == Compiler_Gcc && lang == Lang_C) {
         prb_addStrSegment(&cmd, " --coverage -fno-inline -fno-inline-small-functions -fno-default-inline");
+    } else if (!isPrecompile && extraInputs.len == 0 && compiler == Compiler_Clang && lang == Lang_C) {
+        prb_addStrSegment(&cmd, " -fsanitize=address -fno-omit-frame-pointer");
     }
 
     if (extraInputs.len > 0) {
@@ -250,6 +252,15 @@ main() {
     prb_Str testsDir = prb_getAbsolutePath(arena, prb_getParentDir(arena, prb_STR(__FILE__)));
     prb_Str rootDir = prb_getParentDir(arena, testsDir);
 
+    // NOTE(khvorov) Set up sanitizers
+    prb_Str lsanFilepath = {};
+    {
+        prb_Str leakSuppress = prb_STR("leak:regcomp");
+        lsanFilepath = prb_pathJoin(arena, testsDir, prb_STR("lsan.supp"));
+        prb_assert(prb_writeEntireFile(arena, lsanFilepath, leakSuppress.ptr, leakSuppress.len));
+        prb_assert(prb_setenv(arena, prb_STR("LSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(lsanFilepath))));
+    }
+
     // TODO(khvorov) Run sanitizers for tests probably
 
     // NOTE(khvorov) Static analysis
@@ -271,14 +282,13 @@ main() {
     // NOTE(khvorov) Print the one of the test results
     {
         prb_PathFindIter iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = testsDir, .mode = prb_PathFindMode_Glob, .pattern = prb_STR("*.log"), .recursive = false});
-        bool                 first = true;
         while (prb_pathFindIterNext(&iter)) {
-            if (first) {
+            // NOTE(khvorov) Print test output from the run with the sanitizers
+            if (prb_streq(prb_getLastEntryInPath(iter.curPath), prb_STR("tests-clang-1tu-c.log"))) {
                 prb_writelnToStdout(arena, prb_STR("tests output:"));
                 prb_ReadEntireFileResult readres = prb_readEntireFile(arena, iter.curPath);
                 prb_assert(readres.success);
                 prb_writelnToStdout(arena, prb_strFromBytes(readres.content));
-                first = false;
             }
             prb_removeFileIfExists(arena, iter.curPath);
         }
@@ -360,6 +370,8 @@ main() {
         prb_writelnToStdout(arena, prb_strFromBytes(staticAnalysisOutRead.content));
         prb_assert(prb_removeFileIfExists(arena, staticAnalysisOutput));
     }
+
+    prb_removeFileIfExists(arena, lsanFilepath);
 
     prb_writelnToStdout(arena, prb_fmt(arena, "test run took %.2fms", prb_getMsFrom(scriptStart)));
     return 0;

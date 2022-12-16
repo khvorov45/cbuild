@@ -38,7 +38,6 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) If stdout/err file is missing just ignore the output
 // TODO(khvorov) Pathfind iterator should probably not crash when given non-existant directories
 // TODO(khvorov) Set env variables when executing processes
-// TODO(khvorov) Set env variables for the current process
 // TODO(khvorov) strReplace should just take a position and a length of the replacement
 // TODO(khvorov) strReplace should probably handle multiple replacements
 // TODO(khvorov) Ability to check/change file executable permissions
@@ -476,6 +475,11 @@ typedef struct prb_ReadEntireFileResult {
     prb_Bytes content;
 } prb_ReadEntireFileResult;
 
+typedef struct prb_GetenvResult {
+    bool    found;
+    prb_Str str;
+} prb_GetenvResult;
+
 // SECTION Memory
 prb_PUBLICDEC bool           prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
 prb_PUBLICDEC int32_t        prb_getOffsetForAlignment(void* ptr, int32_t align);
@@ -565,6 +569,9 @@ prb_PUBLICDEC prb_ProcessHandle prb_execCmd(prb_Arena* arena, prb_Str cmd, prb_P
 prb_PUBLICDEC prb_Status        prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
 prb_PUBLICDEC void              prb_sleep(float ms);
 prb_PUBLICDEC bool              prb_debuggerPresent(prb_Arena* arena);
+prb_PUBLICDEC prb_Status        prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value);
+prb_PUBLICDEC prb_GetenvResult  prb_getenv(prb_Arena* arena, prb_Str name);
+prb_PUBLICDEC prb_Status        prb_unsetenv(prb_Arena* arena, prb_Str name);
 
 // SECTION Timing
 prb_PUBLICDEC prb_TimeStart prb_timeStart(void);
@@ -2850,6 +2857,77 @@ prb_debuggerPresent(prb_Arena* arena) {
             break;
         }
     }
+
+#else
+#error unimplemented
+#endif
+
+    prb_endTempMemory(temp);
+    return result;
+}
+
+prb_PUBLICDEF prb_Status
+prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value) {
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Status result = prb_Failure;
+    const char* nameNull = prb_strGetNullTerminated(arena, name);
+    const char* valueNull = prb_strGetNullTerminated(arena, value);
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    result = setenv(nameNull, valueNull, 1) == 0 ? prb_Success : prb_Failure;
+
+#else
+#error unimplemented
+#endif
+
+    prb_endTempMemory(temp);
+    return result;
+}
+
+prb_PUBLICDEF prb_GetenvResult
+prb_getenv(prb_Arena* arena, prb_Str name) {
+    prb_TempMemory   temp = prb_beginTempMemory(arena);
+    prb_GetenvResult result = {};
+    const char* nameNull = prb_strGetNullTerminated(arena, name);
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    char* str = getenv(nameNull);
+    if (str) {
+        result.found = true;
+        result.str = prb_STR(str);
+    }
+
+#else
+#error unimplemented
+#endif
+
+    prb_endTempMemory(temp);
+    return result;
+}
+
+prb_PUBLICDEF prb_Status
+prb_unsetenv(prb_Arena* arena, prb_Str name) {
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Status result = prb_Failure;
+    const char* nameNull = prb_strGetNullTerminated(arena, name);
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+    result = unsetenv(nameNull) == 0 ? prb_Success : prb_Failure;
 
 #else
 #error unimplemented
