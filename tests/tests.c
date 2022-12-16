@@ -123,7 +123,6 @@ test_getOffsetForAlignment(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_assert(prb_getOffsetForAlignment((void*)0, 1) == 0);
     prb_assert(prb_getOffsetForAlignment((void*)1, 1) == 0);
     prb_assert(prb_getOffsetForAlignment((void*)1, 2) == 1);
     prb_assert(prb_getOffsetForAlignment((void*)1, 4) == 3);

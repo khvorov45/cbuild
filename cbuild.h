@@ -120,7 +120,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #define prb_unused(x) ((x) = (x))
 
 #define prb_countLeading1sU32(x) __builtin_clz(~(x))
-#define prb_countLeading1sU8(x) prb_countLeading1sU32((x) << 24)
+#define prb_countLeading1sU8(x) prb_countLeading1sU32((uint32_t)(x) << 24)
 
 // clang-format off
 
@@ -2393,8 +2393,8 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
 
         result = prb_Success;
 
-        uint8_t firprb_stByte = iter->str.ptr[iter->curByteOffset];
-        int32_t leading1s = prb_countLeading1sU8(firprb_stByte);
+        uint8_t firstByte = iter->str.ptr[iter->curByteOffset];
+        int32_t leading1s = prb_countLeading1sU8(firstByte);
 
         bool firprb_stByteValid = false;
         switch (iter->direction) {
@@ -2409,7 +2409,7 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
         if (firprb_stByteValid) {
             if (leading1s == 0) {
                 chValid = true;
-                ch = firprb_stByte;
+                ch = firstByte;
                 chBytes = 1;
             } else {
                 uint8_t firprb_stByteMask[] = {
@@ -2424,7 +2424,7 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
                         chValid = true;
                         chBytes = leading1s;
                         prb_assert(chBytes == 2 || chBytes == 3 || chBytes == 4);
-                        ch = firprb_stByte & firprb_stByteMask[chBytes - 1];
+                        ch = firstByte & firprb_stByteMask[chBytes - 1];
                         for (int32_t byteIndex = 1; byteIndex < chBytes; byteIndex++) {
                             uint8_t byte = iter->str.ptr[iter->curByteOffset + byteIndex];
                             if (prb_countLeading1sU8(byte) == 1) {
@@ -2439,7 +2439,7 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
 
                     case prb_StrDirection_FromEnd: {
                         prb_assert(leading1s == 1);
-                        ch = firprb_stByte & 0b00111111;
+                        ch = firstByte & 0b00111111;
                         int32_t maxExtraBytes = prb_min(3, iter->curByteOffset);
                         for (int32_t byteIndex = 0; byteIndex < maxExtraBytes; byteIndex++) {
                             uint8_t byte = iter->str.ptr[--iter->curByteOffset];
@@ -5058,8 +5058,8 @@ prb_stbds_siphash_bytes(void* p, size_t len, size_t seed) {
     } while (0)
 
     for (i = 0; i + sizeof(size_t) <= len; i += sizeof(size_t), d += sizeof(size_t)) {
-        data = d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24);
-        data |= (size_t)(d[4] | (d[5] << 8) | (d[6] << 16) | (d[7] << 24)) << 16 << 16;  // discarded if size_t == 4
+        data = d[0] | (d[1] << 8) | (d[2] << 16) | ((uint32_t)d[3] << 24);
+        data |= (size_t)(d[4] | (d[5] << 8) | (d[6] << 16) | ((uint32_t)d[7] << 24)) << 16 << 16;  // discarded if size_t == 4
 
         v3 ^= data;
         for (j = 0; j < prb_STBDS_SIPHASH_C_ROUNDS; ++j)
