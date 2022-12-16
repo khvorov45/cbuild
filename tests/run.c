@@ -16,14 +16,14 @@ typedef enum Lang {
 } Lang;
 
 typedef struct CompileCmd {
-    prb_Str output;
-    prb_Str cmd;
-    Compiler   compiler;
-    Lang       lang;
+    prb_Str  output;
+    prb_Str  cmd;
+    Compiler compiler;
+    Lang     lang;
 } CompileCmd;
 
 function CompileCmd
-constructCompileCmd(prb_Arena* arena, prb_Str input, prb_Str extraInputs, Compiler compiler, Lang lang) {
+constructCompileCmd(prb_Arena* arena, prb_Str input, prb_Str extraInputs, Compiler compiler, Lang lang, prb_Str extraFlags) {
     bool isPrecompile = prb_strEndsWith(input, prb_STR("precompile.c"));
 
     prb_Str outputName = {};
@@ -87,11 +87,7 @@ constructCompileCmd(prb_Arena* arena, prb_Str input, prb_Str extraInputs, Compil
         case Compiler_Msvc: prb_addStrSegment(&cmd, " /WX"); break;
     }
 
-    if (!isPrecompile && extraInputs.len == 0 && compiler == Compiler_Gcc && lang == Lang_C) {
-        prb_addStrSegment(&cmd, " --coverage -fno-inline -fno-inline-small-functions -fno-default-inline");
-    } else if (!isPrecompile && extraInputs.len == 0 && compiler == Compiler_Clang && lang == Lang_C) {
-        prb_addStrSegment(&cmd, " -fsanitize=address -fno-omit-frame-pointer");
-    }
+    prb_addStrSegment(&cmd, " %.*s", prb_LIT(extraFlags));
 
     if (extraInputs.len > 0) {
         prb_addStrSegment(&cmd, " -Dprb_NO_IMPLEMENTATION");
@@ -149,18 +145,27 @@ constructCompileCmd(prb_Arena* arena, prb_Str input, prb_Str extraInputs, Compil
         }
     }
 
-    prb_Str cmdStr = prb_endStr(&cmd);
+    prb_Str    cmdStr = prb_endStr(&cmd);
     CompileCmd result = {.cmd = cmdStr, .output = outputName, .compiler = compiler, .lang = lang};
     return result;
 }
 
 function void
-compileAndRunTests(prb_Arena* arena, prb_Str testsDir) {
-    prb_Str testsFile = prb_pathJoin(arena, testsDir, prb_STR("tests.c"));
+compileAndRunTestsWithSan(prb_Arena* arena, prb_Str testsDir, prb_Str testsFile, prb_Str flags, prb_Str outname) {
+    CompileCmd cmd = constructCompileCmd(arena, testsFile, prb_STR(""), Compiler_Clang, Lang_C, flags);
+    prb_writelnToStdout(arena, cmd.cmd);
+    prb_assert(prb_execCmd(arena, cmd.cmd, 0, (prb_Str) {}).status == prb_ProcessStatus_CompletedSuccess);
+    prb_writelnToStdout(arena, cmd.output);
+    prb_Str outpath = prb_pathJoin(arena, testsDir, outname);
+    prb_assert(prb_execCmd(arena, cmd.output, prb_ProcessFlag_RedirectStdout | prb_ProcessFlag_RedirectStderr, outpath).status == prb_ProcessStatus_CompletedSuccess);
+}
+
+function void
+compileAndRunTests(prb_Arena* arena, prb_Str testsDir, prb_Str testsFile) {
     prb_Str precompFile = prb_pathJoin(arena, testsDir, prb_STR("precompile.c"));
 
     {
-        prb_Str       patsToRemove[] = {prb_STR("*.gcda"), prb_STR("*.gcno"), prb_STR("*.bin"), prb_STR("*.obj")};
+        prb_Str          patsToRemove[] = {prb_STR("*.gcda"), prb_STR("*.gcno"), prb_STR("*.bin"), prb_STR("*.obj")};
         prb_PathFindSpec spec = {.arena = arena, .dir = testsDir, .mode = prb_PathFindMode_Glob};
         for (i32 patIndex = 0; patIndex < prb_arrayLength(patsToRemove); patIndex++) {
             prb_Str pat = patsToRemove[patIndex];
@@ -202,8 +207,8 @@ compileAndRunTests(prb_Arena* arena, prb_Str testsDir) {
         for (i32 langIndex = 0; langIndex < prb_arrayLength(langs); langIndex++) {
             Lang lang = langs[langIndex];
             for (i32 srcIndex = 0; srcIndex < prb_arrayLength(sources); srcIndex++) {
-                prb_Str source = sources[srcIndex];
-                CompileCmd cmd = constructCompileCmd(arena, source, prb_STR(""), compiler, lang);
+                prb_Str    source = sources[srcIndex];
+                CompileCmd cmd = constructCompileCmd(arena, source, prb_STR(""), compiler, lang, prb_STR(""));
                 prb_writelnToStdout(arena, cmd.cmd);
                 prb_ProcessHandle proc = prb_execCmd(arena, cmd.cmd, prb_ProcessFlag_DontWait, (prb_Str) {});
                 prb_assert(proc.status >= prb_ProcessStatus_Launched);
@@ -222,7 +227,7 @@ compileAndRunTests(prb_Arena* arena, prb_Str testsDir) {
     // NOTE(khvorov) Finish test compiling (2 TU ones)
     for (i32 precompIndex = 0; precompIndex < arrlen(precompCmds); precompIndex++) {
         CompileCmd precmd = precompCmds[precompIndex];
-        CompileCmd cmd = constructCompileCmd(arena, testsFile, precmd.output, precmd.compiler, precmd.lang);
+        CompileCmd cmd = constructCompileCmd(arena, testsFile, precmd.output, precmd.compiler, precmd.lang, prb_STR(""));
         prb_writelnToStdout(arena, cmd.cmd);
         prb_ProcessHandle proc = prb_execCmd(arena, cmd.cmd, prb_ProcessFlag_DontWait, (prb_Str) {});
         arrput(compileProcs, proc);
@@ -234,7 +239,7 @@ compileAndRunTests(prb_Arena* arena, prb_Str testsDir) {
     for (i32 compCmdIndex = 0; compCmdIndex < arrlen(compCmds); compCmdIndex++) {
         CompileCmd compCmd = compCmds[compCmdIndex];
         prb_writelnToStdout(arena, compCmd.output);
-        prb_Str        cmdOutPath = prb_replaceExt(arena, compCmd.output, prb_STR("log"));
+        prb_Str           cmdOutPath = prb_replaceExt(arena, compCmd.output, prb_STR("log"));
         prb_ProcessHandle proc = prb_execCmd(arena, compCmd.output, prb_ProcessFlag_RedirectStderr | prb_ProcessFlag_RedirectStdout, cmdOutPath);
         prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
     }
@@ -247,10 +252,12 @@ main() {
     prb_Arena*    arena = &arena_;
 
     prb_Str* args = prb_getCmdArgs(arena);
-    bool        noexamples = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("noexamples"));
+    bool     noexamples = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("noexamples"));
 
     prb_Str testsDir = prb_getAbsolutePath(arena, prb_getParentDir(arena, prb_STR(__FILE__)));
     prb_Str rootDir = prb_getParentDir(arena, testsDir);
+
+    prb_Str testsFile = prb_pathJoin(arena, testsDir, prb_STR("tests.c"));
 
     // NOTE(khvorov) Set up sanitizers
     prb_Str lsanFilepath = {};
@@ -261,30 +268,54 @@ main() {
         prb_assert(prb_setenv(arena, prb_STR("LSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(lsanFilepath))));
     }
 
-    // TODO(khvorov) Run sanitizers for tests probably
-
     // NOTE(khvorov) Static analysis
     prb_Str mainFilePath = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
     prb_Str staticAnalysisCmd = prb_fmt(arena, "clang-tidy %.*s", prb_LIT(mainFilePath));
     prb_writelnToStdout(arena, staticAnalysisCmd);
-    prb_Str        staticAnalysisOutput = prb_pathJoin(arena, testsDir, prb_STR("static_analysis_out"));
+    prb_Str           staticAnalysisOutput = prb_pathJoin(arena, testsDir, prb_STR("static_analysis_out"));
     prb_ProcessHandle staticAnalysisProc = prb_execCmd(arena, staticAnalysisCmd, prb_ProcessFlag_DontWait | prb_ProcessFlag_RedirectStderr | prb_ProcessFlag_RedirectStdout, staticAnalysisOutput);
     prb_assert(staticAnalysisProc.status == prb_ProcessStatus_Launched);
 
     // NOTE(khvorov) Run tests from different example directories because I
     // found it tests filepath handling better
     prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
-    compileAndRunTests(arena, testsDir);
+    compileAndRunTests(arena, testsDir, testsFile);
     prb_assert(prb_setWorkingDir(arena, testsDir) == prb_Success);
-    compileAndRunTests(arena, testsDir);
+    compileAndRunTests(arena, testsDir, testsFile);
     prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
+
+    // NOTE(khvorov) Coverage
+    {
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+        prb_Str gccCoverageFlags = prb_STR("--coverage -fno-inline -fno-inline-small-functions -fno-default-inline");
+        CompileCmd cmd = constructCompileCmd(arena, testsFile, prb_STR(""), Compiler_Gcc, Lang_C, gccCoverageFlags);
+        prb_writelnToStdout(arena, cmd.cmd);
+        prb_assert(prb_execCmd(arena, cmd.cmd, 0, (prb_Str) {}).status == prb_ProcessStatus_CompletedSuccess);
+        prb_writelnToStdout(arena, cmd.output);
+        prb_Str outpath = prb_pathJoin(arena, testsDir, prb_STR("tests-coverage.log"));
+        prb_assert(prb_execCmd(arena, cmd.output, prb_ProcessFlag_RedirectStdout | prb_ProcessFlag_RedirectStderr, outpath).status == prb_ProcessStatus_CompletedSuccess);
+
+#else
+#error unimplemented
+#endif
+    }
+
+    // NOTE(khvorov) Sanitizers
+    compileAndRunTestsWithSan(arena, testsDir, testsFile, prb_STR("-fsanitize=address -fno-omit-frame-pointer"), prb_STR("tests-address-sanitizer.log"));
+    compileAndRunTestsWithSan(arena, testsDir, testsFile, prb_STR("-fsanitize=thread"), prb_STR("tests-thread-sanitizer.log"));
+    compileAndRunTestsWithSan(arena, testsDir, testsFile, prb_STR("-fsanitize=memory -fno-omit-frame-pointer"), prb_STR("tests-memory-sanitizer.log"));
 
     // NOTE(khvorov) Print the one of the test results
     {
         prb_PathFindIter iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = testsDir, .mode = prb_PathFindMode_Glob, .pattern = prb_STR("*.log"), .recursive = false});
         while (prb_pathFindIterNext(&iter)) {
             // NOTE(khvorov) Print test output from the run with the sanitizers
-            if (prb_streq(prb_getLastEntryInPath(iter.curPath), prb_STR("tests-clang-1tu-c.log"))) {
+            if (prb_streq(prb_getLastEntryInPath(iter.curPath), prb_STR("tests-address-sanitizer.log"))) {
                 prb_writelnToStdout(arena, prb_STR("tests output:"));
                 prb_ReadEntireFileResult readres = prb_readEntireFile(arena, iter.curPath);
                 prb_assert(readres.success);
@@ -296,9 +327,9 @@ main() {
 
     // NOTE(khvorov) Compile all the examples in every supported way
     if (!noexamples) {
-        prb_Str exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
-        prb_Str exampleBuildProgramSrc = prb_pathJoin(arena, exampleDir, prb_STR("build.c"));
-        CompileCmd exampleBuildProgramCompileCmd = constructCompileCmd(arena, exampleBuildProgramSrc, prb_STR(""), Compiler_Clang, Lang_C);
+        prb_Str    exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
+        prb_Str    exampleBuildProgramSrc = prb_pathJoin(arena, exampleDir, prb_STR("build.c"));
+        CompileCmd exampleBuildProgramCompileCmd = constructCompileCmd(arena, exampleBuildProgramSrc, prb_STR(""), Compiler_Clang, Lang_C, prb_STR(""));
         prb_writelnToStdout(arena, exampleBuildProgramCompileCmd.cmd);
         prb_ProcessHandle exampleBuildProgramCompileProc = prb_execCmd(arena, exampleBuildProgramCompileCmd.cmd, 0, (prb_Str) {});
         prb_assert(exampleBuildProgramCompileProc.status == prb_ProcessStatus_CompletedSuccess);
