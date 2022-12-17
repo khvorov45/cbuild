@@ -25,6 +25,8 @@ typedef struct CompileSpec {
     prb_Str  output;
 } CompileSpec;
 
+prb_Str globalTestsDir = {};
+
 function prb_Str
 constructCompileCmd(prb_Arena* arena, CompileSpec spec) {
     prb_Str outputNamePdb = prb_replaceExt(arena, spec.output, prb_STR("pdb"));
@@ -162,18 +164,16 @@ compileAndRunTests(prb_Arena* arena, void* data) {
 #error unimplemented
 #endif
 
-    prb_Str testsDir = prb_getAbsolutePath(arena, prb_getParentDir(arena, prb_STR(__FILE__)));
-
     CompileSpec compileSpec = {};
     compileSpec.compiler = spec->compiler;
     compileSpec.lang = spec->lang;
     compileSpec.flags = spec->flags;
-    compileSpec.input = prb_pathJoin(arena, testsDir, prb_STR("tests.c"));
+    compileSpec.input = prb_pathJoin(arena, globalTestsDir, prb_STR("tests.c"));
     compileSpec.output = prb_fmt(arena, "%.*s-%.*s.%*s", compileSpec.input.len - 2, compileSpec.input.ptr, prb_LIT(outputSuffix), prb_LIT(outputExt));
 
     if (spec->twotu) {
         CompileSpec preSpec = compileSpec;
-        preSpec.input = prb_pathJoin(arena, testsDir, prb_STR("precompile.c"));
+        preSpec.input = prb_pathJoin(arena, globalTestsDir, prb_STR("precompile.c"));
         preSpec.output = prb_fmt(arena, "%.*s-%.*s.obj", preSpec.input.len - 2, preSpec.input.ptr, prb_LIT(outputSuffix));
         prb_Str precmd = constructCompileCmd(arena, preSpec);
         prb_writelnToStdout(arena, precmd);
@@ -226,8 +226,8 @@ main() {
     bool     runAllTests = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("all"));
     bool     runningOnCi = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("ci"));
 
-    prb_Str testsDir = prb_getAbsolutePath(arena, prb_getParentDir(arena, prb_STR(__FILE__)));
-    prb_Str rootDir = prb_getParentDir(arena, testsDir);
+    globalTestsDir = prb_getAbsolutePath(arena, prb_getParentDir(arena, prb_STR(__FILE__)));
+    prb_Str rootDir = prb_getParentDir(arena, globalTestsDir);
 
     // NOTE(khvorov) Remove artifacts
     {
@@ -240,7 +240,7 @@ main() {
             prb_STR("*.supp"),
             prb_STR("coverage*"),
         };
-        prb_PathFindSpec spec = {.arena = arena, .dir = testsDir, .mode = prb_PathFindMode_Glob};
+        prb_PathFindSpec spec = {.arena = arena, .dir = globalTestsDir, .mode = prb_PathFindMode_Glob};
         for (i32 patIndex = 0; patIndex < prb_arrayLength(patsToRemove); patIndex++) {
             prb_Str pat = patsToRemove[patIndex];
             spec.pattern = pat;
@@ -281,7 +281,7 @@ main() {
             prb_Str mainFilePath = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
             prb_Str staticAnalysisCmd = prb_fmt(arena, "clang-tidy %.*s", prb_LIT(mainFilePath));
             prb_writelnToStdout(arena, staticAnalysisCmd);
-            staticAnalysisOutput = prb_pathJoin(arena, testsDir, prb_STR("static_analysis.log"));
+            staticAnalysisOutput = prb_pathJoin(arena, globalTestsDir, prb_STR("static_analysis.log"));
             staticAnalysisProc = prb_execCmd(arena, staticAnalysisCmd, prb_ProcessFlag_DontWait | prb_ProcessFlag_RedirectStderr | prb_ProcessFlag_RedirectStdout, staticAnalysisOutput);
             prb_assert(staticAnalysisProc.status == prb_ProcessStatus_Launched);
         }
@@ -295,7 +295,7 @@ main() {
             prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
             spec.addOutputSuffix = prb_STR("rootdir");
             compileAndRunTests(arena, &spec);
-            prb_assert(prb_setWorkingDir(arena, testsDir) == prb_Success);
+            prb_assert(prb_setWorkingDir(arena, globalTestsDir) == prb_Success);
             spec.addOutputSuffix = prb_STR("testsdir");
             compileAndRunTests(arena, &spec);
             prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
@@ -303,7 +303,7 @@ main() {
 
         // NOTE(khvorov) Coverage
         {
-            prb_Str coverageRaw = prb_pathJoin(arena, testsDir, prb_STR("coverage.profraw"));
+            prb_Str coverageRaw = prb_pathJoin(arena, globalTestsDir, prb_STR("coverage.profraw"));
             prb_assert(prb_setenv(arena, prb_STR("LLVM_PROFILE_FILE"), coverageRaw));
             TestJobSpec spec = {};
             spec.flags = prb_STR("-fprofile-instr-generate -fcoverage-mapping");
@@ -325,14 +325,14 @@ main() {
         if (!runningOnCi) {
             {
                 prb_Str leakSuppress = prb_STR("leak:regcomp");
-                prb_Str lsanFilepath = prb_pathJoin(arena, testsDir, prb_STR("lsan.supp"));
+                prb_Str lsanFilepath = prb_pathJoin(arena, globalTestsDir, prb_STR("lsan.supp"));
                 prb_assert(prb_writeEntireFile(arena, lsanFilepath, leakSuppress.ptr, leakSuppress.len));
                 prb_assert(prb_setenv(arena, prb_STR("LSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(lsanFilepath))));
             }
 
             {
                 prb_Str ubSuppress = prb_STR("alignment:prb_stbsp_vsprintfcb");
-                prb_Str ubsanFilepath = prb_pathJoin(arena, testsDir, prb_STR("ubsan.supp"));
+                prb_Str ubsanFilepath = prb_pathJoin(arena, globalTestsDir, prb_STR("ubsan.supp"));
                 prb_assert(prb_writeEntireFile(arena, ubsanFilepath, ubSuppress.ptr, ubSuppress.len));
                 prb_assert(prb_setenv(arena, prb_STR("UBSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(ubsanFilepath))));
             }
@@ -475,7 +475,7 @@ main() {
         {
             prb_PathFindSpec spec = {};
             spec.arena = arena;
-            spec.dir = testsDir;
+            spec.dir = globalTestsDir;
             spec.pattern = prb_STR("*-san-*.log");
             spec.mode = prb_PathFindMode_Glob;
             prb_PathFindIter iter = prb_createPathFindIter(spec);
