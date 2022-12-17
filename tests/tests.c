@@ -1723,15 +1723,22 @@ test_writeToStdout(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_writeToStdout(prb_fmt(arena, "%sblue", prb_colorEsc(prb_ColorID_Blue).ptr));
-    prb_writeToStdout(prb_fmt(arena, "%scyan", prb_colorEsc(prb_ColorID_Cyan).ptr));
-    prb_writeToStdout(prb_fmt(arena, "%smagenta", prb_colorEsc(prb_ColorID_Magenta).ptr));
-    prb_writeToStdout(prb_fmt(arena, "%syellow", prb_colorEsc(prb_ColorID_Yellow).ptr));
-    prb_writeToStdout(prb_fmt(arena, "%sred", prb_colorEsc(prb_ColorID_Red).ptr));
-    prb_writeToStdout(prb_fmt(arena, "%sgreen", prb_colorEsc(prb_ColorID_Green).ptr));
-    prb_writeToStdout(prb_fmt(arena, "%sblack", prb_colorEsc(prb_ColorID_Black).ptr));
-    prb_writeToStdout(prb_fmt(arena, "%swhite", prb_colorEsc(prb_ColorID_White).ptr));
-    prb_writelnToStdout(arena, prb_colorEsc(prb_ColorID_Reset));
+    prb_writelnToStdout(
+        arena,
+        prb_fmt(
+            arena,
+            "%sblue%scyan%smagenta%syellow%sred%sgreen%sblack%swhite%s",
+            prb_colorEsc(prb_ColorID_Blue).ptr,
+            prb_colorEsc(prb_ColorID_Cyan).ptr,
+            prb_colorEsc(prb_ColorID_Magenta).ptr,
+            prb_colorEsc(prb_ColorID_Yellow).ptr,
+            prb_colorEsc(prb_ColorID_Red).ptr,
+            prb_colorEsc(prb_ColorID_Green).ptr,
+            prb_colorEsc(prb_ColorID_Black).ptr,
+            prb_colorEsc(prb_ColorID_White).ptr,
+            prb_colorEsc(prb_ColorID_Reset).ptr
+        )
+    );
 
     prb_endTempMemory(temp);
 }
@@ -1740,27 +1747,273 @@ function void
 test_utf8CharIter(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
-    prb_Str str = prb_STR("abcדזון是太متشاтипуκαι");
-    u32     charsUtf32[] = {97, 98, 99, 1491, 1494, 1493, 1503, 26159, 22826, 1605, 1578, 1588, 1575, 1090, 1080, 1087, 1091, 954, 945, 953};
-    i32     utf8Bytes[] = {1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
-    prb_assert(prb_arrayLength(charsUtf32) == prb_arrayLength(utf8Bytes));
 
-    prb_Utf8CharIter iter = prb_createUtf8CharIter(str, prb_StrDirection_FromStart);
-    prb_assert(iter.curCharCount == 0);
-    i32 curTotalUtf8Bytes = 0;
-    for (i32 charIndex = 0; charIndex < prb_arrayLength(charsUtf32); charIndex++) {
-        i32 charUtf8Bytes = utf8Bytes[charIndex];
-        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
-        prb_assert(iter.curCharCount == charIndex + 1);
-        prb_assert(iter.curByteOffset == curTotalUtf8Bytes);
-        prb_assert(iter.curUtf32Char == charsUtf32[charIndex]);
-        prb_assert(iter.curUtf8Bytes == charUtf8Bytes);
-        prb_assert(iter.curIsValid);
-        curTotalUtf8Bytes += charUtf8Bytes;
+    {
+        prb_Str str = prb_STR("abcדזון是太متشاтипуκαι");
+        u32     charsUtf32[] = {97, 98, 99, 1491, 1494, 1493, 1503, 26159, 22826, 1605, 1578, 1588, 1575, 1090, 1080, 1087, 1091, 954, 945, 953};
+        i32     utf8Bytes[] = {1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
+        prb_assert(prb_arrayLength(charsUtf32) == prb_arrayLength(utf8Bytes));
+
+        prb_Utf8CharIter iter = prb_createUtf8CharIter(str, prb_StrDirection_FromStart);
+        prb_Utf8CharIter iterBackwards = prb_createUtf8CharIter(str, prb_StrDirection_FromEnd);
+        prb_assert(iter.curCharCount == 0);
+        prb_assert(iterBackwards.curCharCount == 0);
+        i32 curTotalUtf8Bytes = 0;
+        i32 curTotalUtf8BytesBackwards = 0;
+        for (i32 charIndex = 0; charIndex < prb_arrayLength(charsUtf32); charIndex++) {
+            i32 charIndexBackwards = prb_arrayLength(charsUtf32) - 1 - charIndex;
+            i32 charUtf8Bytes = utf8Bytes[charIndex];
+            i32 charUtf8BytesBackwards = utf8Bytes[charIndexBackwards];
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+            prb_assert(iter.curCharCount == charIndex + 1);
+            prb_assert(iterBackwards.curCharCount == iter.curCharCount);
+            prb_assert(iter.curByteOffset == curTotalUtf8Bytes);
+            prb_assert(iterBackwards.curByteOffset == str.len - 1 - curTotalUtf8BytesBackwards - (charUtf8BytesBackwards - 1));
+            prb_assert(iter.curUtf32Char == charsUtf32[charIndex]);
+            prb_assert(iterBackwards.curUtf32Char == charsUtf32[charIndexBackwards]);
+            prb_assert(iter.curUtf8Bytes == charUtf8Bytes);
+            prb_assert(iterBackwards.curUtf8Bytes == charUtf8BytesBackwards);
+            prb_assert(iter.curIsValid);
+            prb_assert(iterBackwards.curIsValid);
+            curTotalUtf8Bytes += charUtf8Bytes;
+            curTotalUtf8BytesBackwards += charUtf8BytesBackwards;
+        }
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Failure);
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Failure);
+        prb_assert(iter.curCharCount == prb_arrayLength(charsUtf32));
+        prb_assert(iter.curByteOffset == str.len);
+        prb_assert(iterBackwards.curCharCount == prb_arrayLength(charsUtf32));
+        prb_assert(iterBackwards.curByteOffset == -1);
     }
 
-    prb_assert(prb_utf8CharIterNext(&iter) == prb_Failure);
-    prb_assert(iter.curCharCount == prb_arrayLength(charsUtf32));
+    {
+        uint8_t          borked[] = {'a', 0b10000000, 'b', '\0'};
+        prb_Utf8CharIter iter = prb_createUtf8CharIter(prb_STR((char*)borked), prb_StrDirection_FromStart);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 1);
+        prb_assert(iter.curIsValid == true);
+        prb_assert(iter.curUtf32Char == 'a');
+        prb_assert(iter.curUtf8Bytes == 1);
+        prb_assert(iter.curByteOffset == 0);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 1);
+        prb_assert(iter.curIsValid == false);
+        prb_assert(iter.curUtf32Char == 0);
+        prb_assert(iter.curUtf8Bytes == 0);
+        prb_assert(iter.curByteOffset == 1);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 2);
+        prb_assert(iter.curIsValid == true);
+        prb_assert(iter.curUtf32Char == 'b');
+        prb_assert(iter.curUtf8Bytes == 1);
+        prb_assert(iter.curByteOffset == 2);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Failure);
+
+        prb_Utf8CharIter iterBackwards = prb_createUtf8CharIter(prb_STR((char*)borked), prb_StrDirection_FromEnd);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 1);
+        prb_assert(iterBackwards.curIsValid == true);
+        prb_assert(iterBackwards.curUtf32Char == 'b');
+        prb_assert(iterBackwards.curUtf8Bytes == 1);
+        prb_assert(iterBackwards.curByteOffset == 2);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 1);
+        prb_assert(iterBackwards.curIsValid == false);
+        prb_assert(iterBackwards.curUtf32Char == 0);
+        prb_assert(iterBackwards.curUtf8Bytes == 0);
+        prb_assert(iterBackwards.curByteOffset == 1);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 2);
+        prb_assert(iterBackwards.curIsValid == true);
+        prb_assert(iterBackwards.curUtf32Char == 'a');
+        prb_assert(iterBackwards.curUtf8Bytes == 1);
+        prb_assert(iterBackwards.curByteOffset == 0);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Failure);
+    }
+
+    {
+        uint8_t          borked[] = {0b10000000, 'a', 'b', '\0'};
+        prb_Utf8CharIter iter = prb_createUtf8CharIter(prb_STR((char*)borked), prb_StrDirection_FromStart);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 0);
+        prb_assert(iter.curIsValid == false);
+        prb_assert(iter.curUtf32Char == 0);
+        prb_assert(iter.curUtf8Bytes == 0);
+        prb_assert(iter.curByteOffset == 0);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 1);
+        prb_assert(iter.curIsValid == true);
+        prb_assert(iter.curUtf32Char == 'a');
+        prb_assert(iter.curUtf8Bytes == 1);
+        prb_assert(iter.curByteOffset == 1);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 2);
+        prb_assert(iter.curIsValid == true);
+        prb_assert(iter.curUtf32Char == 'b');
+        prb_assert(iter.curUtf8Bytes == 1);
+        prb_assert(iter.curByteOffset == 2);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Failure);
+
+        prb_Utf8CharIter iterBackwards = prb_createUtf8CharIter(prb_STR((char*)borked), prb_StrDirection_FromEnd);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 1);
+        prb_assert(iterBackwards.curIsValid == true);
+        prb_assert(iterBackwards.curUtf32Char == 'b');
+        prb_assert(iterBackwards.curUtf8Bytes == 1);
+        prb_assert(iterBackwards.curByteOffset == 2);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 2);
+        prb_assert(iterBackwards.curIsValid == true);
+        prb_assert(iterBackwards.curUtf32Char == 'a');
+        prb_assert(iterBackwards.curUtf8Bytes == 1);
+        prb_assert(iterBackwards.curByteOffset == 1);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 2);
+        prb_assert(iterBackwards.curIsValid == false);
+        prb_assert(iterBackwards.curUtf32Char == 0);
+        prb_assert(iterBackwards.curUtf8Bytes == 0);
+        prb_assert(iterBackwards.curByteOffset == 0);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Failure);
+    }
+
+    {
+        uint8_t             borked[] = {'a', 'b', 0b10000000, '\0'};
+        prb_Utf8CharIter iter = prb_createUtf8CharIter(prb_STR((char*)borked), prb_StrDirection_FromStart);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 1);
+        prb_assert(iter.curIsValid == true);
+        prb_assert(iter.curUtf32Char == 'a');
+        prb_assert(iter.curUtf8Bytes == 1);
+        prb_assert(iter.curByteOffset == 0);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 2);
+        prb_assert(iter.curIsValid == true);
+        prb_assert(iter.curUtf32Char == 'b');
+        prb_assert(iter.curUtf8Bytes == 1);
+        prb_assert(iter.curByteOffset == 1);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 2);
+        prb_assert(iter.curIsValid == false);
+        prb_assert(iter.curUtf32Char == 0);
+        prb_assert(iter.curUtf8Bytes == 0);
+        prb_assert(iter.curByteOffset == 2);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Failure);
+
+        prb_Utf8CharIter iterBackwards = prb_createUtf8CharIter(prb_STR((char*)borked), prb_StrDirection_FromEnd);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 0);
+        prb_assert(iterBackwards.curIsValid == false);
+        prb_assert(iterBackwards.curUtf32Char == 0);
+        prb_assert(iterBackwards.curUtf8Bytes == 0);
+        prb_assert(iterBackwards.curByteOffset == 2);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 1);
+        prb_assert(iterBackwards.curIsValid == true);
+        prb_assert(iterBackwards.curUtf32Char == 'b');
+        prb_assert(iterBackwards.curUtf8Bytes == 1);
+        prb_assert(iterBackwards.curByteOffset == 1);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 2);
+        prb_assert(iterBackwards.curIsValid == true);
+        prb_assert(iterBackwards.curUtf32Char == 'a');
+        prb_assert(iterBackwards.curUtf8Bytes == 1);
+        prb_assert(iterBackwards.curByteOffset == 0);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Failure);
+    }
+
+    {
+        prb_Str borked = prb_fmt(arena, "тип");
+        ((u8*)borked.ptr)[1] = 0b11000000;
+        prb_Utf8CharIter iter = prb_createUtf8CharIter(borked, prb_StrDirection_FromStart);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 0);
+        prb_assert(iter.curIsValid == false);
+        prb_assert(iter.curUtf32Char == 0);
+        prb_assert(iter.curUtf8Bytes == 0);
+        prb_assert(iter.curByteOffset == 0);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 0);
+        prb_assert(iter.curIsValid == false);
+        prb_assert(iter.curUtf32Char == 0);
+        prb_assert(iter.curUtf8Bytes == 0);
+        prb_assert(iter.curByteOffset == 1);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 1);
+        prb_assert(iter.curIsValid == true);
+        prb_assert(iter.curUtf32Char == 1080);
+        prb_assert(iter.curUtf8Bytes == 2);
+        prb_assert(iter.curByteOffset == 2);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+        prb_assert(iter.curCharCount == 2);
+        prb_assert(iter.curIsValid == true);
+        prb_assert(iter.curUtf32Char == 1087);
+        prb_assert(iter.curUtf8Bytes == 2);
+        prb_assert(iter.curByteOffset == 4);
+
+        prb_assert(prb_utf8CharIterNext(&iter) == prb_Failure);
+
+        prb_Utf8CharIter iterBackwards = prb_createUtf8CharIter(borked, prb_StrDirection_FromEnd);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 1);
+        prb_assert(iterBackwards.curIsValid == true);
+        prb_assert(iterBackwards.curUtf32Char == 1087);
+        prb_assert(iterBackwards.curUtf8Bytes == 2);
+        prb_assert(iterBackwards.curByteOffset == 4);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 2);
+        prb_assert(iterBackwards.curIsValid == true);
+        prb_assert(iterBackwards.curUtf32Char == 1080);
+        prb_assert(iterBackwards.curUtf8Bytes == 2);
+        prb_assert(iterBackwards.curByteOffset == 2);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 2);
+        prb_assert(iterBackwards.curIsValid == false);
+        prb_assert(iterBackwards.curUtf32Char == 0);
+        prb_assert(iterBackwards.curUtf8Bytes == 0);
+        prb_assert(iterBackwards.curByteOffset == 1);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+        prb_assert(iterBackwards.curCharCount == 2);
+        prb_assert(iterBackwards.curIsValid == false);
+        prb_assert(iterBackwards.curUtf32Char == 0);
+        prb_assert(iterBackwards.curUtf8Bytes == 0);
+        prb_assert(iterBackwards.curByteOffset == 0);
+
+        prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Failure);
+    }
 }
 
 function void

@@ -119,11 +119,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 #define prb_unused(x) ((x) = (x))
 
-// TODO(khvrov) Is there a way to create a macro that creates a job and copies data?
-
-// TODO(khvorov) Probably don't need these
-#define prb_countLeading1sU32(x) __builtin_clz(~(x))
-#define prb_countLeading1sU8(x) prb_countLeading1sU32((uint32_t)(x) << 24)
+// TODO(khvorov) Is there a way to create a macro that creates a job and copies data?
 
 // clang-format off
 
@@ -2348,9 +2344,9 @@ prb_colorEsc(prb_ColorID color) {
 prb_PUBLICDEF prb_Utf8CharIter
 prb_createUtf8CharIter(prb_Str str, prb_StrDirection direction) {
     prb_assert(str.ptr && str.len >= 0);
-    int32_t curByteOffset = 0;
+    int32_t curByteOffset = -1;
     if (direction == prb_StrDirection_FromEnd) {
-        curByteOffset = str.len - 1;
+        curByteOffset = str.len;
     }
 
     prb_Utf8CharIter iter = {
@@ -2375,7 +2371,13 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
             case prb_StrDirection_FromStart: iter->curByteOffset += iter->curUtf8Bytes; break;
             case prb_StrDirection_FromEnd: iter->curByteOffset -= 1; break;
         }
+    } else {
+        switch (iter->direction) {
+            case prb_StrDirection_FromStart: iter->curByteOffset += 1; break;
+            case prb_StrDirection_FromEnd: iter->curByteOffset -= 1; break;
+        }
     }
+    iter->curByteOffset = prb_clamp(iter->curByteOffset, -1, iter->str.len);
     iter->curUtf8Bytes = 0;
     iter->curUtf32Char = 0;
     iter->curIsValid = false;
@@ -2386,86 +2388,90 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
     }
 
     if (more) {
-        bool     chValid = false;
-        uint32_t ch = 0;
-        int32_t  chBytes = 0;
-
         result = prb_Success;
 
+        uint32_t ch = 0;
+        int32_t chBytes = 0;
+        bool isValid = false;
+
         uint8_t firstByte = iter->str.ptr[iter->curByteOffset];
-        int32_t leading1s = prb_countLeading1sU8(firstByte);
+        bool isAscii = firstByte < 0b10000000;
+        if (isAscii) {
+            isValid = true;
+            ch = firstByte;
+            chBytes = 1;
+        } else {
+            uint8_t firstByteMask[] = {
+                0b00011111,
+                0b00001111,
+                0b00000111,
+            };
 
-        bool firprb_stByteValid = false;
-        switch (iter->direction) {
-            case prb_StrDirection_FromStart:
-                firprb_stByteValid = (leading1s == 0 || leading1s == 2 || leading1s == 3 || leading1s == 4);
-                break;
-            case prb_StrDirection_FromEnd:
-                firprb_stByteValid = (leading1s == 0 || leading1s == 1);
-                break;
-        }
-
-        if (firprb_stByteValid) {
-            if (leading1s == 0) {
-                chValid = true;
-                ch = firstByte;
-                chBytes = 1;
-            } else {
-                uint8_t firprb_stByteMask[] = {
-                    0b01111111,
-                    0b00011111,
-                    0b00001111,
-                    0b00000111,
-                };
-
-                switch (iter->direction) {
-                    case prb_StrDirection_FromStart: {
-                        chValid = true;
-                        chBytes = leading1s;
-                        prb_assert(chBytes == 2 || chBytes == 3 || chBytes == 4);
-                        ch = firstByte & firprb_stByteMask[chBytes - 1];
+            switch (iter->direction) {
+                case prb_StrDirection_FromStart: {
+                    isValid = firstByte >= 0b11000000 && firstByte < 0b11111000;
+                    if (isValid) {
+                        chBytes = 2;
+                        if (firstByte >= 0b11100000) {
+                            chBytes = 3;
+                            if (firstByte >= 0b11110000) {
+                                chBytes = 4;
+                            }
+                        }
+                        ch = firstByte & firstByteMask[chBytes - 2];
                         for (int32_t byteIndex = 1; byteIndex < chBytes; byteIndex++) {
                             uint8_t byte = iter->str.ptr[iter->curByteOffset + byteIndex];
-                            if (prb_countLeading1sU8(byte) == 1) {
+                            if (byte >= 0b10000000 && byte < 0b11000000) {
                                 ch = (ch << 6) | (byte & 0b00111111);
                             } else {
-                                iter->curByteOffset += byteIndex;
-                                chValid = false;
+                                isValid = false;
                                 break;
                             }
                         }
-                    } break;
+                    }
+                } break;
 
-                    case prb_StrDirection_FromEnd: {
-                        prb_assert(leading1s == 1);
+                case prb_StrDirection_FromEnd: {
+                    if (firstByte < 0b11000000) {
                         ch = firstByte & 0b00111111;
                         int32_t maxExtraBytes = prb_min(3, iter->curByteOffset);
                         for (int32_t byteIndex = 0; byteIndex < maxExtraBytes; byteIndex++) {
-                            uint8_t byte = iter->str.ptr[--iter->curByteOffset];
-                            int32_t byteLeading1s = prb_countLeading1sU8(byte);
+                            uint8_t byte = iter->str.ptr[iter->curByteOffset - 1 - byteIndex];
                             int32_t chBytesTaken = 6 * (byteIndex + 1);
-                            if (byteLeading1s == 1) {
+                            if (byte >= 0b10000000 && byte < 0b11000000) {
                                 ch = ((byte & 0b00111111) << chBytesTaken) | ch;
-                            } else if (byteLeading1s == byteIndex + 2) {
-                                chValid = true;
-                                chBytes = byteLeading1s;
-                                ch = ((byte & firprb_stByteMask[byteLeading1s - 1]) << chBytesTaken) | ch;
-                                break;
                             } else {
-                                break;
+                                if (byte >= 0b11000000 && byte < 0b11111000) {
+                                    int32_t leadingOnes = 2;
+                                    if (byte >= 0b11100000) {
+                                        leadingOnes = 3;
+                                        if (byte >= 0b11110000) {
+                                            leadingOnes = 4;
+                                        }
+                                    }
+                                    if (leadingOnes == byteIndex + 2) {
+                                        isValid = true;
+                                        chBytes = leadingOnes;
+                                        ch = ((byte & firstByteMask[leadingOnes - 2]) << chBytesTaken) | ch;
+                                        iter->curByteOffset -= (byteIndex + 1);
+                                        break;
+                                    } else {
+                                        break;    
+                                    }
+                                } else {
+                                    break;
+                                }                                          
                             }
                         }
-                    } break;
-                }
+                    }
+                } break;
             }
-        } else {
-            iter->curByteOffset += iter->direction == prb_StrDirection_FromStart ? 1 : -1;
         }
 
-        if (chValid) {
-            iter->curIsValid = true;
+        if (isValid) {
             iter->curUtf32Char = ch;
             iter->curUtf8Bytes = chBytes;
+            iter->curIsValid = true;
             iter->curCharCount += 1;
         }
     }
