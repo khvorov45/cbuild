@@ -30,7 +30,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 prb_destroyIter() functions don't destroy actual entries, only system resources (e.g. directory handles).
 */
 
-// TODO(khvorov) Access color escape codes as strings
 // TODO(khvorov) Random number generation
 // TODO(khvorov) Job status enum should probably be separate from process status
 // TODO(khvorov) Should be possible to redirect process stdout/err to different files.
@@ -262,6 +261,7 @@ typedef struct prb_TimeStart {
 } prb_TimeStart;
 
 typedef enum prb_ColorID {
+    prb_ColorID_Reset,
     prb_ColorID_Black,
     prb_ColorID_Red,
     prb_ColorID_Green,
@@ -554,8 +554,7 @@ prb_PUBLICDEC prb_Str           prb_vfmtCustomBuffer(void* buf, int32_t bufSize,
 prb_PUBLICDEC prb_Str           prb_fmt(prb_Arena* arena, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
 prb_PUBLICDEC prb_Status        prb_writeToStdout(prb_Str str);
 prb_PUBLICDEC prb_Status        prb_writelnToStdout(prb_Arena* arena, prb_Str str);
-prb_PUBLICDEC void              prb_setPrintColor(prb_ColorID color);
-prb_PUBLICDEC void              prb_resetPrintColor(void);
+prb_PUBLICDEC prb_Str           prb_colorEsc(prb_ColorID color);
 prb_PUBLICDEC prb_Utf8CharIter  prb_createUtf8CharIter(prb_Str str, prb_StrDirection direction);
 prb_PUBLICDEC prb_Status        prb_utf8CharIterNext(prb_Utf8CharIter* iter);
 prb_PUBLICDEC prb_LineIter      prb_createLineIter(prb_Str str);
@@ -2329,10 +2328,11 @@ prb_writelnToStdout(prb_Arena* arena, prb_Str str) {
     return result;
 }
 
-prb_PUBLICDEF void
-prb_setPrintColor(prb_ColorID color) {
+prb_PUBLICDEF prb_Str
+prb_colorEsc(prb_ColorID color) {
     prb_Str str = {};
     switch (color) {
+        case prb_ColorID_Reset: str = prb_STR("\x1b[0m"); break;
         case prb_ColorID_Black: str = prb_STR("\x1b[30m"); break;
         case prb_ColorID_Red: str = prb_STR("\x1b[31m"); break;
         case prb_ColorID_Green: str = prb_STR("\x1b[32m"); break;
@@ -2342,12 +2342,7 @@ prb_setPrintColor(prb_ColorID color) {
         case prb_ColorID_Cyan: str = prb_STR("\x1b[36m"); break;
         case prb_ColorID_White: str = prb_STR("\x1b[37m"); break;
     }
-    prb_writeToStdout(str);
-}
-
-prb_PUBLICDEF void
-prb_resetPrintColor() {
-    prb_writeToStdout(prb_STR("\x1b[0m"));
+    return str;
 }
 
 prb_PUBLICDEF prb_Utf8CharIter
@@ -2873,9 +2868,9 @@ prb_debuggerPresent(prb_Arena* arena) {
 prb_PUBLICDEF prb_Status
 prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_Status result = prb_Failure;
-    const char* nameNull = prb_strGetNullTerminated(arena, name);
-    const char* valueNull = prb_strGetNullTerminated(arena, value);
+    prb_Status     result = prb_Failure;
+    const char*    nameNull = prb_strGetNullTerminated(arena, name);
+    const char*    valueNull = prb_strGetNullTerminated(arena, value);
 
 #if prb_PLATFORM_WINDOWS
 
@@ -2897,7 +2892,7 @@ prb_PUBLICDEF prb_GetenvResult
 prb_getenv(prb_Arena* arena, prb_Str name) {
     prb_TempMemory   temp = prb_beginTempMemory(arena);
     prb_GetenvResult result = {};
-    const char* nameNull = prb_strGetNullTerminated(arena, name);
+    const char*      nameNull = prb_strGetNullTerminated(arena, name);
 
 #if prb_PLATFORM_WINDOWS
 
@@ -2922,8 +2917,8 @@ prb_getenv(prb_Arena* arena, prb_Str name) {
 prb_PUBLICDEF prb_Status
 prb_unsetenv(prb_Arena* arena, prb_Str name) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_Status result = prb_Failure;
-    const char* nameNull = prb_strGetNullTerminated(arena, name);
+    prb_Status     result = prb_Failure;
+    const char*    nameNull = prb_strGetNullTerminated(arena, name);
 
 #if prb_PLATFORM_WINDOWS
 

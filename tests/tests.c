@@ -56,6 +56,10 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_setenv"));
         arrput(*prbNames, prb_STR("prb_getenv"));
         arrput(*prbNames, prb_STR("prb_unsetenv"));
+    } else if (prb_streq(testName, prb_STR("writeToStdout"))) {
+        arrput(*prbNames, prb_STR("prb_writeToStdout"));
+        arrput(*prbNames, prb_STR("prb_writelnToStdout"));
+        arrput(*prbNames, prb_STR("prb_colorEsc"));
     } else {
         prb_Str nameWithPrefix = prb_fmt(arena, "prb_%.*s", prb_LIT(testName));
         arrput(*prbNames, nameWithPrefix);
@@ -1713,57 +1717,20 @@ test_fmt(prb_Arena* arena, void* data) {
 
 function void
 test_writeToStdout(prb_Arena* arena, void* data) {
-    prb_unused(arena);
-    prb_unused(data);
-    prb_assert(prb_writeToStdout(prb_STR("write to stdout test\n")) == prb_Success);
-}
-
-function void
-test_writelnToStdout(prb_Arena* arena, void* data) {
-    prb_unused(data);
-    prb_assert(prb_writelnToStdout(arena, prb_STR("writeln to stdout test")) == prb_Success);
-}
-
-function void
-test_setPrintColor(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_setPrintColor(prb_ColorID_Blue);
-    prb_writeToStdout(prb_STR("blue"));
-
-    prb_setPrintColor(prb_ColorID_Cyan);
-    prb_writeToStdout(prb_STR("cyan"));
-
-    prb_setPrintColor(prb_ColorID_Magenta);
-    prb_writeToStdout(prb_STR("magenta"));
-
-    prb_setPrintColor(prb_ColorID_Yellow);
-    prb_writeToStdout(prb_STR("yellow"));
-
-    prb_setPrintColor(prb_ColorID_Red);
-    prb_writeToStdout(prb_STR("red"));
-
-    prb_setPrintColor(prb_ColorID_Green);
-    prb_writeToStdout(prb_STR("green"));
-
-    prb_setPrintColor(prb_ColorID_Black);
-    prb_writeToStdout(prb_STR("black"));
-
-    prb_setPrintColor(prb_ColorID_White);
-    prb_writeToStdout(prb_STR("white"));
-
-    prb_resetPrintColor();
-    prb_writelnToStdout(arena, prb_STR("reset"));
+    prb_writeToStdout(prb_fmt(arena, "%sblue", prb_colorEsc(prb_ColorID_Blue).ptr));
+    prb_writeToStdout(prb_fmt(arena, "%scyan", prb_colorEsc(prb_ColorID_Cyan).ptr));
+    prb_writeToStdout(prb_fmt(arena, "%smagenta", prb_colorEsc(prb_ColorID_Magenta).ptr));
+    prb_writeToStdout(prb_fmt(arena, "%syellow", prb_colorEsc(prb_ColorID_Yellow).ptr));
+    prb_writeToStdout(prb_fmt(arena, "%sred", prb_colorEsc(prb_ColorID_Red).ptr));
+    prb_writeToStdout(prb_fmt(arena, "%sgreen", prb_colorEsc(prb_ColorID_Green).ptr));
+    prb_writeToStdout(prb_fmt(arena, "%sblack", prb_colorEsc(prb_ColorID_Black).ptr));
+    prb_writeToStdout(prb_fmt(arena, "%swhite", prb_colorEsc(prb_ColorID_White).ptr));
+    prb_writelnToStdout(arena, prb_colorEsc(prb_ColorID_Reset));
 
     prb_endTempMemory(temp);
-}
-
-function void
-test_resetPrintColor(prb_Arena* arena, void* data) {
-    prb_unused(arena);
-    prb_unused(data);
-    // TODO(khvorov) Write
 }
 
 function void
@@ -2296,9 +2263,6 @@ main() {
     arrput(jobs, prb_createJob(test_vfmtCustomBuffer, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_fmt, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_writeToStdout, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_writelnToStdout, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_setPrintColor, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_resetPrintColor, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_utf8CharIter, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_lineIter, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_wordIter, 0, arena, 10 * prb_MEGABYTE));
@@ -2331,7 +2295,7 @@ main() {
     prb_assert(arena->tempCount == 0);
     prb_assert(arena->base == baseStart);
 
-    prb_writelnToStdout(arena, prb_fmt(arena, "tests took %.2fms", prb_getMsFrom(testStart)));
+    prb_writelnToStdout(arena, prb_fmt(arena, "%stests took %.2fms%s", prb_colorEsc(prb_ColorID_Green).ptr, prb_getMsFrom(testStart), prb_colorEsc(prb_ColorID_Reset).ptr));
 
     prb_terminate(0);
     prb_assert(!"unreachable");

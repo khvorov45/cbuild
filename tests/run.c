@@ -488,6 +488,6 @@ main() {
         }
     }
 
-    prb_writelnToStdout(arena, prb_fmt(arena, "test run took %.2fms", prb_getMsFrom(scriptStart)));
+    prb_writelnToStdout(arena, prb_fmt(arena, "%stest run took %.2fms%s", prb_colorEsc(prb_ColorID_Green).ptr, prb_getMsFrom(scriptStart), prb_colorEsc(prb_ColorID_Reset).ptr));
     return 0;
 }
