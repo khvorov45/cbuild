@@ -43,6 +43,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 // TODO(khvorov) Ability to check/change file executable permissions
 // TODO(khvorov) A way to limit the number of cores used when executing jobs/processes
 // TODO(khvorov) Small example in readme and doc comment. Probably actually test it works.
+// TODO(khvorov) Make multithread api similar to launching multiple processes
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
@@ -119,6 +120,9 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 #define prb_unused(x) ((x) = (x))
 
+// TODO(khvrov) Is there a way to create a macro that creates a job and copies data?
+
+// TODO(khvorov) Probably don't need these
 #define prb_countLeading1sU32(x) __builtin_clz(~(x))
 #define prb_countLeading1sU8(x) prb_countLeading1sU32((uint32_t)(x) << 24)
 

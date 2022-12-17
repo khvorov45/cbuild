@@ -1,12 +1,15 @@
 #include "../cbuild.h"
 
 #define function static
+#define global_variable static
 
 typedef uint8_t  u8;
 typedef uint64_t u64;
 typedef int32_t  i32;
 typedef uint32_t u32;
 typedef size_t   usize;
+
+global_variable prb_Str globalSuffix = prb_STR("");
 
 function prb_Str*
 setdiff(prb_Str* arr1, prb_Str* arr2) {
@@ -60,8 +63,8 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
 }
 
 function prb_Str
-getTempDir(prb_Arena* arena, const char* funcName) {
-    prb_Str funcNameWithNonascii = prb_fmt(arena, "%s太阳😐", funcName);
+getTempPath(prb_Arena* arena, const char* funcName) {
+    prb_Str funcNameWithNonascii = prb_fmt(arena, "%s太阳😐-%.*s", funcName, prb_LIT(globalSuffix));
     prb_Str dir = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), funcNameWithNonascii);
     return dir;
 }
@@ -270,7 +273,7 @@ test_pathExists(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Str dir = getTempDir(arena, __FUNCTION__);
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_pathExists(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
@@ -301,7 +304,7 @@ test_pathExists(prb_Arena* arena, void* data) {
     prb_assert(!prb_pathExists(arena, dirNotNull));
     prb_assert(!prb_pathExists(arena, dir));
 
-    prb_Str filepath = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_Str filepath = getTempPath(arena, __FUNCTION__);
     prb_Str filepathNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(filepath));
     filepathNotNull.len = filepath.len;
 
@@ -373,7 +376,7 @@ test_isDir(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Str dir = getTempDir(arena, __FUNCTION__);
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
@@ -414,7 +417,7 @@ test_isFile(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Str filepath = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_Str filepath = getTempPath(arena, __FUNCTION__);
     prb_Str filepathNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(filepath));
     filepathNotNull.len = filepath.len;
 
@@ -449,7 +452,7 @@ test_dirIsEmpty(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Str dir = getTempDir(arena, __FUNCTION__);
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_clearDir(arena, dir) == prb_Success);
     prb_assert(prb_dirIsEmpty(arena, dir));
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("file.txt"));
@@ -488,7 +491,7 @@ test_createDirIfNotExists(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Str dir = getTempDir(arena, __FUNCTION__);
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
@@ -522,7 +525,7 @@ test_removeFileOrDirIfExists(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Str dir = getTempDir(arena, __FUNCTION__);
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
 
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("file.txt"));
@@ -574,7 +577,7 @@ test_removeFileIfExists(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Str dir = getTempDir(arena, __FUNCTION__);
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_clearDir(arena, dir) == prb_Success);
 
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("file.txt"));
@@ -601,7 +604,7 @@ test_removeDirIfExists(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Str dir = getTempDir(arena, __FUNCTION__);
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_isDir(arena, dir));
     prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
@@ -632,7 +635,7 @@ test_clearDir(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Str dir = getTempDir(arena, __FUNCTION__);
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_clearDir(arena, dir) == prb_Success);
     prb_assert(prb_dirIsEmpty(arena, dir));
 
@@ -672,7 +675,7 @@ test_getWorkingDir(prb_Arena* arena, void* data) {
 
     prb_Str cwd = prb_getWorkingDir(arena);
     prb_assert(prb_isDir(arena, cwd));
-    prb_Str filename = prb_STR(__FUNCTION__);
+    prb_Str filename = prb_getLastEntryInPath(getTempPath(arena, __FUNCTION__));
     prb_assert(prb_writeEntireFile(arena, filename, filename.ptr, filename.len) == prb_Success);
     prb_ReadEntireFileResult fileContent = prb_readEntireFile(arena, prb_pathJoin(arena, cwd, filename));
     prb_assert(fileContent.success);
@@ -688,7 +691,7 @@ test_setWorkingDir(prb_Arena* arena, void* data) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str cwdInit = prb_getWorkingDir(arena);
-    prb_Str newWd = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_Str newWd = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_removeDirIfExists(arena, newWd) == prb_Success);
     prb_Str newWdAbsolute = prb_getAbsolutePath(arena, newWd);
     prb_assert(prb_setWorkingDir(arena, newWd) == prb_Failure);
@@ -939,7 +942,7 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_Str dir = getTempDir(arena, __FUNCTION__);
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
@@ -1302,7 +1305,7 @@ function void
 test_getLastModified(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_Str        dir = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), prb_STR(__FUNCTION__));
+    prb_Str        dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_clearDir(arena, dir) == prb_Success);
     prb_Str file = prb_pathJoin(arena, dir, prb_STR("f1.c"));
 
@@ -1378,7 +1381,7 @@ function void
 test_writeEntireFile(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_Str        dir = getTempDir(arena, __FUNCTION__);
+    prb_Str        dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("filename.txt"));
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Failure);
@@ -1401,7 +1404,7 @@ function void
 test_getFileHash(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_Str        dir = getTempDir(arena, __FUNCTION__);
+    prb_Str        dir = getTempPath(arena, __FUNCTION__);
     prb_Str        filepath = prb_pathJoin(arena, dir, prb_STR("filename.txt"));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Success);
@@ -1726,31 +1729,29 @@ test_setPrintColor(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_writelnToStdout(arena, prb_STR("color printing:"));
-
     prb_setPrintColor(prb_ColorID_Blue);
-    prb_writelnToStdout(arena, prb_STR("blue"));
+    prb_writeToStdout(prb_STR("blue"));
 
     prb_setPrintColor(prb_ColorID_Cyan);
-    prb_writelnToStdout(arena, prb_STR("cyan"));
+    prb_writeToStdout(prb_STR("cyan"));
 
     prb_setPrintColor(prb_ColorID_Magenta);
-    prb_writelnToStdout(arena, prb_STR("magenta"));
+    prb_writeToStdout(prb_STR("magenta"));
 
     prb_setPrintColor(prb_ColorID_Yellow);
-    prb_writelnToStdout(arena, prb_STR("yellow"));
+    prb_writeToStdout(prb_STR("yellow"));
 
     prb_setPrintColor(prb_ColorID_Red);
-    prb_writelnToStdout(arena, prb_STR("red"));
+    prb_writeToStdout(prb_STR("red"));
 
     prb_setPrintColor(prb_ColorID_Green);
-    prb_writelnToStdout(arena, prb_STR("green"));
+    prb_writeToStdout(prb_STR("green"));
 
     prb_setPrintColor(prb_ColorID_Black);
-    prb_writelnToStdout(arena, prb_STR("black"));
+    prb_writeToStdout(prb_STR("black"));
 
     prb_setPrintColor(prb_ColorID_White);
-    prb_writelnToStdout(arena, prb_STR("white"));
+    prb_writeToStdout(prb_STR("white"));
 
     prb_resetPrintColor();
     prb_writelnToStdout(arena, prb_STR("reset"));
@@ -1982,14 +1983,14 @@ test_debuggerPresent(prb_Arena* arena, void* data) {
 
 function void
 test_env(prb_Arena* arena, void* data) {
-    prb_unused(data);    
+    prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_Str name = prb_STR(__FUNCTION__);
-    prb_Str value = prb_STR("test");
-    prb_Str value2 = prb_STR("test2");
+    prb_Str        name = prb_STR(__FUNCTION__);
+    prb_Str        value = prb_STR("test");
+    prb_Str        value2 = prb_STR("test2");
     prb_unsetenv(arena, name);
     prb_assert(!prb_getenv(arena, name).found);
-    
+
     prb_assert(prb_setenv(arena, name, value));
     prb_GetenvResult getRes = prb_getenv(arena, name);
     prb_assert(getRes.found);
@@ -1999,7 +2000,7 @@ test_env(prb_Arena* arena, void* data) {
     getRes = prb_getenv(arena, name);
     prb_assert(getRes.found);
     prb_assert(prb_streq(getRes.str, value2));
-    
+
     prb_assert(prb_unsetenv(arena, name));
     prb_assert(!prb_getenv(arena, name).found);
     prb_endTempMemory(temp);
@@ -2216,115 +2217,121 @@ test_fileformat(prb_Arena* arena, void* data) {
 int
 main() {
     prb_TimeStart testStart = prb_timeStart();
-    prb_Arena     arena = prb_createArenaFromVmem(1 * prb_GIGABYTE);
-    void*         baseStart = arena.base;
-    prb_assert(arena.tempCount == 0);
+    prb_Arena     arena_ = prb_createArenaFromVmem(1 * prb_GIGABYTE);
+    prb_Arena*    arena = &arena_;
+    void*         baseStart = arena->base;
+    prb_assert(arena->tempCount == 0);
+
+    prb_Str* args = prb_getCmdArgs(arena);
+    if (arrlen(args) >= 2) {
+        globalSuffix = args[1];
+    }
 
     prb_Job* jobs = 0;
 
-    arrput(jobs, prb_createJob(testMacros, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(testMacros, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Memory
-    arrput(jobs, prb_createJob(test_memeq, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getOffsetForAlignment, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_vmemAlloc, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_createArenaFromVmem, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_createArenaFromArena, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_arenaAllocAndZero, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_arenaAlignFreePtr, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_arenaFreePtr, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_arenaFreeSize, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_arenaChangeUsed, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_beginTempMemory, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_endTempMemory, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_memeq, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getOffsetForAlignment, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_vmemAlloc, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_createArenaFromVmem, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_createArenaFromArena, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_arenaAllocAndZero, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_arenaAlignFreePtr, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_arenaFreePtr, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_arenaFreeSize, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_arenaChangeUsed, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_beginTempMemory, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_endTempMemory, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Filesystem
-    arrput(jobs, prb_createJob(test_pathExists, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_pathIsAbsolute, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getAbsolutePath, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_isDir, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_isFile, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_dirIsEmpty, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_createDirIfNotExists, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_removeFileOrDirIfExists, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_removeFileIfExists, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_removeDirIfExists, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_clearDir, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getWorkingDir, 0, &arena, 10 * prb_MEGABYTE));
-    test_setWorkingDir(&arena, 0);  // NOTE(khvorov) Messes with global state of the process
-    arrput(jobs, prb_createJob(test_pathJoin, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_charIsSep, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_findSepBeforeLastEntry, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getParentDir, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getLastEntryInPath, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_replaceExt, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_pathEntryIter, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_pathFindIter, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getLastModified, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_createMultitime, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_multitimeAdd, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_readEntireFile, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_writeEntireFile, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_binaryToCArray, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getFileHash, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_pathExists, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_pathIsAbsolute, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getAbsolutePath, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_isDir, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_isFile, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_dirIsEmpty, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_createDirIfNotExists, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_removeFileOrDirIfExists, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_removeFileIfExists, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_removeDirIfExists, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_clearDir, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getWorkingDir, 0, arena, 10 * prb_MEGABYTE));
+    test_setWorkingDir(arena, 0);  // NOTE(khvorov) Messes with global state of the process
+    arrput(jobs, prb_createJob(test_pathJoin, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_charIsSep, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_findSepBeforeLastEntry, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getParentDir, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getLastEntryInPath, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_replaceExt, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_pathEntryIter, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_pathFindIter, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getLastModified, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_createMultitime, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_multitimeAdd, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_readEntireFile, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_writeEntireFile, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_binaryToCArray, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getFileHash, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Strings
-    arrput(jobs, prb_createJob(test_streq, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strSliceForward, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strSliceBetween, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strGetNullTerminated, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strMallocCopy, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strFromBytes, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strTrimSide, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strTrim, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strFind, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strFindIter, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strStartsWith, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strEndsWith, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strReplace, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_stringsJoin, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_beginStr, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_addStrSegment, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_endStr, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_vfmtCustomBuffer, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_fmt, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_writeToStdout, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_writelnToStdout, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_setPrintColor, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_resetPrintColor, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_utf8CharIter, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_lineIter, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_wordIter, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_parseNumber, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_streq, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strSliceForward, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strSliceBetween, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strGetNullTerminated, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strMallocCopy, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strFromBytes, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strTrimSide, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strTrim, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strFind, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strFindIter, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strStartsWith, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strEndsWith, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strReplace, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_stringsJoin, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_beginStr, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_addStrSegment, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_endStr, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_vfmtCustomBuffer, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_fmt, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_writeToStdout, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_writelnToStdout, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_setPrintColor, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_resetPrintColor, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_utf8CharIter, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_lineIter, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_wordIter, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_parseNumber, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Processes
-    arrput(jobs, prb_createJob(test_terminate, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getCmdline, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getCmdArgs, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getArgArrayFromStr, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_execCmd, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_waitForProcesses, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_sleep, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_debuggerPresent, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_env, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_terminate, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getCmdline, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getCmdArgs, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getArgArrayFromStr, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_execCmd, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_waitForProcesses, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_sleep, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_debuggerPresent, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_env, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Timing
-    arrput(jobs, prb_createJob(test_timeStart, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_getMsFrom, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_timeStart, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getMsFrom, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Multithreading
-    arrput(jobs, prb_createJob(test_createJob, 0, &arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_execJobs, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_createJob, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_execJobs, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Fileformat
-    arrput(jobs, prb_createJob(test_fileformat, 0, &arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_fileformat, 0, arena, 10 * prb_MEGABYTE));
 
     prb_assert(prb_execJobs(jobs, arrlen(jobs), prb_ThreadMode_Multi) == prb_Success);
 
-    prb_assert(arena.tempCount == 0);
-    prb_assert(arena.base == baseStart);
+    prb_assert(arena->tempCount == 0);
+    prb_assert(arena->base == baseStart);
 
-    prb_writelnToStdout(&arena, prb_fmt(&arena, "tests took %.2fms", prb_getMsFrom(testStart)));
+    prb_writelnToStdout(arena, prb_fmt(arena, "tests took %.2fms", prb_getMsFrom(testStart)));
 
     prb_terminate(0);
     prb_assert(!"unreachable");

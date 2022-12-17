@@ -19,3 +19,6 @@
 *.gcno
 *.gcov
 /example/fontdata.c
+/tests/*.supp
+/tests/*.log
+/tests/coverage*
