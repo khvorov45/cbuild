@@ -18,4 +18,4 @@ jobs:
     - name: coverage
       uses: codecov/codecov-action@v3
       with:
-        gcov: true
+        files: ./tests/coverage.txt
