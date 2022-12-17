@@ -10,10 +10,8 @@ jobs:
   build-linux:
     runs-on: ubuntu-22.04
     steps:
-    - name: Install LLVM and Clang
-      uses: KyleMayes/install-llvm-action@v1.6.1
-      with:
-        version: "15"
+    - name: Install LLVM (for coverage)
+      run: sudo apt install -y llvm
     - uses: actions/checkout@v2
     - name: tests
       run: ./tests/run.sh ci
