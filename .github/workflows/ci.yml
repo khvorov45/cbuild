@@ -13,7 +13,7 @@ jobs:
     - name: Install LLVM and Clang
       uses: KyleMayes/install-llvm-action@v1.6.1
       with:
-        version: "16"
+        version: "15"
     - uses: actions/checkout@v2
     - name: tests
       run: ./tests/run.sh ci
