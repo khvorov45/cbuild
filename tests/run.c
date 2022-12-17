@@ -322,6 +322,7 @@ main() {
 
         prb_Job* jobs = 0;
 
+        // TODO(khvorov) Check if can run on ci now
         // NOTE(khvorov) Sanitizers (don't run on ci because stuff is executed in a weird way there and they don't work)
         if (!runningOnCi) {
             {
