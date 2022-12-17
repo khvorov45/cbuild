@@ -373,6 +373,9 @@ test_getAbsolutePath(prb_Arena* arena, void* data) {
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/path/./file.md")), prb_STR("/path/file.md")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/path/../file.md")), prb_STR("/file.md")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("../file.md")), prb_pathJoin(arena, prb_getParentDir(arena, cwd), prb_STR("file.md"))));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("////")), prb_STR("/")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("////home///other")), prb_STR("/home/other")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("home///other")), prb_pathJoin(arena, cwd, prb_STR("home/other"))));
 }
 
 function void
