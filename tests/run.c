@@ -325,13 +325,6 @@ main() {
         // NOTE(khvorov) Sanitizers (don't run on ci because stuff is executed in a weird way there and they don't work)
         if (!runningOnCi) {
             {
-                prb_Str leakSuppress = prb_STR("leak:regcomp");
-                prb_Str lsanFilepath = prb_pathJoin(arena, globalTestsDir, prb_STR("lsan.supp"));
-                prb_assert(prb_writeEntireFile(arena, lsanFilepath, leakSuppress.ptr, leakSuppress.len));
-                prb_assert(prb_setenv(arena, prb_STR("LSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(lsanFilepath))));
-            }
-
-            {
                 prb_Str ubSuppress = prb_STR("alignment:prb_stbsp_vsprintfcb");
                 prb_Str ubsanFilepath = prb_pathJoin(arena, globalTestsDir, prb_STR("ubsan.supp"));
                 prb_assert(prb_writeEntireFile(arena, ubsanFilepath, ubSuppress.ptr, ubSuppress.len));

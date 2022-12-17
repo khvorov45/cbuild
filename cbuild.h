@@ -30,6 +30,8 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 prb_destroyIter() functions don't destroy actual entries, only system resources (e.g. directory handles).
 */
 
+// TODO(khvorov) Probably remove glob and regexPosix path finding and just expect user to 
+// compose all entires iteration with string finding (glob is a subset of regex so that should be fine?)
 // TODO(khvorov) Random number generation
 // TODO(khvorov) Job status enum should probably be separate from process status
 // TODO(khvorov) Should be possible to redirect process stdout/err to different files.
@@ -1655,17 +1657,17 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
 
         case prb_PathFindMode_RegexPosix: {
             iter.regexPosix.currentIndex = -1;
-            regex_t     regexCompiled = {};
-            const char* patternNull = prb_strGetNullTerminated(spec.arena, spec.pattern);
-            int         compResult = regcomp(&regexCompiled, patternNull, REG_EXTENDED);
-            prb_assert(compResult == 0);
             prb_PathFindSpec allEntriesSpec = spec;
             allEntriesSpec.mode = prb_PathFindMode_AllEntriesInDir;
             prb_PathFindIter allEntriesIter = prb_createPathFindIter(allEntriesSpec);
             while (prb_pathFindIterNext(&allEntriesIter) == prb_Success) {
-                prb_Str    lastEntry = prb_getLastEntryInPath(allEntriesIter.curPath);
-                regmatch_t pos = {};
-                if (regexec(&regexCompiled, lastEntry.ptr, 1, &pos, 0) == 0) {
+                prb_StrFindSpec strFindSpec = {};
+                strFindSpec.str = prb_getLastEntryInPath(allEntriesIter.curPath);;
+                strFindSpec.pattern = spec.pattern;
+                strFindSpec.mode = prb_StrFindMode_RegexPosix;
+                strFindSpec.regexPosix.arena = spec.arena;
+                prb_StrFindResult strFindRes = prb_strFind(strFindSpec);
+                if (strFindRes.found) {
                     prb_Str curPathMalloced = prb_strMallocCopy(allEntriesIter.curPath);
                     arrput(iter.regexPosix.matches, curPathMalloced);
                 }
