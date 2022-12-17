@@ -1,6 +1,7 @@
 #include "../cbuild.h"
 
 #define function static
+#define global_variable static
 
 typedef int32_t  i32;
 typedef uint32_t u32;
@@ -25,7 +26,7 @@ typedef struct CompileSpec {
     prb_Str  output;
 } CompileSpec;
 
-prb_Str globalTestsDir = {};
+global_variable prb_Str globalTestsDir = {};
 
 function prb_Str
 constructCompileCmd(prb_Arena* arena, CompileSpec spec) {
