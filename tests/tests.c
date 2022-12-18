@@ -1941,9 +1941,91 @@ test_getArgArrayFromStr(prb_Arena* arena, void* data) {
 
 function void
 test_execCmd(prb_Arena* arena, void* data) {
-    prb_unused(arena);
     prb_unused(data);
-    // TODO(khvorov) Write
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
+    prb_assert(prb_clearDir(arena, dir));
+    prb_Str helloWorldPath = prb_pathJoin(arena, dir, prb_STR("helloworld.c"));
+    prb_Str helloWorld = prb_STR("#include <stdio.h>\nint main() {printf(\"hello world\\n\"); fflush(stdout); fprintf(stderr, \"stderrout\\n\"); return 0;}");
+    prb_assert(prb_writeEntireFile(arena, helloWorldPath, helloWorld.ptr, helloWorld.len));
+
+#if prb_PLATFORM_WINDOWS
+    prb_Str exeExt = prb_STR("exe");
+#elif prb_PLATFORM_LINUX
+    prb_Str exeExt = prb_STR("bin");
+#else
+#error unimplemented
+#endif
+
+    prb_Str helloExe = prb_replaceExt(arena, helloWorldPath, exeExt);
+    prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(helloWorldPath), prb_LIT(helloExe));
+
+    {
+        prb_ExecCmdSpec spec = {};
+        spec.cmd = compileCmd;
+        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+    }
+
+    {
+        prb_ExecCmdSpec spec = {};
+        spec.cmd = helloExe;
+        spec.redirectStdout = true;
+        spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
+        spec.redirectStderr = true;
+        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+        prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
+        prb_assert(readRes.success);
+        prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\n")));
+    }
+
+    {
+        prb_ExecCmdSpec spec = {};
+        spec.cmd = helloExe;
+        spec.redirectStderr = true;
+        spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
+        spec.redirectStdout = true;
+        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+        prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stderrFilepath);
+        prb_assert(readRes.success);
+        prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("stderrout\n")));
+    }
+
+    {
+        prb_ExecCmdSpec spec = {};
+        spec.cmd = helloExe;
+        spec.redirectStdout = true;
+        spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
+        spec.redirectStderr = true;
+        spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
+        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+        {
+            prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
+            prb_assert(readRes.success);
+            prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\n")));
+        }
+        {
+            prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stderrFilepath);
+            prb_assert(readRes.success);
+            prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("stderrout\n")));
+        }
+    }
+
+    {
+        prb_ExecCmdSpec spec = {};
+        spec.cmd = helloExe;
+        spec.redirectStdout = true;
+        spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
+        spec.redirectStderr = true;
+        spec.stderrFilepath = spec.stdoutFilepath;
+        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);   
+        prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
+        prb_assert(readRes.success);
+        prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\nstderrout\n")));
+    }
+
+    prb_removeDirIfExists(arena, dir);
+    prb_endTempMemory(temp);
 }
 
 function void

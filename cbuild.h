@@ -31,9 +31,7 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 
 // TODO(khvorov) Random number generation
 // TODO(khvorov) Job status enum should probably be separate from process status
-// TODO(khvorov) Should be possible to redirect process stdout/err to different files.
 // TODO(khvorov) Should be possible to redirect process stdout/err to a buffer.
-// TODO(khvorov) If stdout/err file is missing just ignore the output
 // TODO(khvorov) Pathfind iterator should probably not crash when given non-existant directories
 // TODO(khvorov) Set env variables when executing processes
 // TODO(khvorov) strReplace should just take a position and a length of the replacement
@@ -273,6 +271,15 @@ typedef struct prb_Bytes {
     int32_t  len;
 } prb_Bytes;
 
+typedef struct prb_ExecCmdSpec {
+    prb_Str cmd;
+    bool    dontwait;
+    bool    redirectStdout;
+    prb_Str stdoutFilepath;
+    bool    redirectStderr;
+    prb_Str stderrFilepath;
+} prb_ExecCmdSpec;
+
 typedef enum prb_ProcessStatus {
     prb_ProcessStatus_NotLaunched,
     prb_ProcessStatus_Launched,
@@ -291,13 +298,6 @@ typedef struct prb_ProcessHandle {
 #error unimplemented
 #endif
 } prb_ProcessHandle;
-
-typedef enum prb_ProcessFlag {
-    prb_ProcessFlag_DontWait = 1 << 0,
-    prb_ProcessFlag_RedirectStdout = 1 << 1,
-    prb_ProcessFlag_RedirectStderr = 1 << 2,
-} prb_ProcessFlag;
-typedef uint32_t prb_ProcessFlags;
 
 typedef enum prb_StrFindMode {
     prb_StrFindMode_Exact,
@@ -522,7 +522,7 @@ prb_PUBLICDEC void              prb_terminate(int32_t code);
 prb_PUBLICDEC prb_Str           prb_getCmdline(prb_Arena* arena);
 prb_PUBLICDEC prb_Str*          prb_getCmdArgs(prb_Arena* arena);
 prb_PUBLICDEC const char**      prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str);
-prb_PUBLICDEC prb_ProcessHandle prb_execCmd(prb_Arena* arena, prb_Str cmd, prb_ProcessFlags flags, prb_Str redirectFilepath);
+prb_PUBLICDEC prb_ProcessHandle prb_execCmd(prb_Arena* arena, prb_ExecCmdSpec spec);
 prb_PUBLICDEC prb_Status        prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
 prb_PUBLICDEC void              prb_sleep(float ms);
 prb_PUBLICDEC bool              prb_debuggerPresent(prb_Arena* arena);
@@ -2547,17 +2547,9 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
 }
 
 prb_PUBLICDEF prb_ProcessHandle
-prb_execCmd(prb_Arena* arena, prb_Str cmd, prb_ProcessFlags flags, prb_Str redirectFilepath) {
+prb_execCmd(prb_Arena* arena, prb_ExecCmdSpec spec) {
     prb_ProcessHandle result = {};
     prb_TempMemory    temp = prb_beginTempMemory(arena);
-    const char*       redirectFilepathNull = 0;
-
-    if ((flags & prb_ProcessFlag_RedirectStdout) || (flags & prb_ProcessFlag_RedirectStderr)) {
-        prb_assert(redirectFilepath.ptr && redirectFilepath.len > 0);
-        redirectFilepathNull = prb_strGetNullTerminated(arena, redirectFilepath);
-    } else {
-        prb_assert(redirectFilepath.ptr == 0);
-    }
 
 #if prb_PLATFORM_WINDOWS
 
@@ -2577,46 +2569,67 @@ prb_execCmd(prb_Arena* arena, prb_Str cmd, prb_ProcessFlags flags, prb_Str redir
 
 #elif prb_PLATFORM_LINUX
 
+    const char* stdoutPath = 0;
+    if (spec.redirectStdout) {
+        if (spec.stdoutFilepath.ptr && spec.stdoutFilepath.len > 0) {
+            stdoutPath = prb_strGetNullTerminated(arena, spec.stdoutFilepath);
+        } else {
+            stdoutPath = "/dev/null";
+        }
+    }
+
+    const char* stderrPath = 0;
+    if (spec.redirectStderr) {
+        if (spec.stderrFilepath.ptr && spec.stderrFilepath.len > 0) {
+            stderrPath = prb_strGetNullTerminated(arena, spec.stderrFilepath);
+        } else {
+            stderrPath = "/dev/null";
+        }
+    }
+
     bool                        fileActionsSucceeded = true;
     posix_spawn_file_actions_t* fileActionsPtr = 0;
     posix_spawn_file_actions_t  fileActions = {};
-    if ((flags & prb_ProcessFlag_RedirectStdout) || (flags & prb_ProcessFlag_RedirectStderr)) {
+    if (spec.redirectStdout || spec.redirectStderr) {
         fileActionsPtr = &fileActions;
         int initResult = posix_spawn_file_actions_init(&fileActions);
         fileActionsSucceeded = initResult == 0;
         if (fileActionsSucceeded) {
-            if (flags & prb_ProcessFlag_RedirectStdout) {
+            if (spec.redirectStdout) {
                 int stdoutRedirectResult = posix_spawn_file_actions_addopen(
                     &fileActions,
                     STDOUT_FILENO,
-                    redirectFilepathNull,
+                    stdoutPath,
                     O_WRONLY | O_CREAT | O_TRUNC,
                     S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
                 );
                 fileActionsSucceeded = stdoutRedirectResult == 0;
-                if (fileActionsSucceeded && (flags & prb_ProcessFlag_RedirectStderr)) {
+            }
+
+            if (fileActionsSucceeded && spec.redirectStderr) {
+                if (spec.redirectStdout && prb_streq(prb_STR(stdoutPath), prb_STR(stderrPath))) {
                     int dupResult = posix_spawn_file_actions_adddup2(&fileActions, STDOUT_FILENO, STDERR_FILENO);
                     fileActionsSucceeded = dupResult == 0;
+                } else {
+                    int stderrRedirectResult = posix_spawn_file_actions_addopen(
+                        &fileActions,
+                        STDERR_FILENO,
+                        stderrPath,
+                        O_WRONLY | O_CREAT | O_TRUNC,
+                        S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
+                    );
+                    fileActionsSucceeded = stderrRedirectResult == 0;
                 }
-            } else if (flags & prb_ProcessFlag_RedirectStderr) {
-                int stderrRedirectResult = posix_spawn_file_actions_addopen(
-                    &fileActions,
-                    STDERR_FILENO,
-                    redirectFilepathNull,
-                    O_WRONLY | O_CREAT | O_TRUNC,
-                    S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
-                );
-                fileActionsSucceeded = stderrRedirectResult == 0;
             }
         }
     }
 
     if (fileActionsSucceeded) {
-        const char** args = prb_getArgArrayFromStr(arena, cmd);
+        const char** args = prb_getArgArrayFromStr(arena, spec.cmd);
         int          spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
         if (spawnResult == 0) {
             result.status = prb_ProcessStatus_Launched;
-            if (!(flags & prb_ProcessFlag_DontWait)) {
+            if (!spec.dontwait) {
                 int   status = 0;
                 pid_t waitResult = waitpid(result.pid, &status, 0);
                 result.status = prb_ProcessStatus_CompletedFailed;
