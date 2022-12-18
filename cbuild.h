@@ -31,7 +31,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 
 // TODO(khvorov) Random number generation
 // TODO(khvorov) Job status enum should probably be separate from process status
-// TODO(khvorov) Should be possible to redirect process stdout/err to a buffer.
 // TODO(khvorov) Pathfind iterator should probably not crash when given non-existant directories
 // TODO(khvorov) Set env variables when executing processes
 // TODO(khvorov) strReplace should just take a position and a length of the replacement
