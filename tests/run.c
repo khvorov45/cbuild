@@ -318,9 +318,17 @@ main() {
             prb_assert(prb_execCmd(arena, showCmd, prb_ProcessFlag_RedirectStderr | prb_ProcessFlag_RedirectStdout, coverageText).status == prb_ProcessStatus_CompletedSuccess);
         }
 
-        prb_Job* jobs = 0;
+        // NOTE(khvorov) Check we can compile without stb ds short names
+        {
+            prb_Str mainFile = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
+            prb_Str outfile = prb_pathJoin(arena, globalTestsDir, prb_STR("cbuild.gch"));
+            prb_Str cmd = prb_fmt(arena, "clang -Wall -Wextra -Werror -Wfatal-errors -Dprb_STBDS_NO_SHORT_NAMES %.*s -o %.*s", prb_LIT(mainFile), prb_LIT(outfile));
+            prb_writelnToStdout(arena, cmd);
+            prb_assert(prb_execCmd(arena, cmd, 0, (prb_Str){}).status == prb_ProcessStatus_CompletedSuccess);
+            prb_removeFileIfExists(arena, outfile);
+        }
 
-        // TODO(khvorov) Test we can compile without stb ds short names
+        prb_Job* jobs = 0;
 
         // NOTE(khvorov) Sanitizers
         {
