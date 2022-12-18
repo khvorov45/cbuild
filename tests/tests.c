@@ -2018,7 +2018,7 @@ test_execCmd(prb_Arena* arena, void* data) {
         spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
         spec.redirectStderr = true;
         spec.stderrFilepath = spec.stdoutFilepath;
-        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);   
+        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
         prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
         prb_assert(readRes.success);
         prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\nstderrout\n")));
@@ -2268,6 +2268,10 @@ test_fileformat(prb_Arena* arena, void* data) {
             testNameToPrbName(arena, name, &testNamesInMain);
         } else if (prb_strStartsWith(testFileLineIter.curLine, prb_STR("    test_setWorkingDir"))) {
             arrput(testNamesInMain, prb_STR("prb_setWorkingDir"));
+        } else if (prb_strStartsWith(testFileLineIter.curLine, prb_STR("    test_env"))) {
+            arrput(testNamesInMain, prb_STR("prb_setenv"));
+            arrput(testNamesInMain, prb_STR("prb_getenv"));
+            arrput(testNamesInMain, prb_STR("prb_unsetenv"));
         }
     }
 
@@ -2326,7 +2330,7 @@ main() {
     arrput(jobs, prb_createJob(test_removeDirIfExists, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_clearDir, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getWorkingDir, 0, arena, 10 * prb_MEGABYTE));
-    test_setWorkingDir(arena, 0);  // NOTE(khvorov) Messes with global state of the process
+    test_setWorkingDir(arena, 0);  // NOTE(khvorov) Changes global state
     arrput(jobs, prb_createJob(test_pathJoin, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_charIsSep, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_findSepBeforeLastEntry, 0, arena, 10 * prb_MEGABYTE));
@@ -2378,7 +2382,7 @@ main() {
     arrput(jobs, prb_createJob(test_waitForProcesses, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_sleep, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_debuggerPresent, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_env, 0, arena, 10 * prb_MEGABYTE));
+    test_env(arena, 0);  // NOTE(khvorov) Changes global state
 
     // SECTION Timing
     arrput(jobs, prb_createJob(test_timeStart, 0, arena, 10 * prb_MEGABYTE));

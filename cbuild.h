@@ -2588,12 +2588,14 @@ prb_execCmd(prb_Arena* arena, prb_ExecCmdSpec spec) {
     }
 
     bool                        fileActionsSucceeded = true;
+    bool                        fileActionsInited = false;
     posix_spawn_file_actions_t* fileActionsPtr = 0;
     posix_spawn_file_actions_t  fileActions = {};
     if (spec.redirectStdout || spec.redirectStderr) {
         fileActionsPtr = &fileActions;
         int initResult = posix_spawn_file_actions_init(&fileActions);
         fileActionsSucceeded = initResult == 0;
+        fileActionsInited = initResult == 0;
         if (fileActionsSucceeded) {
             if (spec.redirectStdout) {
                 int stdoutRedirectResult = posix_spawn_file_actions_addopen(
@@ -2638,6 +2640,11 @@ prb_execCmd(prb_Arena* arena, prb_ExecCmdSpec spec) {
                 }
             }
         }
+        prb_stbds_arrfree(args);
+    }
+
+    if (fileActionsInited) {
+        posix_spawn_file_actions_destroy(fileActionsPtr);
     }
 
 #else
