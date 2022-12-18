@@ -187,7 +187,6 @@ compileAndRunTests(prb_Arena* arena, void* data) {
     prb_Str cmd = constructCompileCmd(arena, compileSpec);
     prb_writelnToStdout(arena, cmd);
     prb_assert(prb_execCmd(arena, cmd, 0, (prb_Str) {}).status == prb_ProcessStatus_CompletedSuccess);
-    prb_writelnToStdout(arena, compileSpec.output);
 
     prb_Str outlog = prb_fmt(arena, "%.*s-%.*s.log", compileSpec.input.len - 2, compileSpec.input.ptr, prb_LIT(outputSuffix));
     u32     procFlags = prb_ProcessFlag_RedirectStderr | prb_ProcessFlag_RedirectStdout;
@@ -195,7 +194,10 @@ compileAndRunTests(prb_Arena* arena, void* data) {
         outlog = (prb_Str) {};
         procFlags = 0;
     }
-    prb_ProcessHandle proc = prb_execCmd(arena, prb_fmt(arena, "%.*s %.*s", prb_LIT(compileSpec.output), prb_LIT(outputSuffix)), procFlags, outlog);
+
+    prb_Str runCmd = prb_fmt(arena, "%.*s %.*s", prb_LIT(compileSpec.output), prb_LIT(outputSuffix));
+    prb_writelnToStdout(arena, runCmd);
+    prb_ProcessHandle proc = prb_execCmd(arena, runCmd, procFlags, outlog);
     if (proc.status != prb_ProcessStatus_CompletedSuccess) {
         if (!spec->doNotRedirect) {
             prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, outlog);
@@ -232,26 +234,22 @@ main() {
 
     // NOTE(khvorov) Remove artifacts
     {
-        prb_Str patsToRemove[] = {
-            prb_STR("*.gcda"),
-            prb_STR("*.gcno"),
-            prb_STR("*.bin"),
-            prb_STR("*.obj"),
-            prb_STR("*.log"),
-            prb_STR("*.supp"),
-            prb_STR("coverage*"),
-        };
-        prb_PathFindSpec spec = {.arena = arena, .dir = globalTestsDir, .mode = prb_PathFindMode_Glob};
-        for (i32 patIndex = 0; patIndex < prb_arrayLength(patsToRemove); patIndex++) {
-            prb_Str pat = patsToRemove[patIndex];
-            spec.pattern = pat;
-            prb_PathFindIter iter = prb_createPathFindIter(spec);
-            while (prb_pathFindIterNext(&iter) == prb_Success) {
-                if (!prb_strEndsWith(iter.curPath, prb_STR("run.bin"))) {
-                    prb_removeFileIfExists(arena, iter.curPath);
+        prb_Str* entries = prb_getAllDirEntries(arena, globalTestsDir, prb_Recursive_No);
+        for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
+            prb_Str entry = entries[entryIndex];
+            prb_Str entryName = prb_getLastEntryInPath(entry);
+            if (!prb_strEndsWith(entry, prb_STR("run.bin"))) {
+                bool remove = prb_strEndsWith(entry, prb_STR(".gcda"))
+                    || prb_strEndsWith(entry, prb_STR(".gcno"))
+                    || prb_strEndsWith(entry, prb_STR(".bin"))
+                    || prb_strEndsWith(entry, prb_STR(".obj"))
+                    || prb_strEndsWith(entry, prb_STR(".log"))
+                    || prb_strEndsWith(entry, prb_STR(".supp"))
+                    || prb_strStartsWith(entryName, prb_STR("coverage"));
+                if (remove) {
+                    prb_assert(prb_removeFileIfExists(arena, entry));
                 }
             }
-            prb_destroyPathFindIter(&iter);
         }
     }
 
@@ -322,7 +320,9 @@ main() {
 
         prb_Job* jobs = 0;
 
-        // NOTE(khvorov) Sanitizers (don't run on ci because stuff is executed in a weird way there and they don't work)
+        // TODO(khvorov) Test we can compile without stb ds short names
+
+        // NOTE(khvorov) Sanitizers
         {
             {
                 prb_Str ubSuppress = prb_STR("alignment:prb_stbsp_vsprintfcb");
@@ -467,17 +467,22 @@ main() {
 
         // NOTE(khvorov) Print sanitizer output
         {
-            prb_PathFindSpec spec = {};
-            spec.arena = arena;
-            spec.dir = globalTestsDir;
-            spec.pattern = prb_STR("*-san-*.log");
-            spec.mode = prb_PathFindMode_Glob;
-            prb_PathFindIter iter = prb_createPathFindIter(spec);
-            while (prb_pathFindIterNext(&iter)) {
-                prb_ReadEntireFileResult staticAnalysisOutRead = prb_readEntireFile(arena, iter.curPath);
-                prb_assert(staticAnalysisOutRead.success);
-                prb_writelnToStdout(arena, iter.curPath);
-                prb_writelnToStdout(arena, prb_strFromBytes(staticAnalysisOutRead.content));
+            prb_Str* entries = prb_getAllDirEntries(arena, globalTestsDir, prb_Recursive_Yes);
+            for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
+                prb_Str entry = entries[entryIndex];
+                if (prb_strEndsWith(entry, prb_STR(".log"))) {
+                    prb_StrFindSpec strFindSpec = {};
+                    strFindSpec.str = prb_getLastEntryInPath(entry);
+                    strFindSpec.pattern = prb_STR("-san-");
+                    strFindSpec.mode = prb_StrFindMode_Exact;
+                    prb_StrFindResult findRes = prb_strFind(strFindSpec);
+                    if (findRes.found) {
+                        prb_ReadEntireFileResult staticAnalysisOutRead = prb_readEntireFile(arena, entry);
+                        prb_assert(staticAnalysisOutRead.success);
+                        prb_writelnToStdout(arena, entry);
+                        prb_writelnToStdout(arena, prb_strFromBytes(staticAnalysisOutRead.content));
+                    }
+                }
             }
         }
     }

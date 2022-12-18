@@ -73,6 +73,18 @@ getTempPath(prb_Arena* arena, const char* funcName) {
     return dir;
 }
 
+function bool
+strIn(prb_Str str, prb_Str* arr, i32 arrc) {
+    bool result = false;
+    for (i32 ind = 0; ind < arrc && !result; ind++) {
+        prb_Str arrv = arr[ind];
+        if (prb_streq(str, arrv)) {
+            result = true;
+        }
+    }
+    return result;
+}
+
 function void
 testMacros(prb_Arena* arena, void* data) {
     prb_unused(data);
@@ -945,7 +957,7 @@ test_pathEntryIter(prb_Arena* arena, void* data) {
 }
 
 function void
-test_pathFindIter(prb_Arena* arena, void* data) {
+test_getAllDirEntries(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
@@ -953,14 +965,21 @@ test_pathFindIter(prb_Arena* arena, void* data) {
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
-    prb_Str globPattern = prb_STR("*.h");
-    prb_Str globPatternNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(globPattern));
-    globPatternNotNull.len = globPattern.len;
-    prb_Str regexPattern = prb_STR("^f");
-    prb_Str regexPatternNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(regexPattern));
-    regexPatternNotNull.len = regexPattern.len;
 
     prb_assert(prb_clearDir(arena, dir) == prb_Success);
+
+    prb_Str       allDirs[] = {dir, dirNotNull, dirTrailingSlash};
+    prb_Recursive modes[] = {prb_Recursive_Yes, prb_Recursive_No};
+
+    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayLength(allDirs); allDirsIndex++) {
+        prb_Str thisDir = allDirs[allDirsIndex];
+        for (i32 modesIndex = 0; modesIndex < prb_arrayLength(modes); modesIndex++) {
+            prb_Recursive thisMode = modes[modesIndex];
+            prb_Str*      entries = prb_getAllDirEntries(arena, thisDir, thisMode);
+            prb_assert(arrlen(entries) == 0);
+            arrfree(entries);
+        }
+    }
 
     prb_Str files[] = {
         prb_pathJoin(arena, dir, prb_STR("f1.c")),
@@ -974,132 +993,19 @@ test_pathFindIter(prb_Arena* arena, void* data) {
         prb_assert(prb_writeEntireFile(arena, file, file.ptr, file.len) == prb_Success);
     }
 
-    prb_PathFindSpec spec = {};
-    spec.arena = arena;
-    spec.dir = dir;
-    spec.mode = prb_PathFindMode_AllEntriesInDir;
-    prb_PathFindIter iter = prb_createPathFindIter(spec);
-    spec.dir = dirTrailingSlash;
-    prb_PathFindIter iterTrailingSlash = prb_createPathFindIter(spec);
-    spec.dir = dirNotNull;
-    prb_PathFindIter iterNotNull = prb_createPathFindIter(spec);
-
-    i32 filesFound[] = {0, 0, 0, 0};
-    i32 totalEntries = 0;
-    prb_assert(prb_arrayLength(filesFound) == prb_arrayLength(files));
-    for (; prb_pathFindIterNext(&iter) == prb_Success; totalEntries++) {
-        bool found = false;
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
-            prb_Str file = files[fileIndex];
-            found = prb_streq(file, iter.curPath);
-            if (found) {
-                filesFound[fileIndex] += 1;
+    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayLength(allDirs); allDirsIndex++) {
+        prb_Str thisDir = allDirs[allDirsIndex];
+        for (i32 modesIndex = 0; modesIndex < prb_arrayLength(modes); modesIndex++) {
+            prb_Recursive thisMode = modes[modesIndex];
+            prb_Str*      entries = prb_getAllDirEntries(arena, thisDir, thisMode);
+            prb_assert(arrlen(entries) == prb_arrayLength(files));
+            for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
+                prb_Str entry = entries[entryIndex];
+                prb_assert(strIn(entry, files, prb_arrayLength(files)));
             }
+            arrfree(entries);
         }
-        prb_assert(found);
-        prb_assert(prb_pathFindIterNext(&iterNotNull) == prb_Success);
-        prb_assert(prb_streq(iter.curPath, iterNotNull.curPath));
-        prb_assert(prb_pathFindIterNext(&iterTrailingSlash) == prb_Success);
-        prb_assert(prb_streq(iter.curPath, iterTrailingSlash.curPath));
-        prb_assert(iter.curMatchCount == totalEntries + 1);
     }
-
-    prb_assert(totalEntries == prb_arrayLength(files));
-    prb_assert(iter.curMatchCount == prb_arrayLength(files));
-    for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
-        prb_assert(filesFound[fileIndex] == 1);
-    }
-
-    prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
-    prb_assert(prb_pathFindIterNext(&iterNotNull) == prb_Failure);
-
-    prb_destroyPathFindIter(&iter);
-    prb_PathFindIter empty = {};
-    prb_assert(prb_memeq(&iter, &empty, sizeof(prb_PathFindIter)));
-    prb_destroyPathFindIter(&iterNotNull);
-    prb_destroyPathFindIter(&iterTrailingSlash);
-
-    prb_PathFindSpec iterGlobSpec = {};
-    iterGlobSpec.arena = arena;
-    iterGlobSpec.dir = dir;
-    iterGlobSpec.mode = prb_PathFindMode_Glob;
-    iterGlobSpec.recursive = false;
-    iterGlobSpec.pattern = globPattern;
-    prb_PathFindIter iterGlob = prb_createPathFindIter(iterGlobSpec);
-    iterGlobSpec.pattern = globPatternNotNull;
-    prb_PathFindIter iterGlobNotNull = prb_createPathFindIter(iterGlobSpec);
-    while (prb_pathFindIterNext(&iterGlob) == prb_Success) {
-        bool found = false;
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
-            prb_Str file = files[fileIndex];
-            found = prb_streq(file, iterGlob.curPath);
-            if (found) {
-                filesFound[fileIndex] += 1;
-            }
-        }
-        prb_assert(prb_pathFindIterNext(&iterGlobNotNull) == prb_Success);
-        prb_assert(prb_streq(iterGlob.curPath, iterGlobNotNull.curPath));
-    }
-
-    prb_assert(iterGlob.curMatchCount == 2);
-    prb_assert(filesFound[0] == 1);
-    prb_assert(filesFound[1] == 2);
-    prb_assert(filesFound[2] == 1);
-    prb_assert(filesFound[3] == 2);
-
-    prb_assert(prb_pathFindIterNext(&iterGlob) == prb_Failure);
-    prb_assert(prb_pathFindIterNext(&iterGlobNotNull) == prb_Failure);
-
-    prb_destroyPathFindIter(&iterGlob);
-    prb_assert(prb_memeq(&iterGlob, &empty, sizeof(prb_PathFindIter)));
-    prb_destroyPathFindIter(&iterGlobNotNull);
-
-    prb_PathFindSpec iterRegexSpec = {};
-    iterRegexSpec.arena = arena;
-    iterRegexSpec.dir = dir;
-    iterRegexSpec.mode = prb_PathFindMode_RegexPosix;
-    iterRegexSpec.recursive = false;
-    iterRegexSpec.pattern = regexPattern;
-    prb_PathFindIter iterRegex = prb_createPathFindIter(iterRegexSpec);
-    iterRegexSpec.pattern = regexPatternNotNull;
-    prb_PathFindIter iterRegexNotNull = prb_createPathFindIter(iterRegexSpec);
-    while (prb_pathFindIterNext(&iterRegex) == prb_Success) {
-        bool found = false;
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
-            prb_Str file = files[fileIndex];
-            found = prb_streq(file, iterRegex.curPath);
-            if (found) {
-                filesFound[fileIndex] += 1;
-            }
-        }
-        prb_assert(prb_pathFindIterNext(&iterRegexNotNull) == prb_Success);
-        prb_assert(prb_streq(iterRegex.curPath, iterRegexNotNull.curPath));
-    }
-
-    prb_assert(iterRegex.curMatchCount == 2);
-    prb_assert(filesFound[0] == 2);
-    prb_assert(filesFound[1] == 2);
-    prb_assert(filesFound[2] == 2);
-    prb_assert(filesFound[3] == 2);
-
-    prb_assert(prb_pathFindIterNext(&iterRegex) == prb_Failure);
-    prb_assert(prb_pathFindIterNext(&iterRegexNotNull) == prb_Failure);
-
-    prb_destroyPathFindIter(&iterRegex);
-    prb_assert(prb_memeq(&iterRegex, &empty, sizeof(prb_PathFindIter)));
-    prb_destroyPathFindIter(&iterRegexNotNull);
-
-    prb_assert(prb_clearDir(arena, dir) == prb_Success);
-    spec.dir = dir;
-    iter = prb_createPathFindIter(spec);
-    prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
-    prb_destroyPathFindIter(&iter);
-    iterGlobSpec.pattern = globPattern;
-    iter = prb_createPathFindIter(iterGlobSpec);
-    prb_assert(prb_pathFindIterNext(&iter) == prb_Failure);
-    prb_destroyPathFindIter(&iter);
-
-    // NOTE(khvorov) Recursive search
 
     prb_Str nestedDir = prb_pathJoin(arena, dir, prb_STR("nested"));
     prb_assert(prb_createDirIfNotExists(arena, nestedDir) == prb_Success);
@@ -1133,176 +1039,33 @@ test_pathFindIter(prb_Arena* arena, void* data) {
         prb_assert(prb_writeEntireFile(arena, nestedNestedFile, nestedNestedFile.ptr, nestedNestedFile.len) == prb_Success);
     }
 
-    filesFound[0] = 0;
-    filesFound[1] = 0;
-    filesFound[2] = 0;
-    filesFound[3] = 0;
-
-    i32  nestedFilesFound[] = {0, 0, 0, 0};
-    bool nestedDirFound = false;
-
-    i32  nestedNestedFilesFound[] = {0, 0, 0, 0};
-    bool nestedNestedDirFound = false;
-
-    bool emptyNestedDirFound = false;
-
-    spec.dir = dir;
-    spec.recursive = true;
-    prb_PathFindIter iterRecursive = prb_createPathFindIter(spec);
-    while (prb_pathFindIterNext(&iterRecursive) == prb_Success) {
-        bool found = false;
-
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
-            prb_Str file = files[fileIndex];
-            found = prb_streq(file, iterRecursive.curPath);
-            if (found) {
-                filesFound[fileIndex] += 1;
-            }
+    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayLength(allDirs); allDirsIndex++) {
+        prb_Str  thisDir = allDirs[allDirsIndex];
+        prb_Str* entries = prb_getAllDirEntries(arena, thisDir, prb_Recursive_No);
+        prb_assert(arrlen(entries) == prb_arrayLength(files) + 2);
+        for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
+            prb_Str entry = entries[entryIndex];
+            prb_assert(strIn(entry, files, prb_arrayLength(files)) || prb_streq(entry, nestedDir) || prb_streq(entry, emptyNestedDir));
         }
-
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(nestedFiles) && !found; fileIndex++) {
-            prb_Str file = nestedFiles[fileIndex];
-            found = prb_streq(file, iterRecursive.curPath);
-            if (found) {
-                nestedFilesFound[fileIndex] += 1;
-            }
-        }
-
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(nestedFiles) && !found; fileIndex++) {
-            prb_Str file = nestedNestedFiles[fileIndex];
-            found = prb_streq(file, iterRecursive.curPath);
-            if (found) {
-                nestedNestedFilesFound[fileIndex] += 1;
-            }
-        }
-
-        if (!found) {
-            nestedDirFound = nestedDirFound || prb_streq(iterRecursive.curPath, nestedDir);
-            nestedNestedDirFound = nestedNestedDirFound || prb_streq(iterRecursive.curPath, nestedNestedDir);
-            emptyNestedDirFound = emptyNestedDirFound || prb_streq(iterRecursive.curPath, emptyNestedDir);
-        }
+        arrfree(entries);
     }
 
-    prb_assert(filesFound[0] == 1);
-    prb_assert(filesFound[1] == 1);
-    prb_assert(filesFound[2] == 1);
-    prb_assert(filesFound[3] == 1);
-
-    prb_assert(nestedFilesFound[0] == 1);
-    prb_assert(nestedFilesFound[1] == 1);
-    prb_assert(nestedFilesFound[2] == 1);
-    prb_assert(nestedFilesFound[3] == 1);
-
-    prb_assert(nestedNestedFilesFound[0] == 1);
-    prb_assert(nestedNestedFilesFound[1] == 1);
-    prb_assert(nestedNestedFilesFound[2] == 1);
-    prb_assert(nestedNestedFilesFound[3] == 1);
-
-    prb_assert(nestedDirFound);
-    prb_assert(nestedNestedDirFound);
-    prb_assert(emptyNestedDirFound);
-
-    prb_assert(iterRecursive.curMatchCount == prb_arrayLength(files) + prb_arrayLength(nestedFiles) + prb_arrayLength(nestedNestedFiles) + 3);
-
-    prb_destroyPathFindIter(&iterRecursive);
-
-    iterGlobSpec.recursive = true;
-    prb_PathFindIter iterRecursiveGlob = prb_createPathFindIter(iterGlobSpec);
-    while (prb_pathFindIterNext(&iterRecursiveGlob) == prb_Success) {
-        bool found = false;
-
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
-            prb_Str file = files[fileIndex];
-            found = prb_streq(file, iterRecursiveGlob.curPath);
-            if (found) {
-                filesFound[fileIndex] += 1;
-            }
+    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayLength(allDirs); allDirsIndex++) {
+        prb_Str  thisDir = allDirs[allDirsIndex];
+        prb_Str* entries = prb_getAllDirEntries(arena, thisDir, prb_Recursive_Yes);
+        prb_assert(arrlen(entries) == prb_arrayLength(files) + 2 + prb_arrayLength(nestedFiles) + 1 + prb_arrayLength(nestedNestedFiles));
+        for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
+            prb_Str entry = entries[entryIndex];
+            bool    found = strIn(entry, files, prb_arrayLength(files))
+                || prb_streq(entry, nestedDir)
+                || prb_streq(entry, emptyNestedDir)
+                || strIn(entry, nestedFiles, prb_arrayLength(nestedFiles))
+                || prb_streq(entry, nestedNestedDir)
+                || strIn(entry, nestedNestedFiles, prb_arrayLength(nestedFiles));
+            prb_assert(found);
         }
-
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(nestedFiles) && !found; fileIndex++) {
-            prb_Str file = nestedFiles[fileIndex];
-            found = prb_streq(file, iterRecursiveGlob.curPath);
-            if (found) {
-                nestedFilesFound[fileIndex] += 1;
-            }
-        }
-
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(nestedFiles) && !found; fileIndex++) {
-            prb_Str file = nestedNestedFiles[fileIndex];
-            found = prb_streq(file, iterRecursiveGlob.curPath);
-            if (found) {
-                nestedNestedFilesFound[fileIndex] += 1;
-            }
-        }
+        arrfree(entries);
     }
-
-    prb_assert(filesFound[0] == 1);
-    prb_assert(filesFound[1] == 2);
-    prb_assert(filesFound[2] == 1);
-    prb_assert(filesFound[3] == 2);
-
-    prb_assert(nestedFilesFound[0] == 1);
-    prb_assert(nestedFilesFound[1] == 2);
-    prb_assert(nestedFilesFound[2] == 1);
-    prb_assert(nestedFilesFound[3] == 2);
-
-    prb_assert(nestedNestedFilesFound[0] == 1);
-    prb_assert(nestedNestedFilesFound[1] == 2);
-    prb_assert(nestedNestedFilesFound[2] == 1);
-    prb_assert(nestedNestedFilesFound[3] == 2);
-
-    prb_assert(iterRecursiveGlob.curMatchCount == 6);
-
-    prb_destroyPathFindIter(&iterRecursiveGlob);
-
-    iterRegexSpec.recursive = true;
-    prb_PathFindIter iterRecursiveRegex = prb_createPathFindIter(iterRegexSpec);
-    while (prb_pathFindIterNext(&iterRecursiveRegex) == prb_Success) {
-        bool found = false;
-
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(files) && !found; fileIndex++) {
-            prb_Str file = files[fileIndex];
-            found = prb_streq(file, iterRecursiveRegex.curPath);
-            if (found) {
-                filesFound[fileIndex] += 1;
-            }
-        }
-
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(nestedFiles) && !found; fileIndex++) {
-            prb_Str file = nestedFiles[fileIndex];
-            found = prb_streq(file, iterRecursiveRegex.curPath);
-            if (found) {
-                nestedFilesFound[fileIndex] += 1;
-            }
-        }
-
-        for (usize fileIndex = 0; fileIndex < prb_arrayLength(nestedFiles) && !found; fileIndex++) {
-            prb_Str file = nestedNestedFiles[fileIndex];
-            found = prb_streq(file, iterRecursiveRegex.curPath);
-            if (found) {
-                nestedNestedFilesFound[fileIndex] += 1;
-            }
-        }
-    }
-
-    prb_assert(filesFound[0] == 2);
-    prb_assert(filesFound[1] == 2);
-    prb_assert(filesFound[2] == 2);
-    prb_assert(filesFound[3] == 2);
-
-    prb_assert(nestedFilesFound[0] == 2);
-    prb_assert(nestedFilesFound[1] == 2);
-    prb_assert(nestedFilesFound[2] == 2);
-    prb_assert(nestedFilesFound[3] == 2);
-
-    prb_assert(nestedNestedFilesFound[0] == 2);
-    prb_assert(nestedNestedFilesFound[1] == 2);
-    prb_assert(nestedNestedFilesFound[2] == 2);
-    prb_assert(nestedNestedFilesFound[3] == 2);
-
-    prb_assert(iterRecursiveRegex.curMatchCount == 6);
-
-    prb_destroyPathFindIter(&iterRecursiveRegex);
 
     prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
@@ -1895,7 +1658,7 @@ test_utf8CharIter(prb_Arena* arena, void* data) {
     }
 
     {
-        uint8_t             borked[] = {'a', 'b', 0b10000000, '\0'};
+        uint8_t          borked[] = {'a', 'b', 0b10000000, '\0'};
         prb_Utf8CharIter iter = prb_createUtf8CharIter(prb_STR((char*)borked), prb_StrDirection_FromStart);
 
         prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
@@ -2489,7 +2252,7 @@ main() {
     arrput(jobs, prb_createJob(test_getLastEntryInPath, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_replaceExt, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_pathEntryIter, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_pathFindIter, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_getAllDirEntries, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getLastModified, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_createMultitime, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_multitimeAdd, 0, arena, 10 * prb_MEGABYTE));
@@ -2546,7 +2309,7 @@ main() {
     // SECTION Fileformat
     arrput(jobs, prb_createJob(test_fileformat, 0, arena, 10 * prb_MEGABYTE));
 
-    prb_assert(prb_execJobs(jobs, arrlen(jobs), prb_ThreadMode_Multi) == prb_Success);
+    prb_assert(prb_execJobs(jobs, arrlen(jobs), prb_ThreadMode_Single) == prb_Success);
 
     prb_assert(arena->tempCount == 0);
     prb_assert(arena->base == baseStart);

@@ -27,11 +27,8 @@ All prb_* iterators are meant to be used in loops like this
 for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
     // pull stuff you need off iter
 }
-prb_destroyIter() functions don't destroy actual entries, only system resources (e.g. directory handles).
 */
 
-// TODO(khvorov) Probably remove glob and regexPosix path finding and just expect user to 
-// compose all entires iteration with string finding (glob is a subset of regex so that should be fine?)
 // TODO(khvorov) Random number generation
 // TODO(khvorov) Job status enum should probably be separate from process status
 // TODO(khvorov) Should be possible to redirect process stdout/err to different files.
@@ -82,6 +79,7 @@ prb_destroyIter() functions don't destroy actual entries, only system resources 
 
 #elif prb_PLATFORM_LINUX
 
+#include <sys/syscall.h>
 #include <linux/limits.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -312,6 +310,7 @@ typedef enum prb_StrDirection {
     prb_StrDirection_FromEnd,
 } prb_StrDirection;
 
+// TODO(khvorov) Simplify
 typedef struct prb_StrFindSpec {
     prb_Str          str;
     prb_Str          pattern;
@@ -374,51 +373,10 @@ typedef struct prb_PathEntryIter {
     prb_Str curEntryPath;
 } prb_PathEntryIter;
 
-typedef enum prb_PathFindMode {
-    prb_PathFindMode_AllEntriesInDir,
-    prb_PathFindMode_Glob,
-    prb_PathFindMode_RegexPosix,
-} prb_PathFindMode;
-
-typedef struct prb_PathFindSpec {
-    prb_Arena*       arena;
-    prb_Str          dir;
-    prb_PathFindMode mode;
-    prb_Str          pattern;
-    bool             recursive;
-} prb_PathFindSpec;
-
-typedef struct prb_PathFindIter_DirHandle {
-    prb_Str path;
-
-#if prb_PLATFORM_WINDOWS
-#error unimplemented
-#elif prb_PLATFORM_LINUX
-    DIR*      handle;
-#else
-#error unimplemented
-#endif
-} prb_PathFindIter_DirHandle;
-
-typedef struct prb_PathFindIter {
-    prb_PathFindSpec spec;
-    prb_Str          curPath;
-    int32_t          curMatchCount;
-    union {
-        struct {
-            prb_PathFindIter_DirHandle* parents;
-        } allEntriesInDir;
-        struct {
-            int     returnVal;
-            int32_t currentIndex;
-            glob_t  result;
-        } glob;
-        struct {
-            int32_t  currentIndex;
-            prb_Str* matches;
-        } regexPosix;
-    };
-} prb_PathFindIter;
+typedef enum prb_Recursive {
+    prb_Recursive_No,
+    prb_Recursive_Yes,
+} prb_Recursive;
 
 typedef struct prb_FileTimestamp {
     bool     valid;
@@ -518,9 +476,7 @@ prb_PUBLICDEC prb_Str                  prb_getLastEntryInPath(prb_Str path);
 prb_PUBLICDEC prb_Str                  prb_replaceExt(prb_Arena* arena, prb_Str path, prb_Str newExt);
 prb_PUBLICDEC prb_PathEntryIter        prb_createPathEntryIter(prb_Str path);
 prb_PUBLICDEC prb_Status               prb_pathEntryIterNext(prb_PathEntryIter* iter);
-prb_PUBLICDEC prb_PathFindIter         prb_createPathFindIter(prb_PathFindSpec spec);
-prb_PUBLICDEC prb_Status               prb_pathFindIterNext(prb_PathFindIter* iter);
-prb_PUBLICDEC void                     prb_destroyPathFindIter(prb_PathFindIter* iter);
+prb_PUBLICDEC prb_Str*                 prb_getAllDirEntries(prb_Arena* arena, prb_Str dir, prb_Recursive mode);
 prb_PUBLICDEC prb_FileTimestamp        prb_getLastModified(prb_Arena* arena, prb_Str path);
 prb_PUBLICDEC prb_Multitime            prb_createMultitime(void);
 prb_PUBLICDEC void                     prb_multitimeAdd(prb_Multitime* multitime, prb_FileTimestamp newTimestamp);
@@ -1155,6 +1111,14 @@ prb_linux_open(prb_Arena* arena, prb_Str path, int oflags, mode_t mode) {
     return result;
 }
 
+typedef struct prb_linux_Dirent64 {
+    uint64_t       d_ino;
+    int64_t        d_off;
+    unsigned short d_reclen;
+    unsigned char  d_type;
+    char           d_name[];
+} prb_linux_Dirent64;
+
 #endif
 
 prb_PUBLICDEF bool
@@ -1287,14 +1251,10 @@ prb_isFile(prb_Arena* arena, prb_Str path) {
 
 prb_PUBLICDEF bool
 prb_dirIsEmpty(prb_Arena* arena, prb_Str path) {
-    prb_TempMemory   temp = prb_beginTempMemory(arena);
-    prb_PathFindSpec spec = {};
-    spec.arena = arena;
-    spec.dir = path;
-    spec.mode = prb_PathFindMode_AllEntriesInDir;
-    prb_PathFindIter iter = prb_createPathFindIter(spec);
-    bool             result = prb_pathFindIterNext(&iter) == prb_Failure;
-    prb_destroyPathFindIter(&iter);
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Str*       entries = prb_getAllDirEntries(arena, path, prb_Recursive_No);
+    bool           result = prb_stbds_arrlen(entries) == 0;
+    prb_stbds_arrfree(entries);
     prb_endTempMemory(temp);
     return result;
 }
@@ -1379,15 +1339,12 @@ prb_removeDirIfExists(prb_Arena* arena, prb_Str path) {
 #elif prb_PLATFORM_LINUX
 
     if (prb_isDir(arena, path)) {
-        prb_PathFindSpec spec = {};
-        spec.arena = arena;
-        spec.dir = path;
-        spec.mode = prb_PathFindMode_AllEntriesInDir;
-        prb_PathFindIter iter = prb_createPathFindIter(spec);
-        while (prb_pathFindIterNext(&iter) && result == prb_Success) {
-            result = prb_removeFileOrDirIfExists(arena, iter.curPath);
+        prb_Str* entries = prb_getAllDirEntries(arena, path, prb_Recursive_Yes);
+        for (int32_t entryIndex = 0; entryIndex < prb_stbds_arrlen(entries) && result == prb_Success; entryIndex++) {
+            prb_Str entry = entries[entryIndex];
+            result = prb_removeFileOrDirIfExists(arena, entry);
         }
-        prb_destroyPathFindIter(&iter);
+        prb_stbds_arrfree(entries);
         if (result == prb_Success) {
             prb_assert(prb_dirIsEmpty(arena, path));
             const char* pathNull = prb_strGetNullTerminated(arena, path);
@@ -1613,11 +1570,9 @@ prb_pathEntryIterNext(prb_PathEntryIter* iter) {
     return result;
 }
 
-prb_PUBLICDEF prb_PathFindIter
-prb_createPathFindIter(prb_PathFindSpec spec) {
-    prb_TempMemory   temp = prb_beginTempMemory(spec.arena);
-    prb_PathFindIter iter = {};
-    iter.spec = spec;
+prb_PUBLICDEF prb_Str*
+prb_getAllDirEntries(prb_Arena* arena, prb_Str dir, prb_Recursive mode) {
+    prb_Str* entries = 0;
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1625,160 +1580,48 @@ prb_createPathFindIter(prb_PathFindSpec spec) {
 
 #elif prb_PLATFORM_LINUX
 
-    switch (spec.mode) {
-        case prb_PathFindMode_AllEntriesInDir: {
-            const char* dirNull = prb_strGetNullTerminated(spec.arena, spec.dir);
-            DIR*        handle = opendir(dirNull);
-            prb_assert(handle);
-            prb_PathFindIter_DirHandle firstParent = {spec.dir, handle};
-            arrput(iter.allEntriesInDir.parents, firstParent);
-        } break;
+    prb_Str* dirs = 0;
+    prb_stbds_arrput(dirs, dir);
 
-        case prb_PathFindMode_Glob: {
-            iter.glob.currentIndex = -1;
-            prb_Str pattern = prb_pathJoin(spec.arena, spec.dir, spec.pattern);
-            iter.glob.returnVal = glob(pattern.ptr, GLOB_NOSORT, 0, &iter.glob.result);
-            if (spec.recursive) {
-                prb_PathFindSpec recursiveSpec = spec;
-                recursiveSpec.mode = prb_PathFindMode_AllEntriesInDir;
-                prb_PathFindIter recursiveIter = prb_createPathFindIter(recursiveSpec);
-                while (prb_pathFindIterNext(&recursiveIter)) {
-                    if (prb_isDir(spec.arena, recursiveIter.curPath)) {
-                        prb_Str newPat = prb_pathJoin(spec.arena, recursiveIter.curPath, spec.pattern);
-                        int     newReturnVal = glob(newPat.ptr, GLOB_NOSORT | GLOB_APPEND, 0, &iter.glob.result);
-                        if (newReturnVal == 0) {
-                            iter.glob.returnVal = 0;
+    while (prb_stbds_arrlen(dirs) > 0) {
+        prb_Str              thisDir = prb_stbds_arrpop(dirs);
+        prb_linux_OpenResult openRes = prb_linux_open(arena, thisDir, O_RDONLY | O_DIRECTORY, 0);
+        if (openRes.success) {
+            prb_arenaAlignFreePtr(arena, alignof(prb_linux_Dirent64));
+            prb_linux_Dirent64* buf = (prb_linux_Dirent64*)(prb_arenaFreePtr(arena));
+            long                syscallReturn = syscall(SYS_getdents64, openRes.handle, buf, prb_arenaFreeSize(arena));
+            if (syscallReturn > 0) {
+                prb_arenaChangeUsed(arena, syscallReturn);
+                for (long offset = 0; offset < syscallReturn;) {
+                    prb_linux_Dirent64* ent = (prb_linux_Dirent64*)((uint8_t*)buf + offset);
+                    bool                isDot = ent->d_name[0] == '.' && ent->d_name[1] == '\0';
+                    bool                isDoubleDot = ent->d_name[0] == '.' && ent->d_name[1] == '.' && ent->d_name[2] == '\0';
+                    if (!isDot && !isDoubleDot) {
+                        prb_Str fullpath = prb_pathJoin(arena, thisDir, prb_STR(ent->d_name));
+                        if (mode == prb_Recursive_Yes) {
+                            bool isDir = ent->d_type == DT_DIR;
+                            if (!isDir && ent->d_type == DT_UNKNOWN) {
+                                isDir = prb_isDir(arena, fullpath);
+                            }
+                            if (isDir) {
+                                prb_stbds_arrput(dirs, fullpath);
+                            }
                         }
+                        prb_stbds_arrput(entries, fullpath);
                     }
-                }
-                prb_destroyPathFindIter(&recursiveIter);
-            }
-        } break;
-
-        case prb_PathFindMode_RegexPosix: {
-            iter.regexPosix.currentIndex = -1;
-            prb_PathFindSpec allEntriesSpec = spec;
-            allEntriesSpec.mode = prb_PathFindMode_AllEntriesInDir;
-            prb_PathFindIter allEntriesIter = prb_createPathFindIter(allEntriesSpec);
-            while (prb_pathFindIterNext(&allEntriesIter) == prb_Success) {
-                prb_StrFindSpec strFindSpec = {};
-                strFindSpec.str = prb_getLastEntryInPath(allEntriesIter.curPath);;
-                strFindSpec.pattern = spec.pattern;
-                strFindSpec.mode = prb_StrFindMode_RegexPosix;
-                strFindSpec.regexPosix.arena = spec.arena;
-                prb_StrFindResult strFindRes = prb_strFind(strFindSpec);
-                if (strFindRes.found) {
-                    prb_Str curPathMalloced = prb_strMallocCopy(allEntriesIter.curPath);
-                    arrput(iter.regexPosix.matches, curPathMalloced);
+                    offset += ent->d_reclen;
                 }
             }
-            prb_destroyPathFindIter(&allEntriesIter);
-        } break;
+        }
     }
+
+    prb_stbds_arrfree(dirs);
 
 #else
 #error unimplemented
 #endif
 
-    prb_endTempMemory(temp);
-    return iter;
-}
-
-prb_PUBLICDEF prb_Status
-prb_pathFindIterNext(prb_PathFindIter* iter) {
-    prb_Status result = prb_Failure;
-    iter->curPath = (prb_Str) {};
-
-#if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
-#elif prb_PLATFORM_LINUX
-
-    switch (iter->spec.mode) {
-        case prb_PathFindMode_AllEntriesInDir: {
-            prb_PathFindIter_DirHandle parent = iter->allEntriesInDir.parents[arrlen(iter->allEntriesInDir.parents) - 1];
-            for (struct dirent* entry = readdir(parent.handle); entry; entry = readdir(parent.handle)) {
-                bool isDot = entry->d_name[0] == '.' && entry->d_name[1] == '\0';
-                bool isDoubleDot = entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0';
-                if (!isDot && !isDoubleDot) {
-                    result = prb_Success;
-                    iter->curPath = prb_pathJoin(iter->spec.arena, parent.path, prb_STR(entry->d_name));
-                    iter->curMatchCount += 1;
-                    if (iter->spec.recursive && prb_isDir(iter->spec.arena, iter->curPath)) {
-                        DIR* newHandle = opendir(iter->curPath.ptr);
-                        prb_assert(newHandle);
-                        prb_PathFindIter_DirHandle newParent = {iter->curPath, newHandle};
-                        arrput(iter->allEntriesInDir.parents, newParent);
-                    }
-                    break;
-                }
-            }
-
-            if (result == prb_Failure && arrlen(iter->allEntriesInDir.parents) > 1) {
-                prb_PathFindIter_DirHandle doneParent = arrpop(iter->allEntriesInDir.parents);
-                closedir(doneParent.handle);
-                result = prb_pathFindIterNext(iter);
-            }
-        } break;
-
-        case prb_PathFindMode_Glob: {
-            iter->glob.currentIndex += 1;
-            if (iter->glob.returnVal == 0 && (size_t)iter->glob.currentIndex < iter->glob.result.gl_pathc) {
-                result = prb_Success;
-                // NOTE(khvorov) Make a copy so that this is still usable after destoying the iterator
-                iter->curPath = prb_fmt(iter->spec.arena, "%s", iter->glob.result.gl_pathv[iter->glob.currentIndex]);
-                iter->curMatchCount += 1;
-            }
-        } break;
-
-        case prb_PathFindMode_RegexPosix: {
-            iter->regexPosix.currentIndex += 1;
-            if (arrlen(iter->regexPosix.matches) > iter->regexPosix.currentIndex) {
-                result = prb_Success;
-                // NOTE(khvorov) Make a copy so that this is still usable after destoying the iterator
-                iter->curPath = prb_fmt(iter->spec.arena, "%.*s", prb_LIT(iter->regexPosix.matches[iter->regexPosix.currentIndex]));
-                iter->curMatchCount += 1;
-            }
-        } break;
-    }
-
-#else
-#error unimplemented
-#endif
-
-    return result;
-}
-
-prb_PUBLICDEF void
-prb_destroyPathFindIter(prb_PathFindIter* iter) {
-#if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
-#elif prb_PLATFORM_LINUX
-
-    switch (iter->spec.mode) {
-        case prb_PathFindMode_AllEntriesInDir:
-            for (int32_t parentIndex = 0; parentIndex < arrlen(iter->allEntriesInDir.parents); parentIndex++) {
-                closedir(iter->allEntriesInDir.parents[parentIndex].handle);
-            }
-            arrfree(iter->allEntriesInDir.parents);
-            break;
-        case prb_PathFindMode_Glob: globfree(&iter->glob.result); break;
-        case prb_PathFindMode_RegexPosix:
-            for (int32_t matchIndex = 0; matchIndex < arrlen(iter->regexPosix.matches); matchIndex++) {
-                prb_free((void*)iter->regexPosix.matches[matchIndex].ptr);
-            }
-            arrfree(iter->regexPosix.matches);
-            break;
-    }
-
-#else
-#error unimplemented
-#endif
-
-    *iter = (prb_PathFindIter) {};
+    return entries;
 }
 
 prb_PUBLICDEF prb_FileTimestamp
@@ -2393,11 +2236,11 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
         result = prb_Success;
 
         uint32_t ch = 0;
-        int32_t chBytes = 0;
-        bool isValid = false;
+        int32_t  chBytes = 0;
+        bool     isValid = false;
 
         uint8_t firstByte = iter->str.ptr[iter->curByteOffset];
-        bool isAscii = firstByte < 0b10000000;
+        bool    isAscii = firstByte < 0b10000000;
         if (isAscii) {
             isValid = true;
             ch = firstByte;
@@ -2458,11 +2301,11 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
                                         iter->curByteOffset -= (byteIndex + 1);
                                         break;
                                     } else {
-                                        break;    
+                                        break;
                                     }
                                 } else {
                                     break;
-                                }                                          
+                                }
                             }
                         }
                     }
@@ -2653,7 +2496,7 @@ prb_getCmdArgs(prb_Arena* arena) {
         if (procSelfContent.data[byteIndex] == '\0') {
             int32_t processed = procSelfContent.len - procSelfContentLeft.len;
             prb_Str arg = {procSelfContentLeft.ptr, byteIndex - processed};
-            arrput(result, arg);
+            prb_stbds_arrput(result, arg);
             procSelfContentLeft = prb_strSliceForward(procSelfContentLeft, arg.len + 1);
         }
     }
@@ -2688,7 +2531,7 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
         if (arglen > 0) {
             prb_Str     arg = {str.ptr + prevSpaceIndex + 1, arglen};
             const char* argNull = prb_fmt(arena, "%.*s", prb_LIT(arg)).ptr;
-            arrput(args, argNull);
+            prb_stbds_arrput(args, argNull);
         }
         prevSpaceIndex = spaceIndex;
         if (spaceIndex == str.len) {
@@ -2697,8 +2540,8 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
     }
 
     // NOTE(khvorov) Arg array needs a null at the end
-    arrsetcap(args, arrlen(args) + 1);
-    args[arrlen(args)] = 0;
+    prb_stbds_arrsetcap(args, prb_stbds_arrlen(args) + 1);
+    args[prb_stbds_arrlen(args)] = 0;
 
     return args;
 }

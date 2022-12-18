@@ -10,8 +10,8 @@ typedef enum Compiler {
 } Compiler;
 
 typedef struct ObjInfo {
-    prb_Str compileCmd;
-    uint64_t   preprocessedHash;
+    prb_Str  compileCmd;
+    uint64_t preprocessedHash;
 } ObjInfo;
 
 typedef struct CompileLogEntry {
@@ -22,22 +22,22 @@ typedef struct CompileLogEntry {
 typedef struct ProjectInfo {
     CompileLogEntry* prevCompileLog;
     CompileLogEntry* thisCompileLog;
-    prb_Str       rootDir;
-    prb_Str       compileOutDir;
+    prb_Str          rootDir;
+    prb_Str          compileOutDir;
     Compiler         compiler;
     bool             release;
 } ProjectInfo;
 
 typedef struct StaticLibInfo {
     ProjectInfo*      project;
-    prb_Str        name;
-    prb_Str        downloadDir;
-    prb_Str        includeDir;
-    prb_Str        includeFlag;
-    prb_Str        objDir;
-    prb_Str        libFile;
-    prb_Str        compileFlags;
-    prb_Str*       sourcesRelToDownload;
+    prb_Str           name;
+    prb_Str           downloadDir;
+    prb_Str           includeDir;
+    prb_Str           includeFlag;
+    prb_Str           objDir;
+    prb_Str           libFile;
+    prb_Str           compileFlags;
+    prb_Str*          sourcesRelToDownload;
     i32               sourcesCount;
     bool              notDownloaded;
     bool              cpp;
@@ -53,11 +53,11 @@ static StaticLibInfo
 getStaticLibInfo(
     prb_Arena*   arena,
     ProjectInfo* project,
-    prb_Str   name,
+    prb_Str      name,
     Lang         lang,
-    prb_Str   includeDirRelToDownload,
-    prb_Str   compileFlags,
-    prb_Str*  sourcesRelToDownload,
+    prb_Str      includeDirRelToDownload,
+    prb_Str      compileFlags,
+    prb_Str*     sourcesRelToDownload,
     i32          sourcesCount
 ) {
     StaticLibInfo result = {
@@ -225,31 +225,44 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
 
     prb_Str* inputPaths = 0;
     for (i32 srcIndex = 0; srcIndex < lib->sourcesCount; srcIndex++) {
-        prb_Str           srcRelToDownload = lib->sourcesRelToDownload[srcIndex];
-        prb_PathFindIter iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = lib->downloadDir, .mode = prb_PathFindMode_Glob, srcRelToDownload});
-        while (prb_pathFindIterNext(&iter)) {
-            arrput(inputPaths, iter.curPath);
+        prb_Str srcRelToDownload = lib->sourcesRelToDownload[srcIndex];
+        if (prb_strEndsWith(srcRelToDownload, prb_STR("/*.c"))) {
+            prb_Str relevantDir = prb_pathJoin(arena, lib->downloadDir, srcRelToDownload);
+            relevantDir.len -= 4;
+            prb_Str* entries = prb_getAllDirEntries(arena, relevantDir, prb_Recursive_No);
+            bool atleastone = false;
+            for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
+                prb_Str entry = entries[entryIndex];
+                if (prb_strEndsWith(entry, prb_STR(".c"))) {
+                    arrput(inputPaths, entry);
+                    atleastone = true;
+                }
+            }
+            prb_assert(atleastone);
+        } else {
+            prb_Str path = prb_pathJoin(arena, lib->downloadDir, srcRelToDownload);
+            prb_assert(prb_isFile(arena, path));
+            arrput(inputPaths, path);
         }
-        prb_destroyPathFindIter(&iter);
     }
     prb_assert(arrlen(inputPaths) > 0);
 
     StringFound* existingObjs = 0;
     {
-        prb_PathFindIter iter = prb_createPathFindIter((prb_PathFindSpec) {.arena = arena, .dir = lib->objDir, .mode = prb_PathFindMode_AllEntriesInDir});
-        while (prb_pathFindIterNext(&iter)) {
-            if (prb_strEndsWith(iter.curPath, prb_STR(".obj"))) {
-                shput(existingObjs, iter.curPath.ptr, false);
+        prb_Str* entries = prb_getAllDirEntries(arena, lib->objDir, prb_Recursive_No);
+        for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
+            prb_Str entry = entries[entryIndex];
+            if (prb_strEndsWith(entry, prb_STR(".obj"))) {
+                shput(existingObjs, entry.ptr, false);
             } else {
-                prb_removeFileIfExists(arena, iter.curPath);
+                prb_removeFileIfExists(arena, entry);
             }
         }
-        prb_destroyPathFindIter(&iter);
     }
 
     // NOTE(khvorov) Preprocess
-    prb_Str         preprocessExt = lib->cpp ? prb_STR("ii") : prb_STR("i");
-    prb_Str*        outputPreprocess = 0;
+    prb_Str            preprocessExt = lib->cpp ? prb_STR("ii") : prb_STR("i");
+    prb_Str*           outputPreprocess = 0;
     prb_ProcessHandle* processesPreprocess = 0;
     for (i32 inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
         prb_Str inputFilepath = inputPaths[inputPathIndex];
@@ -259,7 +272,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         prb_Str outputPreprocessFilepath = prb_pathJoin(arena, lib->objDir, outputPreprocessFilename);
         arrput(outputPreprocess, outputPreprocessFilepath);
 
-        prb_Str        preprocessCmd = constructCompileCmd(arena, lib->project, lib->compileFlags, inputFilepath, outputPreprocessFilepath, prb_STR(""));
+        prb_Str           preprocessCmd = constructCompileCmd(arena, lib->project, lib->compileFlags, inputFilepath, outputPreprocessFilepath, prb_STR(""));
         prb_ProcessHandle proc = prb_execCmd(arena, preprocessCmd, prb_ProcessFlag_DontWait, (prb_Str) {});
         prb_assert(proc.status == prb_ProcessStatus_Launched);
         arrput(processesPreprocess, proc);
@@ -268,7 +281,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
     // NOTE(khvorov) Compile
     prb_Status preprocessStatus = prb_waitForProcesses(processesPreprocess, arrlen(processesPreprocess));
     if (preprocessStatus == prb_Success) {
-        prb_Str*        outputObjs = 0;
+        prb_Str*           outputObjs = 0;
         prb_ProcessHandle* processesCompile = 0;
         for (i32 inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
             prb_Str inputNotPreprocessedFilepath = inputPaths[inputPathIndex];
@@ -311,7 +324,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             {
                 prb_Str outputObjFilepathCopy = prb_strMallocCopy(outputObjFilepath);
                 prb_Str compileCmdCopy = prb_strMallocCopy(compileCmd);
-                ObjInfo    thisObjInfo = {compileCmdCopy, preprocessedHash.hash};
+                ObjInfo thisObjInfo = {compileCmdCopy, preprocessedHash.hash};
                 shput(lib->project->thisCompileLog, outputObjFilepathCopy.ptr, thisObjInfo);
             }
         }
@@ -337,7 +350,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             {
                 prb_Multitime multitime = prb_createMultitime();
                 for (i32 pathIndex = 0; pathIndex < arrlen(outputObjs); pathIndex++) {
-                    prb_Str        path = outputObjs[pathIndex];
+                    prb_Str           path = outputObjs[pathIndex];
                     prb_FileTimestamp lastMod = prb_getLastModified(arena, path);
                     prb_assert(lastMod.valid);
                     prb_multitimeAdd(&multitime, lastMod);
@@ -393,8 +406,8 @@ compileAndRunBidiGenTab(prb_Arena* arena, ProjectInfo* project, prb_Str src, prb
 #else
 #error unimplemented
 #endif
-        prb_Str        packtabPath = prb_pathJoin(arena, prb_getParentDir(arena, src), prb_STR("packtab.c"));
-        prb_Str        cmd = constructCompileCmd(arena, project, flags, prb_fmt(arena, "%.*s %.*s", prb_LIT(packtabPath), prb_LIT(src)), exeFilename, prb_STR(""));
+        prb_Str           packtabPath = prb_pathJoin(arena, prb_getParentDir(arena, src), prb_STR("packtab.c"));
+        prb_Str           cmd = constructCompileCmd(arena, project, flags, prb_fmt(arena, "%.*s %.*s", prb_LIT(packtabPath), prb_LIT(src)), exeFilename, prb_STR(""));
         prb_ProcessHandle handle = prb_execCmd(arena, cmd, 0, (prb_Str) {});
         prb_assert(handle.status == prb_ProcessStatus_CompletedSuccess);
 
@@ -421,7 +434,7 @@ textfileReplace(prb_Arena* arena, prb_Str path, prb_Str pattern, prb_Str replace
 }
 
 typedef struct GetStrInQuotesResult {
-    bool       success;
+    bool    success;
     prb_Str inquotes;
     prb_Str past;
 } GetStrInQuotesResult;
@@ -429,8 +442,8 @@ typedef struct GetStrInQuotesResult {
 static GetStrInQuotesResult
 getStrInQuotes(prb_Str str) {
     GetStrInQuotesResult result = {};
-    prb_StrFindSpec   quoteFindSpec = {.str = str, .pattern = prb_STR("\""), .mode = prb_StrFindMode_AnyChar};
-    prb_StrFindResult quoteFindResult = prb_strFind(quoteFindSpec);
+    prb_StrFindSpec      quoteFindSpec = {.str = str, .pattern = prb_STR("\""), .mode = prb_StrFindMode_AnyChar};
+    prb_StrFindResult    quoteFindResult = prb_strFind(quoteFindSpec);
     if (quoteFindResult.found) {
         quoteFindSpec.str = prb_strSliceForward(str, quoteFindResult.matchByteIndex + 1);
         quoteFindResult = prb_strFind(quoteFindSpec);
@@ -444,7 +457,7 @@ getStrInQuotes(prb_Str str) {
 }
 
 typedef struct String3 {
-    bool       success;
+    bool    success;
     prb_Str strings[3];
 } String3;
 
@@ -478,8 +491,8 @@ typedef struct ParseLogResult {
 static ParseLogResult
 parseLog(prb_Arena* arena, prb_Str str, prb_Str* columnNames) {
     prb_unused(str);
-    ParseLogResult   result = {};
-    prb_LineIter lineIter = prb_createLineIter(str);
+    ParseLogResult result = {};
+    prb_LineIter   lineIter = prb_createLineIter(str);
     if (prb_lineIterNext(&lineIter) == prb_Success) {
         String3 headers = get3StrInQuotes(lineIter.curLine);
         if (headers.success) {
@@ -520,8 +533,8 @@ addLogRow(prb_GrowingStr* gstr, prb_Str* strings) {
 
 static void
 writeLog(prb_Arena* arena, CompileLogEntry* log, prb_Str path, prb_Str* columnNames) {
-    prb_TempMemory    temp = prb_beginTempMemory(arena);
-    prb_Arena         numberFmtArena = prb_createArenaFromArena(arena, 100);
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Arena      numberFmtArena = prb_createArenaFromArena(arena, 100);
     prb_GrowingStr gstr = prb_beginStr(arena);
     addLogRow(&gstr, columnNames);
     for (i32 entryIndex = 0; entryIndex < shlen(log); entryIndex++) {
@@ -571,7 +584,7 @@ main() {
     {
         prb_ReadEntireFileResult prevLogRead = prb_readEntireFile(arena, buildLogPath);
         if (prevLogRead.success) {
-            prb_Str     prevLog = (prb_Str) {(const char*)prevLogRead.content.data, prevLogRead.content.len};
+            prb_Str        prevLog = (prb_Str) {(const char*)prevLogRead.content.data, prevLogRead.content.len};
             ParseLogResult prevLogParsed = parseLog(arena, prevLog, logColumnNames);
             if (prevLogParsed.success) {
                 project->prevCompileLog = prevLogParsed.log;
