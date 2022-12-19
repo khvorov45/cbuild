@@ -2110,6 +2110,67 @@ test_execJobs(prb_Arena* arena, void* data) {
     // TODO(khvorov) Write
 }
 
+// SECTION Random numbers
+
+function void
+test_createRng(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_unused(arena);
+
+    for (int32_t seed = 0; seed < 100; seed++) {
+        prb_Rng rng = prb_createRng(seed);
+        prb_assert((rng.inc & 1) != 0);
+    }
+}
+
+function void
+test_randomU32(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_unused(arena);
+    for (int32_t seed = 0; seed < 100; seed++) {
+        prb_Rng rng = prb_createRng(seed);
+        int32_t odds = 0;
+        for (int32_t ind = 0; ind < 1000; ind++) {
+            u32 num = prb_randomU32(&rng);
+            odds += num & 1;
+        }
+        // NOTE(khvorov) 48 is about 3 sd in this case
+        int32_t oddsMin = 500 - 48;
+        int32_t oddsMax = 500 + 48;
+        prb_assert(odds >= oddsMin && odds <= oddsMax);
+    }
+}
+
+function void
+test_randomU32Bound(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_unused(arena);
+    for (int32_t seed = 0; seed < 100; seed++) {
+        prb_Rng rng = prb_createRng(seed);
+        for (uint32_t bound = 1; bound < 20; bound++) {
+            for (int32_t ind = 0; ind < 1000; ind++) {
+                u32 num = prb_randomU32Bound(&rng, bound);
+                prb_assert(num < bound);
+            }
+        }
+    }
+}
+
+function void
+test_randomF3201(prb_Arena* arena, void* data) {
+    prb_unused(data);
+    prb_unused(arena);
+    for (int32_t seed = 0; seed < 100; seed++) {
+        prb_Rng rng = prb_createRng(seed);
+        for (uint32_t bound = 1; bound < 20; bound++) {
+            for (int32_t ind = 0; ind < 1000; ind++) {
+                float num = prb_randomF3201(&rng);
+                prb_assert(num >= 0.0f && num < 1.0f);
+            }
+        }
+    }
+}
+
 //
 // SECTION Fileformat
 //
@@ -2391,6 +2452,12 @@ main() {
     // SECTION Multithreading
     arrput(jobs, prb_createJob(test_createJob, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_execJobs, 0, arena, 10 * prb_MEGABYTE));
+
+    // SECTION Random numbers
+    arrput(jobs, prb_createJob(test_createRng, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_randomU32, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_randomU32Bound, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_randomF3201, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Fileformat
     arrput(jobs, prb_createJob(test_fileformat, 0, arena, 10 * prb_MEGABYTE));

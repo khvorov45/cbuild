@@ -29,7 +29,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 }
 */
 
-// TODO(khvorov) Random number generation
 // TODO(khvorov) Job status enum should probably be separate from process status
 // TODO(khvorov) Pathfind iterator should probably not crash when given non-existant directories
 // TODO(khvorov) Set env variables when executing processes
@@ -429,6 +428,12 @@ typedef struct prb_ParsedNumber {
     };
 } prb_ParsedNumber;
 
+typedef struct prb_Rng {
+    uint64_t state;
+    // Must be odd
+    uint64_t inc;
+} prb_Rng;
+
 typedef struct prb_ReadEntireFileResult {
     bool      success;
     prb_Bytes content;
@@ -536,6 +541,12 @@ prb_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
 // SECTION Multithreading
 prb_PUBLICDEC prb_Job    prb_createJob(prb_JobProc proc, void* data, prb_Arena* arena, int32_t arenaBytes);
 prb_PUBLICDEC prb_Status prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode);
+
+// SECTION Random numbers
+prb_PUBLICDEC prb_Rng  prb_createRng(uint32_t seed);
+prb_PUBLICDEC uint32_t prb_randomU32(prb_Rng* rng);
+prb_PUBLICDEC uint32_t prb_randomU32Bound(prb_Rng* rng, uint32_t max);
+prb_PUBLICDEC float    prb_randomF3201(prb_Rng* rng);
 
 //
 // SECTION stb snprintf
@@ -2919,6 +2930,66 @@ prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
 #error unimplemented
 #endif
 
+    return result;
+}
+
+//
+// SECTION Random numbers (implementation)
+//
+
+prb_PUBLICDEF prb_Rng
+prb_createRng(uint32_t seed) {
+    prb_Rng rng = {.state = seed, .inc = seed | 1};
+    // NOTE(khvorov) When seed is 0 the first 2 numbers are always 0 which is probably not what we want
+    prb_randomU32(&rng);
+    prb_randomU32(&rng);
+    return rng;
+}
+
+// PCG-XSH-RR
+// state_new = a * state_old + b
+// output = rotate32((state ^ (state >> 18)) >> 27, state >> 59)
+// as per `PCG: A Family of Simple Fast Space-Efficient Statistically Good Algorithms for Random Number Generation`
+prb_PUBLICDEF uint32_t
+prb_randomU32(prb_Rng* rng) {
+    uint64_t state = rng->state;
+    uint64_t xorWith = state >> 18u;
+    uint64_t xored = state ^ xorWith;
+    uint64_t shifted64 = xored >> 27u;
+    uint32_t shifted32 = (uint32_t)shifted64;
+    uint32_t rotateBy = state >> 59u;
+    uint32_t shiftRightBy = rotateBy;
+    uint32_t resultRight = shifted32 >> shiftRightBy;
+    // NOTE(khvorov) This is `32 - rotateBy` but produces 0 when rotateBy is 0
+    // Shifting a 32 bit value by 32 is apparently UB and the compiler is free to remove that code
+    // I guess, so we are avoiding it by doing this weird bit hackery
+    uint32_t shiftLeftBy = (-rotateBy) & 0b11111u;
+    uint32_t resultLeft = shifted32 << shiftLeftBy;
+    uint32_t result = resultRight | resultLeft;
+    // NOTE(khvorov) This is just one of those magic LCG constants "in common use"
+    // https://en.wikipedia.org/wiki/Linear_congruential_generator#Parameters_in_common_use
+    rng->state = 6364136223846793005ULL * state + rng->inc;
+    return result;
+}
+
+prb_PUBLICDEF uint32_t
+prb_randomU32Bound(prb_Rng* rng, uint32_t max) {
+    // NOTE(khvorov) This is equivalent to (UINT32_MAX + 1) % max;
+    uint32_t threshold = -max % max;
+    uint32_t unbound = prb_randomU32(rng);
+    while (unbound < threshold) {
+        unbound = prb_randomU32(rng);
+    }
+    uint32_t result = unbound % max;
+    return result;
+}
+
+prb_PUBLICDEF float
+prb_randomF3201(prb_Rng* rng) {
+    uint32_t randomU32 = prb_randomU32(rng);
+    float    randomF32 = (float)randomU32;
+    float    onePastMaxRandomU32 = (float)(1ULL << 32ULL);
+    float    result = randomF32 / onePastMaxRandomU32;
     return result;
 }
 
