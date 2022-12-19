@@ -523,6 +523,8 @@ main() {
                 }
             }
         }
+
+        // TODO(khvorov) Probably launch the examples to make sure they work
     }
 
     prb_writelnToStdout(arena, prb_fmt(arena, "%stest run took %.2fms%s", prb_colorEsc(prb_ColorID_Green).ptr, prb_getMsFrom(scriptStart), prb_colorEsc(prb_ColorID_Reset).ptr));
