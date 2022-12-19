@@ -2463,7 +2463,8 @@ main() {
     arrput(jobs, prb_createJob(test_fileformat, 0, arena, 10 * prb_MEGABYTE));
 
     // NOTE(khvorov) Running multithreaded is not necessarily faster here but it does test that codepath
-    prb_assert(prb_execJobs(jobs, arrlen(jobs), prb_ThreadMode_Multi) == prb_Success);
+    prb_ThreadMode threadMode = prb_debuggerPresent(arena) ? prb_ThreadMode_Single : prb_ThreadMode_Multi;
+    prb_assert(prb_execJobs(jobs, arrlen(jobs), threadMode) == prb_Success);
 
     prb_assert(arena->tempCount == 0);
     prb_assert(arena->base == baseStart);
