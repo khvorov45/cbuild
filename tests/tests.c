@@ -37,9 +37,6 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_createPathFindIter"));
         arrput(*prbNames, prb_STR("prb_pathFindIterNext"));
         arrput(*prbNames, prb_STR("prb_destroyPathFindIter"));
-    } else if (prb_streq(testName, prb_STR("strFindIter"))) {
-        arrput(*prbNames, prb_STR("prb_createStrFindIter"));
-        arrput(*prbNames, prb_STR("prb_strFindIterNext"));
     } else if (prb_streq(testName, prb_STR("utf8CharIter"))) {
         arrput(*prbNames, prb_STR("prb_createUtf8CharIter"));
         arrput(*prbNames, prb_STR("prb_utf8CharIterNext"));
@@ -1317,81 +1314,6 @@ test_strFind(prb_Arena* arena, void* data) {
 }
 
 function void
-test_strFindIter(prb_Arena* arena, void* data) {
-    prb_unused(data);
-    prb_TempMemory  temp = prb_beginTempMemory(arena);
-    prb_Str         str = prb_STR("prog arg1:val1 arg2:val2 arg3:val3");
-    prb_StrFindSpec spec = {};
-    spec.str = str;
-    spec.pattern = prb_STR(":");
-    spec.mode = prb_StrFindMode_Exact;
-    spec.direction = prb_StrDirection_FromStart;
-
-    {
-        prb_StrFindIter iter = prb_createStrFindIter(spec);
-        prb_assert(iter.curMatchCount == 0);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 1);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 2);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 3);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Failure);
-        prb_assert(!iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == 0);
-        prb_assert(iter.curResult.matchLen == 0);
-        prb_assert(iter.curMatchCount == 3);
-    }
-
-    {
-        spec.direction = prb_StrDirection_FromEnd;
-        prb_StrFindIter iter = prb_createStrFindIter(spec);
-        prb_assert(iter.curMatchCount == 0);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2:val2 arg3"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 1);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1:val1 arg2"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 2);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Success);
-        prb_assert(iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == prb_strlen("prog arg1"));
-        prb_assert(iter.curResult.matchLen == 1);
-        prb_assert(iter.curMatchCount == 3);
-
-        prb_assert(prb_strFindIterNext(&iter) == prb_Failure);
-        prb_assert(!iter.curResult.found);
-        prb_assert(iter.curResult.matchByteIndex == 0);
-        prb_assert(iter.curResult.matchLen == 0);
-        prb_assert(iter.curMatchCount == 3);
-
-        spec.direction = prb_StrDirection_FromStart;
-    }
-
-    prb_endTempMemory(temp);
-}
-
-function void
 test_strStartsWith(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_unused(arena);
@@ -2393,7 +2315,6 @@ main() {
     arrput(jobs, prb_createJob(test_strTrimSide, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strTrim, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strFind, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strFindIter, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strStartsWith, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strEndsWith, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strReplace, 0, arena, 10 * prb_MEGABYTE));

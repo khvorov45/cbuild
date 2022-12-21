@@ -345,12 +345,6 @@ typedef struct prb_Utf8CharIter {
     bool             curIsValid;
 } prb_Utf8CharIter;
 
-typedef struct prb_StrFindIter {
-    prb_StrFindSpec   spec;
-    prb_StrFindResult curResult;
-    int32_t           curMatchCount;
-} prb_StrFindIter;
-
 typedef struct prb_PathEntryIter {
     prb_Str ogstr;
     int32_t curOffset;
@@ -486,8 +480,6 @@ prb_PUBLICDEC prb_Str           prb_strFromBytes(prb_Bytes bytes);
 prb_PUBLICDEC prb_Str           prb_strTrimSide(prb_Str str, prb_StrDirection dir);
 prb_PUBLICDEC prb_Str           prb_strTrim(prb_Str str);
 prb_PUBLICDEC prb_StrFindResult prb_strFind(prb_StrFindSpec spec);
-prb_PUBLICDEC prb_StrFindIter   prb_createStrFindIter(prb_StrFindSpec spec);
-prb_PUBLICDEC prb_Status        prb_strFindIterNext(prb_StrFindIter* iter);
 prb_PUBLICDEC bool              prb_strStartsWith(prb_Str str, prb_Str pattern);
 prb_PUBLICDEC bool              prb_strEndsWith(prb_Str str, prb_Str pattern);
 prb_PUBLICDEC prb_Str           prb_strReplace(prb_Arena* arena, prb_StrFindSpec spec, prb_Str replacement);
@@ -609,8 +601,7 @@ prb_STBSP__PUBLICDEC int prb_STB_SPRINTF_DECORATE(sprintf)(char* buf, char const
 prb_STBSP__PUBLICDEC int prb_STB_SPRINTF_DECORATE(snprintf)(char* buf, int count, char const* fmt, ...)
     prb_STBSP__ATTRIBUTE_FORMAT(3, 4);
 
-prb_STBSP__PUBLICDEC int  prb_STB_SPRINTF_DECORATE(vsprintfcb
-)(prb_STBSP_SPRINTFCB* callback, void* user, char* buf, char const* fmt, va_list va);
+prb_STBSP__PUBLICDEC int  prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, char* buf, char const* fmt, va_list va);
 prb_STBSP__PUBLICDEC void prb_STB_SPRINTF_DECORATE(set_separators)(char comma, char period);
 
 //
@@ -1790,7 +1781,7 @@ prb_strSliceForward(prb_Str str, int32_t bytes) {
 
 prb_PUBLICDEF prb_Str
 prb_strSliceBetween(prb_Str str, int32_t start, int32_t onePastEnd) {
-    prb_assert(onePastEnd > start);
+    prb_assert(onePastEnd >= start);
     prb_Str result = {str.ptr + start, onePastEnd - start};
     return result;
 }
@@ -1969,40 +1960,6 @@ prb_strFind(prb_StrFindSpec spec) {
                 }
             } break;
         }
-    }
-
-    return result;
-}
-
-prb_PUBLICDEF prb_StrFindIter
-prb_createStrFindIter(prb_StrFindSpec spec) {
-    prb_StrFindIter iter = {.spec = spec, .curResult = (prb_StrFindResult) {}, .curMatchCount = 0};
-    return iter;
-}
-
-prb_PUBLICDEF prb_Status
-prb_strFindIterNext(prb_StrFindIter* iter) {
-    prb_StrFindSpec spec = iter->spec;
-    int32_t         strOffset = 0;
-    if (iter->curResult.found) {
-        switch (spec.direction) {
-            case prb_StrDirection_FromStart:
-                strOffset = iter->curResult.matchByteIndex + iter->curResult.matchLen;
-                spec.str = prb_strSliceForward(spec.str, strOffset);
-                break;
-            case prb_StrDirection_FromEnd:
-                spec.str.len = iter->curResult.matchByteIndex;
-        }
-    }
-
-    iter->curResult = prb_strFind(spec);
-    prb_Status result = prb_Failure;
-    if (iter->curResult.found) {
-        result = prb_Success;
-        if (spec.direction == prb_StrDirection_FromStart) {
-            iter->curResult.matchByteIndex += strOffset;
-        }
-        iter->curMatchCount += 1;
     }
 
     return result;
@@ -2478,32 +2435,33 @@ prb_getCmdArgs(prb_Arena* arena) {
 
 prb_PUBLICDEF const char**
 prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
-    const char**    args = 0;
-    prb_StrFindSpec spec = {};
-    spec.str = str;
-    spec.pattern = prb_STR(" ");
-    spec.mode = prb_StrFindMode_AnyChar;
-    spec.direction = prb_StrDirection_FromStart;
+    const char** args = 0;
 
-    int32_t         prevSpaceIndex = -1;
-    prb_StrFindIter iter = prb_createStrFindIter(spec);
-    for (;;) {
-        int32_t spaceIndex = 0;
-        if (prb_strFindIterNext(&iter) == prb_Success) {
-            prb_assert(iter.curResult.found);
-            spaceIndex = iter.curResult.matchByteIndex;
-        } else {
-            spaceIndex = str.len;
-        }
-        int32_t arglen = spaceIndex - prevSpaceIndex - 1;
-        if (arglen > 0) {
-            prb_Str     arg = {str.ptr + prevSpaceIndex + 1, arglen};
-            const char* argNull = prb_fmt(arena, "%.*s", prb_LIT(arg)).ptr;
-            prb_stbds_arrput(args, argNull);
-        }
-        prevSpaceIndex = spaceIndex;
-        if (spaceIndex == str.len) {
-            break;
+    // TODO(khvorov) Rework with string scanner
+    {
+        prb_StrFindSpec spec = {};
+        spec.str = str;
+        spec.pattern = prb_STR(" ");
+        spec.mode = prb_StrFindMode_AnyChar;
+        spec.direction = prb_StrDirection_FromStart;
+
+        while (spec.str.len > 0) {
+            prb_StrFindResult spaceFind = prb_strFind(spec);
+            int32_t           onePastWordEnd = 0;
+            if (spaceFind.found) {
+                onePastWordEnd = spaceFind.matchByteIndex;
+            } else {
+                onePastWordEnd = spec.str.len;
+            }
+            prb_Str arg = prb_strSliceBetween(spec.str, 0, onePastWordEnd);
+            if (arg.len > 0) {
+                const char* argNull = prb_fmt(arena, "%.*s", prb_LIT(arg)).ptr;
+                prb_stbds_arrput(args, argNull);
+            }
+            spec.str = prb_strSliceBetween(spec.str, onePastWordEnd, spec.str.len);
+            while (spec.str.len > 0 && spec.str.ptr[0] == ' ') {
+                spec.str = prb_strSliceBetween(spec.str, 1, spec.str.len);
+            }
         }
     }
 
