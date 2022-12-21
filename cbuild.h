@@ -312,14 +312,6 @@ typedef struct prb_StrFindSpec {
     prb_Str          pattern;
     prb_StrDirection direction;
     prb_StrFindMode  mode;
-    union {
-        struct {
-            int32_t ignore;
-        } exact;
-        struct {
-            int32_t ignore;
-        } anyChar;
-    };
 } prb_StrFindSpec;
 
 typedef struct prb_StrFindResult {
