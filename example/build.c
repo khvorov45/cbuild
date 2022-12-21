@@ -458,12 +458,12 @@ getStrInQuotes(prb_Str str) {
     prb_StrFindSpec      quoteFindSpec = {.str = str, .pattern = prb_STR("\""), .mode = prb_StrFindMode_AnyChar};
     prb_StrFindResult    quoteFindResult = prb_strFind(quoteFindSpec);
     if (quoteFindResult.found) {
-        quoteFindSpec.str = prb_strSliceForward(str, quoteFindResult.matchByteIndex + 1);
+        quoteFindSpec.str = prb_strSlice(str, quoteFindResult.matchByteIndex + 1, str.len);
         quoteFindResult = prb_strFind(quoteFindSpec);
         if (quoteFindResult.found) {
             result.success = true;
             result.inquotes = (prb_Str) {quoteFindSpec.str.ptr, quoteFindResult.matchByteIndex};
-            result.past = prb_strSliceForward(quoteFindSpec.str, quoteFindResult.matchByteIndex + 1);
+            result.past = prb_strSlice(quoteFindSpec.str, quoteFindResult.matchByteIndex + 1, quoteFindSpec.str.len);
         }
     }
     return result;

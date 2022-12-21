@@ -472,8 +472,7 @@ prb_PUBLICDEC prb_FileHash             prb_getFileHash(prb_Arena* arena, prb_Str
 
 // SECTION Strings
 prb_PUBLICDEC bool              prb_streq(prb_Str str1, prb_Str str2);
-prb_PUBLICDEC prb_Str           prb_strSliceForward(prb_Str str, int32_t bytes);
-prb_PUBLICDEC prb_Str           prb_strSliceBetween(prb_Str str, int32_t start, int32_t onePastEnd);
+prb_PUBLICDEC prb_Str           prb_strSlice(prb_Str str, int32_t start, int32_t onePastEnd);
 prb_PUBLICDEC const char*       prb_strGetNullTerminated(prb_Arena* arena, prb_Str str);
 prb_PUBLICDEC prb_Str           prb_strMallocCopy(prb_Str str);
 prb_PUBLICDEC prb_Str           prb_strFromBytes(prb_Bytes bytes);
@@ -1415,7 +1414,7 @@ prb_pathJoin(prb_Arena* arena, prb_Str path1, prb_Str path2) {
     char path2FirstChar = path2.ptr[0];
     bool path2StartsOnSep = prb_charIsSep(path2FirstChar);
     if (path2StartsOnSep) {
-        path2 = prb_strSliceForward(path2, 1);
+        path2 = prb_strSlice(path2, 1, path2.len);
     }
     prb_Str result = prb_fmt(arena, "%.*s/%.*s", prb_LIT(path1), prb_LIT(path2));
     return result;
@@ -1482,7 +1481,7 @@ prb_getLastEntryInPath(prb_Str path) {
     prb_Str           result = path;
     if (findResult.found) {
         prb_assert(path.len > 1);
-        result = prb_strSliceForward(path, findResult.matchByteIndex + 1);
+        result = prb_strSlice(path, findResult.matchByteIndex + 1, path.len);
     }
     return result;
 }
@@ -1547,8 +1546,8 @@ prb_pathEntryIterNext(prb_PathEntryIter* iter) {
 #endif
 
         prb_assert(firstFoundSepIndex > oldOffset);
-        iter->curEntryName = prb_strSliceBetween(iter->ogstr, oldOffset, firstFoundSepIndex);
-        iter->curEntryPath = prb_strSliceBetween(iter->ogstr, 0, firstFoundSepIndex);
+        iter->curEntryName = prb_strSlice(iter->ogstr, oldOffset, firstFoundSepIndex);
+        iter->curEntryPath = prb_strSlice(iter->ogstr, 0, firstFoundSepIndex);
 
         // NOTE(khvorov) Ignore multiple separators in a row
         while (iter->curOffset < iter->ogstr.len && prb_charIsSep(iter->ogstr.ptr[iter->curOffset])) {
@@ -1773,14 +1772,7 @@ prb_streq(prb_Str str1, prb_Str str2) {
 }
 
 prb_PUBLICDEF prb_Str
-prb_strSliceForward(prb_Str str, int32_t bytes) {
-    prb_assert(bytes <= str.len);
-    prb_Str result = {str.ptr + bytes, str.len - bytes};
-    return result;
-}
-
-prb_PUBLICDEF prb_Str
-prb_strSliceBetween(prb_Str str, int32_t start, int32_t onePastEnd) {
+prb_strSlice(prb_Str str, int32_t start, int32_t onePastEnd) {
     prb_assert(onePastEnd >= start);
     prb_Str result = {str.ptr + start, onePastEnd - start};
     return result;
@@ -1833,7 +1825,7 @@ prb_strTrimSide(prb_Str str, prb_StrDirection dir) {
 
     if (found) {
         switch (dir) {
-            case prb_StrDirection_FromStart: result = prb_strSliceForward(str, index); break;
+            case prb_StrDirection_FromStart: result = prb_strSlice(str, index, str.len); break;
             case prb_StrDirection_FromEnd: result.len = index + 1; break;
         }
     } else {
@@ -1988,7 +1980,7 @@ prb_strReplace(prb_Arena* arena, prb_StrFindSpec spec, prb_Str replacement) {
     prb_Str           result = spec.str;
     prb_StrFindResult findResult = prb_strFind(spec);
     if (findResult.found) {
-        prb_Str strAfterMatch = prb_strSliceForward(spec.str, findResult.matchByteIndex + findResult.matchLen);
+        prb_Str strAfterMatch = prb_strSlice(spec.str, findResult.matchByteIndex + findResult.matchLen, spec.str.len);
         result = prb_fmt(
             arena,
             "%.*s%.*s%.*s",
@@ -2271,7 +2263,7 @@ prb_lineIterNext(prb_LineIter* iter) {
     iter->curLineEndLen = 0;
 
     if (iter->curByteOffset < iter->ogstr.len) {
-        iter->curLine = prb_strSliceForward(iter->ogstr, iter->curByteOffset);
+        iter->curLine = prb_strSlice(iter->ogstr, iter->curByteOffset, iter->ogstr.len);
         prb_StrFindSpec spec = {};
         spec.str = iter->curLine;
         spec.pattern = prb_STR("\r\n");
@@ -2317,7 +2309,7 @@ prb_parseNumber(prb_Str str) {
     if (str.len > 0) {
         // NOTE(khvorov) Hex 0xabc123
         if (prb_strStartsWith(str, prb_STR("0x"))) {
-            prb_Str digits = prb_strSliceForward(str, 2);
+            prb_Str digits = prb_strSlice(str, 2, str.len);
             if (digits.len > 0) {
                 number.kind = prb_ParsedNumberKind_U64;
                 for (int32_t digitsIndex = 0; digitsIndex < digits.len && number.kind == prb_ParsedNumberKind_U64; digitsIndex++) {
@@ -2422,7 +2414,7 @@ prb_getCmdArgs(prb_Arena* arena) {
             int32_t processed = procSelfContent.len - procSelfContentLeft.len;
             prb_Str arg = {procSelfContentLeft.ptr, byteIndex - processed};
             prb_stbds_arrput(result, arg);
-            procSelfContentLeft = prb_strSliceForward(procSelfContentLeft, arg.len + 1);
+            procSelfContentLeft = prb_strSlice(procSelfContentLeft, arg.len + 1, procSelfContentLeft.len);
         }
     }
 
@@ -2453,14 +2445,14 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
             } else {
                 onePastWordEnd = spec.str.len;
             }
-            prb_Str arg = prb_strSliceBetween(spec.str, 0, onePastWordEnd);
+            prb_Str arg = prb_strSlice(spec.str, 0, onePastWordEnd);
             if (arg.len > 0) {
                 const char* argNull = prb_fmt(arena, "%.*s", prb_LIT(arg)).ptr;
                 prb_stbds_arrput(args, argNull);
             }
-            spec.str = prb_strSliceBetween(spec.str, onePastWordEnd, spec.str.len);
+            spec.str = prb_strSlice(spec.str, onePastWordEnd, spec.str.len);
             while (spec.str.len > 0 && spec.str.ptr[0] == ' ') {
-                spec.str = prb_strSliceBetween(spec.str, 1, spec.str.len);
+                spec.str = prb_strSlice(spec.str, 1, spec.str.len);
             }
         }
     }
@@ -2648,7 +2640,7 @@ prb_debuggerPresent(prb_Arena* arena) {
     while (prb_lineIterNext(&iter)) {
         prb_Str search = prb_STR("TracerPid:");
         if (prb_strStartsWith(iter.curLine, search)) {
-            prb_Str number = prb_strTrim(prb_strSliceForward(iter.curLine, search.len));
+            prb_Str number = prb_strTrim(prb_strSlice(iter.curLine, search.len, iter.curLine.len));
             result = number.len > 1 || number.ptr[0] != '0';
             break;
         }

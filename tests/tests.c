@@ -1204,14 +1204,7 @@ test_streq(prb_Arena* arena, void* data) {
 }
 
 function void
-test_strSliceForward(prb_Arena* arena, void* data) {
-    prb_unused(arena);
-    prb_unused(data);
-    // TODO(khvorov) Write
-}
-
-function void
-test_strSliceBetween(prb_Arena* arena, void* data) {
+test_strSlice(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
     // TODO(khvorov) Write
@@ -2137,7 +2130,7 @@ test_fileformat(prb_Arena* arena, void* data) {
             spec.direction = prb_StrDirection_FromEnd;
             prb_StrFindResult nameStartRes = prb_strFind(spec);
             prb_assert(nameStartRes.found);
-            win = prb_strSliceForward(win, nameStartRes.matchByteIndex + 1);
+            win = prb_strSlice(win, nameStartRes.matchByteIndex + 1, win.len);
             prb_Str name = prb_fmt(arena, "%.*s", win.len, win.ptr);
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.curLine, prb_STR("#ifndef prb_NO_IMPLEMENTATION"))) {
@@ -2196,7 +2189,7 @@ test_fileformat(prb_Arena* arena, void* data) {
             bracketSpec.mode = prb_StrFindMode_AnyChar;
             prb_StrFindResult bracket = prb_strFind(bracketSpec);
             prb_assert(bracket.found);
-            prb_Str name = prb_strSliceBetween(testFileLineIter.curLine, testFunctionsPrefix.len, bracket.matchByteIndex);
+            prb_Str name = prb_strSlice(testFileLineIter.curLine, testFunctionsPrefix.len, bracket.matchByteIndex);
             testNameToPrbName(arena, name, &testNames);
         }
     }
@@ -2212,17 +2205,17 @@ test_fileformat(prb_Arena* arena, void* data) {
             if (prb_streq(testFileLineIter.curLine, prb_STR("    // SECTION Fileformat"))) {
                 break;
             } else {
-                arrput(testNamesInMain, prb_strSliceForward(testFileLineIter.curLine, 4));
+                arrput(testNamesInMain, prb_strSlice(testFileLineIter.curLine, 4, testFileLineIter.curLine.len));
             }
         } else if (prb_strStartsWith(testFileLineIter.curLine, testCall)) {
-            prb_Str         nameOn = prb_strSliceForward(testFileLineIter.curLine, testCall.len);
+            prb_Str         nameOn = prb_strSlice(testFileLineIter.curLine, testCall.len, testFileLineIter.curLine.len);
             prb_StrFindSpec commaSpec = {};
             commaSpec.str = nameOn;
             commaSpec.pattern = prb_STR(",");
             commaSpec.mode = prb_StrFindMode_AnyChar;
             prb_StrFindResult comma = prb_strFind(commaSpec);
             prb_assert(comma.found);
-            prb_Str name = prb_strSliceBetween(nameOn, 0, comma.matchByteIndex);
+            prb_Str name = prb_strSlice(nameOn, 0, comma.matchByteIndex);
             testNameToPrbName(arena, name, &testNamesInMain);
         } else if (prb_strStartsWith(testFileLineIter.curLine, prb_STR("    test_setWorkingDir"))) {
             arrput(testNamesInMain, prb_STR("prb_setWorkingDir"));
@@ -2307,8 +2300,7 @@ main() {
 
     // SECTION Strings
     arrput(jobs, prb_createJob(test_streq, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strSliceForward, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strSliceBetween, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_strSlice, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strGetNullTerminated, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strMallocCopy, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strFromBytes, 0, arena, 10 * prb_MEGABYTE));
