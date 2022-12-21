@@ -56,7 +56,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #include <stdalign.h>
 
 #include <string.h>
-#include <regex.h>
 
 #if defined(WIN32) || defined(_WIN32)
 #define prb_PLATFORM_WINDOWS 1
@@ -300,7 +299,6 @@ typedef struct prb_ProcessHandle {
 typedef enum prb_StrFindMode {
     prb_StrFindMode_Exact,
     prb_StrFindMode_AnyChar,
-    prb_StrFindMode_RegexPosix,
 } prb_StrFindMode;
 
 typedef enum prb_StrDirection {
@@ -321,9 +319,6 @@ typedef struct prb_StrFindSpec {
         struct {
             int32_t ignore;
         } anyChar;
-        struct {
-            prb_Arena* arena;
-        } regexPosix;
     };
 } prb_StrFindSpec;
 
@@ -1980,35 +1975,6 @@ prb_strFind(prb_StrFindSpec spec) {
                         }
                     }
                 }
-            } break;
-
-            case prb_StrFindMode_RegexPosix: {
-                prb_TempMemory temp = prb_beginTempMemory(spec.regexPosix.arena);
-
-                regex_t     regexCompiled = {};
-                const char* pat = prb_strGetNullTerminated(spec.regexPosix.arena, spec.pattern);
-                int         compResult = regcomp(&regexCompiled, pat, REG_EXTENDED);
-                prb_assert(compResult == 0);
-                regmatch_t  pos = {};
-                const char* str = prb_strGetNullTerminated(spec.regexPosix.arena, spec.str);
-                int         execResult = regexec(&regexCompiled, str, 1, &pos, 0);
-                if (execResult == 0) {
-                    result.found = true;
-                    result.matchByteIndex = pos.rm_so;
-                    result.matchLen = pos.rm_eo - pos.rm_so;
-
-                    // NOTE(khvorov) Match forward and report last result.
-                    // Janky, but I don't want to implement sane backwards regex matching myself.
-                    if (spec.direction == prb_StrDirection_FromEnd) {
-                        while (regexec(&regexCompiled, str + result.matchByteIndex + result.matchLen, 1, &pos, 0) == 0) {
-                            result.matchByteIndex += result.matchLen + pos.rm_so;
-                            result.matchLen = pos.rm_eo - pos.rm_so;
-                        }
-                    }
-                }
-
-                regfree(&regexCompiled);
-                prb_endTempMemory(temp);
             } break;
         }
     }

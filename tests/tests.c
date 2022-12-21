@@ -1313,31 +1313,6 @@ test_strFind(prb_Arena* arena, void* data) {
         spec.mode = prb_StrFindMode_Exact;
     }
 
-    spec.str = prb_STR("prb_PUBLICDEC prb_StringWindow prb_createStringWindow(void* ptr, i32 len)");
-    spec.pattern = prb_STR("prb_[^[:space:]]*\\(");
-    spec.mode = prb_StrFindMode_RegexPosix;
-    spec.regexPosix.arena = arena;
-    {
-        prb_StrFindResult res = prb_strFind(spec);
-        prb_assert(
-            res.found
-            && res.matchByteIndex == prb_strlen("prb_PUBLICDEC prb_StringWindow ")
-            && res.matchLen == prb_strlen("prb_createStringWindow(")
-        );
-    }
-
-    spec.str.ptr = "prb_one() prb_2()";
-    {
-        spec.direction = prb_StrDirection_FromEnd;
-        prb_StrFindResult res = prb_strFind(spec);
-        prb_assert(
-            res.found
-            && res.matchByteIndex == prb_strlen("prb_one() ")
-            && res.matchLen == prb_strlen("prb_2(")
-        );
-        spec.direction = prb_StrDirection_FromStart;
-    }
-
     prb_endTempMemory(temp);
 }
 
