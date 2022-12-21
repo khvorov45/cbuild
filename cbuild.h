@@ -474,7 +474,6 @@ prb_PUBLICDEC prb_FileHash             prb_getFileHash(prb_Arena* arena, prb_Str
 prb_PUBLICDEC bool              prb_streq(prb_Str str1, prb_Str str2);
 prb_PUBLICDEC prb_Str           prb_strSlice(prb_Str str, int32_t start, int32_t onePastEnd);
 prb_PUBLICDEC const char*       prb_strGetNullTerminated(prb_Arena* arena, prb_Str str);
-prb_PUBLICDEC prb_Str           prb_strMallocCopy(prb_Str str);
 prb_PUBLICDEC prb_Str           prb_strFromBytes(prb_Bytes bytes);
 prb_PUBLICDEC prb_Str           prb_strTrimSide(prb_Str str, prb_StrDirection dir);
 prb_PUBLICDEC prb_Str           prb_strTrim(prb_Str str);
@@ -1782,16 +1781,6 @@ prb_PUBLICDEF const char*
 prb_strGetNullTerminated(prb_Arena* arena, prb_Str str) {
     const char* result = prb_fmt(arena, "%.*s", prb_LIT(str)).ptr;
     return result;
-}
-
-prb_PUBLICDEF prb_Str
-prb_strMallocCopy(prb_Str str) {
-    prb_Str copy = {};
-    copy.len = str.len;
-    copy.ptr = (const char*)prb_malloc(str.len + 1);
-    prb_memcpy((char*)copy.ptr, str.ptr, str.len);
-    ((char*)copy.ptr)[copy.len] = '\0';
-    return copy;
 }
 
 prb_PUBLICDEF prb_Str

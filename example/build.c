@@ -216,6 +216,16 @@ typedef struct StringFound {
     bool  value;
 } StringFound;
 
+static prb_Str
+strMallocCopy(prb_Str str) {
+    prb_Str copy = {};
+    copy.len = str.len;
+    copy.ptr = (const char*)prb_malloc(str.len + 1);
+    prb_memcpy((char*)copy.ptr, str.ptr, str.len);
+    ((char*)copy.ptr)[copy.len] = '\0';
+    return copy;
+}
+
 static void
 compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
     prb_TimeStart  compileStart = prb_timeStart();
@@ -330,8 +340,8 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
 
             // NOTE(khvorov) Update compile log
             {
-                prb_Str outputObjFilepathCopy = prb_strMallocCopy(outputObjFilepath);
-                prb_Str compileCmdCopy = prb_strMallocCopy(compileCmd);
+                prb_Str outputObjFilepathCopy = strMallocCopy(outputObjFilepath);
+                prb_Str compileCmdCopy = strMallocCopy(compileCmd);
                 ObjInfo thisObjInfo = {compileCmdCopy, preprocessedHash.hash};
                 shput(lib->project->thisCompileLog, outputObjFilepathCopy.ptr, thisObjInfo);
             }

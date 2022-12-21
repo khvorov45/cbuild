@@ -1218,13 +1218,6 @@ test_strGetNullTerminated(prb_Arena* arena, void* data) {
 }
 
 function void
-test_strMallocCopy(prb_Arena* arena, void* data) {
-    prb_unused(arena);
-    prb_unused(data);
-    // TODO(khvorov) Write
-}
-
-function void
 test_strFromBytes(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
@@ -2302,7 +2295,6 @@ main() {
     arrput(jobs, prb_createJob(test_streq, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strSlice, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strGetNullTerminated, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_strMallocCopy, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strFromBytes, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strTrimSide, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strTrim, 0, arena, 10 * prb_MEGABYTE));
