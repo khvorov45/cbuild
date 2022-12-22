@@ -42,7 +42,7 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_utf8CharIterNext"));
     } else if (prb_streq(testName, prb_STR("strScanner"))) {
         arrput(*prbNames, prb_STR("prb_createStrScanner"));
-        arrput(*prbNames, prb_STR("prb_strScannerNext"));
+        arrput(*prbNames, prb_STR("prb_strScannerMove"));
     } else if (prb_streq(testName, prb_STR("wordIter"))) {
         arrput(*prbNames, prb_STR("prb_createWordIter"));
         arrput(*prbNames, prb_STR("prb_wordIterNext"));
@@ -1722,102 +1722,102 @@ test_strScanner(prb_Arena* arena, void* data) {
     // TODO(khvorov) More tests
 
     prb_Str        lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
-    prb_StrScanner iter = prb_createStrScanner(lines);
+    prb_StrScanner iter = prb_createStrScanner(lines, prb_StrDirection_FromStart);
 
     prb_StrFindSpec lineBreakSpec = {};
     lineBreakSpec.mode = prb_StrFindMode_LineBreak;
 
     prb_assert(iter.matchCount == 0);
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line1")));
     prb_assert(iter.betweenLastMatches.len == 5);
     prb_assert(iter.match.len == 2);
     prb_assert(iter.matchCount == 1);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line2")));
     prb_assert(iter.betweenLastMatches.len == 5);
     prb_assert(iter.match.len == 1);
     prb_assert(iter.matchCount == 2);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line3")));
     prb_assert(iter.betweenLastMatches.len == 5);
     prb_assert(iter.match.len == 1);
     prb_assert(iter.matchCount == 3);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line4")));
     prb_assert(iter.betweenLastMatches.len == 5);
     prb_assert(iter.match.len == 1);
     prb_assert(iter.matchCount == 4);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(iter.betweenLastMatches.len == 0);
     prb_assert(iter.match.len == 1);
     prb_assert(iter.matchCount == 5);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line6")));
     prb_assert(iter.betweenLastMatches.len == 5);
     prb_assert(iter.match.len == 1);
     prb_assert(iter.matchCount == 6);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(iter.betweenLastMatches.len == 0);
     prb_assert(iter.match.len == 1);
     prb_assert(iter.matchCount == 7);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line8")));
     prb_assert(iter.betweenLastMatches.len == 5);
     prb_assert(iter.match.len == 2);
     prb_assert(iter.matchCount == 8);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(iter.betweenLastMatches.len == 0);
     prb_assert(iter.match.len == 2);
     prb_assert(iter.matchCount == 9);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line10")));
     prb_assert(iter.betweenLastMatches.len == 6);
     prb_assert(iter.match.len == 2);
     prb_assert(iter.matchCount == 10);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(iter.betweenLastMatches.len == 0);
     prb_assert(iter.match.len == 1);
     prb_assert(iter.matchCount == 11);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line12")));
     prb_assert(iter.betweenLastMatches.len == 6);
     prb_assert(iter.match.len == 1);
     prb_assert(iter.matchCount == 12);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(iter.betweenLastMatches.len == 0);
     prb_assert(iter.match.len == 2);
     prb_assert(iter.matchCount == 13);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line14")));
     prb_assert(iter.betweenLastMatches.len == 6);
     prb_assert(iter.match.len == 0);
     prb_assert(iter.matchCount == 14);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Failure);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Failure);
     prb_assert(iter.matchCount == 14);
 
     lines = prb_STR("\n");
-    iter = prb_createStrScanner(lines);
+    iter = prb_createStrScanner(lines, prb_StrDirection_FromStart);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Success);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Success);
     prb_assert(iter.betweenLastMatches.len == 0);
     prb_assert(iter.match.len == 1);
 
-    prb_assert(prb_strScannerNext(&iter, lineBreakSpec) == prb_Failure);
+    prb_assert(prb_strScannerMove(&iter, lineBreakSpec) == prb_Failure);
 }
 
 function void
@@ -2159,12 +2159,12 @@ test_fileformat(prb_Arena* arena, void* data) {
     prb_Str                  prbFilepath = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
     prb_ReadEntireFileResult fileContents = prb_readEntireFile(arena, prbFilepath);
     prb_assert(fileContents.success);
-    prb_StrScanner lineIter = prb_createStrScanner(prb_strFromBytes(fileContents.content));
+    prb_StrScanner lineIter = prb_createStrScanner(prb_strFromBytes(fileContents.content), prb_StrDirection_FromStart);
 
     prb_Str*        headerNames = 0;
     prb_StrFindSpec lineBreakSpec = {};
     lineBreakSpec.mode = prb_StrFindMode_LineBreak;
-    while (prb_strScannerNext(&lineIter, lineBreakSpec) == prb_Success) {
+    while (prb_strScannerMove(&lineIter, lineBreakSpec) == prb_Success) {
         prb_assert(!prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_PUBLICDEF")));
 
         if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("// SECTION"))) {
@@ -2191,7 +2191,7 @@ test_fileformat(prb_Arena* arena, void* data) {
     }
 
     prb_Str* implNames = 0;
-    while (prb_strScannerNext(&lineIter, lineBreakSpec) == prb_Success) {
+    while (prb_strScannerMove(&lineIter, lineBreakSpec) == prb_Success) {
         prb_assert(!prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_PUBLICDEC")));
 
         if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("// SECTION"))) {
@@ -2204,7 +2204,7 @@ test_fileformat(prb_Arena* arena, void* data) {
             prb_Str name = prb_fmt(arena, "%.*s", implementationRes.beforeMatch.len, lineIter.betweenLastMatches.ptr);
             arrput(implNames, name);
         } else if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_PUBLICDEF"))) {
-            prb_assert(prb_strScannerNext(&lineIter, lineBreakSpec) == prb_Success);
+            prb_assert(prb_strScannerMove(&lineIter, lineBreakSpec) == prb_Success);
             prb_assert(prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_")));
             prb_StrFindSpec spec = {};
             spec.pattern = prb_STR("(");
@@ -2223,8 +2223,8 @@ test_fileformat(prb_Arena* arena, void* data) {
     prb_ReadEntireFileResult testFileReadResut = prb_readEntireFile(arena, prb_STR(__FILE__));
     prb_assert(testFileReadResut.success);
     prb_Str        testFileContent = prb_strFromBytes(testFileReadResut.content);
-    prb_StrScanner testFileLineIter = prb_createStrScanner(testFileContent);
-    while (prb_strScannerNext(&testFileLineIter, lineBreakSpec)) {
+    prb_StrScanner testFileLineIter = prb_createStrScanner(testFileContent, prb_StrDirection_FromStart);
+    while (prb_strScannerMove(&testFileLineIter, lineBreakSpec)) {
         prb_Str testFunctionsPrefix = prb_STR("test_");
         if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("// SECTION"))) {
             if (prb_streq(testFileLineIter.betweenLastMatches, prb_STR("// SECTION Fileformat"))) {
@@ -2248,7 +2248,7 @@ test_fileformat(prb_Arena* arena, void* data) {
     assertArrsAreTheSame(arena, headerNames, testNames);
 
     prb_Str* testNamesInMain = 0;
-    while (prb_strScannerNext(&testFileLineIter, lineBreakSpec)) {
+    while (prb_strScannerMove(&testFileLineIter, lineBreakSpec)) {
         prb_Str testCall = prb_STR("    arrput(jobs, prb_createJob(test_");
         if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("    // SECTION"))) {
             if (prb_streq(testFileLineIter.betweenLastMatches, prb_STR("    // SECTION Fileformat"))) {
