@@ -465,9 +465,9 @@ static GetStrInQuotesResult
 getStrInQuotes(prb_Str str) {
     GetStrInQuotesResult result = {};
     prb_StrFindSpec      quoteFindSpec = {.pattern = prb_STR("\"")};
-    prb_StrScanner       scanner = prb_createStrScanner(str, prb_StrDirection_FromStart);
-    if (prb_strScannerMove(&scanner, quoteFindSpec)) {
-        if (prb_strScannerMove(&scanner, quoteFindSpec)) {
+    prb_StrScanner       scanner = prb_createStrScanner(str);
+    if (prb_strScannerMove(&scanner, quoteFindSpec, prb_StrScannerSide_AfterMatch)) {
+        if (prb_strScannerMove(&scanner, quoteFindSpec, prb_StrScannerSide_AfterMatch)) {
             result.success = true;
             result.inquotes = scanner.betweenLastMatches;
             result.past = scanner.afterMatch;
@@ -512,9 +512,9 @@ static ParseLogResult
 parseLog(prb_Arena* arena, prb_Str str, prb_Str* columnNames) {
     prb_unused(str);
     ParseLogResult  result = {};
-    prb_StrScanner  lineIter = prb_createStrScanner(str, prb_StrDirection_FromStart);
+    prb_StrScanner  lineIter = prb_createStrScanner(str);
     prb_StrFindSpec lineBreakSpec = {.mode = prb_StrFindMode_LineBreak};
-    if (prb_strScannerMove(&lineIter, lineBreakSpec) == prb_Success) {
+    if (prb_strScannerMove(&lineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success) {
         String3 headers = get3StrInQuotes(lineIter.betweenLastMatches);
         if (headers.success) {
             bool expectedHeaders = prb_streq(headers.strings[LogColumn_ObjPath], columnNames[LogColumn_ObjPath])
@@ -522,7 +522,7 @@ parseLog(prb_Arena* arena, prb_Str str, prb_Str* columnNames) {
                 && prb_streq(headers.strings[LogColumn_PreprocessedHash], columnNames[LogColumn_PreprocessedHash]);
             if (expectedHeaders) {
                 result.success = true;
-                while (prb_strScannerMove(&lineIter, lineBreakSpec) && result.success) {
+                while (prb_strScannerMove(&lineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch) && result.success) {
                     String3 row = get3StrInQuotes(lineIter.betweenLastMatches);
                     if (row.success) {
                         prb_ParsedNumber hashResult = prb_parseNumber(row.strings[LogColumn_PreprocessedHash]);

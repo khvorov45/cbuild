@@ -306,6 +306,11 @@ typedef enum prb_StrDirection {
     prb_StrDirection_FromEnd,
 } prb_StrDirection;
 
+typedef enum prb_StrScannerSide {
+    prb_StrScannerSide_AfterMatch,
+    prb_StrScannerSide_BeforeMatch,
+} prb_StrScannerSide;
+
 typedef struct prb_StrFindSpec {
     prb_StrFindMode  mode;
     prb_StrDirection direction;
@@ -491,8 +496,8 @@ prb_PUBLICDEC prb_Status        prb_writelnToStdout(prb_Arena* arena, prb_Str st
 prb_PUBLICDEC prb_Str           prb_colorEsc(prb_ColorID color);
 prb_PUBLICDEC prb_Utf8CharIter  prb_createUtf8CharIter(prb_Str str, prb_StrDirection direction);
 prb_PUBLICDEC prb_Status        prb_utf8CharIterNext(prb_Utf8CharIter* iter);
-prb_PUBLICDEC prb_StrScanner    prb_createStrScanner(prb_Str str, prb_StrDirection initDirection);
-prb_PUBLICDEC prb_Status        prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec);
+prb_PUBLICDEC prb_StrScanner    prb_createStrScanner(prb_Str str);
+prb_PUBLICDEC prb_Status        prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec, prb_StrScannerSide side);
 prb_PUBLICDEC prb_WordIter      prb_createWordIter(prb_Str str);
 prb_PUBLICDEC prb_Status        prb_wordIterNext(prb_WordIter* iter);
 prb_PUBLICDEC prb_ParsedNumber  prb_parseNumber(prb_Str str);
@@ -2253,7 +2258,7 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
 }
 
 prb_PUBLICDEF prb_StrScanner
-prb_createStrScanner(prb_Str str, prb_StrDirection initDirection) {
+prb_createStrScanner(prb_Str str) {
     prb_assert(str.ptr && str.len >= 0);
     prb_StrScanner iter = {};
     iter.ogstr = str;
@@ -2262,22 +2267,15 @@ prb_createStrScanner(prb_Str str, prb_StrDirection initDirection) {
     iter.match.len = 0;
     iter.beforeMatch = prb_strSlice(str, 0, 0);
     iter.afterMatch = str;
-
-    if (initDirection == prb_StrDirection_FromEnd) {
-        prb_Str temp = iter.beforeMatch;
-        iter.beforeMatch = iter.afterMatch;
-        iter.afterMatch = temp;
-    }
-
     return iter;
 }
 
 prb_PUBLICDEF prb_Status
-prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec) {
+prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec, prb_StrScannerSide side) {
     prb_Status result = prb_Failure;
 
     prb_Str search = scanner->afterMatch;
-    if (spec.direction == prb_StrDirection_FromEnd) {
+    if (side == prb_StrScannerSide_BeforeMatch) {
         search = scanner->beforeMatch;
     }
 
@@ -2646,10 +2644,10 @@ prb_debuggerPresent(prb_Arena* arena) {
 
     prb_Bytes       content = prb_linux_readFromProcSelf(arena, prb_STR("status"));
     prb_Str         str = {(const char*)content.data, content.len};
-    prb_StrScanner  iter = prb_createStrScanner(str, prb_StrDirection_FromStart);
+    prb_StrScanner  iter = prb_createStrScanner(str);
     prb_StrFindSpec lineBreakSpec = {};
     lineBreakSpec.mode = prb_StrFindMode_LineBreak;
-    while (prb_strScannerMove(&iter, lineBreakSpec)) {
+    while (prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch)) {
         prb_Str search = prb_STR("TracerPid:");
         if (prb_strStartsWith(iter.betweenLastMatches, search)) {
             prb_Str number = prb_strTrim(prb_strSlice(iter.betweenLastMatches, search.len, iter.betweenLastMatches.len));
