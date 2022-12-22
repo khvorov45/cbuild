@@ -287,7 +287,7 @@ test_pathExists(prb_Arena* arena, void* data) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempPath(arena, __FUNCTION__);
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removeFileOrDirIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_pathExists(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_pathExists(arena, dir));
@@ -1173,13 +1173,11 @@ test_strFind(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    prb_StrFindSpec spec = {};
-    prb_Str         str = prb_STR("p1at4pattern1 pattern2 pattern3p2a.t");
-    spec.pattern = prb_STR("pattern");
-    spec.mode = prb_StrFindMode_Exact;
-    spec.direction = prb_StrDirection_FromStart;
-
     {
+        prb_Str         str = prb_STR("p1at4pattern1 pattern2 pattern3p2a.t");
+        prb_StrFindSpec spec = {};
+        spec.pattern = prb_STR("pattern");
+        spec.mode = prb_StrFindMode_Exact;
         prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(
             res.found
@@ -1187,43 +1185,45 @@ test_strFind(prb_Arena* arena, void* data) {
             && prb_streq(res.match, prb_STR("pattern"))
             && prb_streq(res.afterMatch, prb_STR("1 pattern2 pattern3p2a.t"))
         );
-    }
 
-    {
         spec.direction = prb_StrDirection_FromEnd;
-        prb_StrFindResult res = prb_strFind(str, spec);
+
+        res = prb_strFind(str, spec);
         prb_assert(
             res.found
             && prb_streq(res.beforeMatch, prb_STR("p1at4pattern1 pattern2 "))
             && prb_streq(res.match, prb_STR("pattern"))
             && prb_streq(res.afterMatch, prb_STR("3p2a.t"))
         );
-        spec.direction = prb_StrDirection_FromStart;
     }
 
-    str = prb_STR("p1at4pat1ern1 pat1ern2 pat1ern3p2a.p");
     {
+        prb_Str         str = prb_STR("p1at4pat1ern1 pat1ern2 pat1ern3p2a.p");
+        prb_StrFindSpec spec = {};
+        spec.pattern = prb_STR("pattern");
+        spec.mode = prb_StrFindMode_Exact;
         prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(!res.found);
-    }
 
-    {
         spec.direction = prb_StrDirection_FromEnd;
-        prb_StrFindResult res = prb_strFind(str, spec);
+        res = prb_strFind(str, spec);
         prb_assert(!res.found);
-        spec.direction = prb_StrDirection_FromStart;
     }
 
-    str = prb_STR("中华人民共和国是目前世界上人口最多的国家");
-    spec.pattern = prb_STR("民共和国");
     {
+        prb_Str         str = prb_STR("中华人民共和国是目前世界上人口最多的国家");
+        prb_StrFindSpec spec = {};
+        spec.pattern = prb_STR("民共和国");
+        ;
+        spec.mode = prb_StrFindMode_Exact;
         prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(
             res.found
             && prb_streq(res.beforeMatch, prb_STR("中华人"))
             && prb_streq(res.match, prb_STR("民共和国"))
             && prb_streq(res.afterMatch, prb_STR("是目前世界上人口最多的国家"))
-        );        
+        );
+
         spec.direction = prb_StrDirection_FromEnd;
         res = prb_strFind(str, spec);
         prb_assert(
@@ -1232,10 +1232,13 @@ test_strFind(prb_Arena* arena, void* data) {
             && prb_streq(res.match, prb_STR("民共和国"))
             && prb_streq(res.afterMatch, prb_STR("是目前世界上人口最多的国家"))
         );
-        spec.direction = prb_StrDirection_FromStart;
     }
 
     {
+        prb_Str         str = prb_STR("中华人民共和国是目前世界上人口最多的国家");
+        prb_StrFindSpec spec = {};
+        spec.pattern = prb_STR("民共和国");
+        ;
         spec.mode = prb_StrFindMode_AnyChar;
         prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(
@@ -1244,6 +1247,7 @@ test_strFind(prb_Arena* arena, void* data) {
             && prb_streq(res.match, prb_STR("民"))
             && prb_streq(res.afterMatch, prb_STR("共和国是目前世界上人口最多的国家"))
         );
+
         spec.direction = prb_StrDirection_FromEnd;
         res = prb_strFind(str, spec);
         prb_assert(
@@ -1252,8 +1256,96 @@ test_strFind(prb_Arena* arena, void* data) {
             && prb_streq(res.match, prb_STR("国"))
             && prb_streq(res.afterMatch, prb_STR("家"))
         );
-        spec.direction = prb_StrDirection_FromStart;
-        spec.mode = prb_StrFindMode_Exact;
+    }
+
+    {
+        prb_Str         line = prb_STR("line1\r\na");
+        prb_StrFindSpec spec = {};
+        spec.mode = prb_StrFindMode_LineBreak;
+        prb_StrFindResult find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1")));
+        prb_assert(prb_streq(find.match, prb_STR("\r\n")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("a")));
+
+        spec.direction = prb_StrDirection_FromEnd;
+        find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("a")));
+        prb_assert(prb_streq(find.match, prb_STR("\r\n")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("line1")));
+    }
+
+    {
+        prb_Str         line = prb_STR("line1\ra");
+        prb_StrFindSpec spec = {};
+        spec.mode = prb_StrFindMode_LineBreak;
+        prb_StrFindResult find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1")));
+        prb_assert(prb_streq(find.match, prb_STR("\r")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("a")));
+
+        spec.direction = prb_StrDirection_FromEnd;
+        find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("a")));
+        prb_assert(prb_streq(find.match, prb_STR("\r")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("line1")));
+    }
+
+    {
+        prb_Str         line = prb_STR("line1\na");
+        prb_StrFindSpec spec = {};
+        spec.mode = prb_StrFindMode_LineBreak;
+        prb_StrFindResult find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1")));
+        prb_assert(prb_streq(find.match, prb_STR("\n")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("a")));
+
+        spec.direction = prb_StrDirection_FromEnd;
+        find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("a")));
+        prb_assert(prb_streq(find.match, prb_STR("\n")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("line1")));
+    }
+
+    {
+        prb_Str         line = prb_STR("line1\na\nb");
+        prb_StrFindSpec spec = {};
+        spec.mode = prb_StrFindMode_LineBreak;
+        prb_StrFindResult find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1")));
+        prb_assert(prb_streq(find.match, prb_STR("\n")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("a\nb")));
+
+        spec.direction = prb_StrDirection_FromEnd;
+        find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("b")));
+        prb_assert(prb_streq(find.match, prb_STR("\n")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("line1\na")));
+    }
+
+    {
+        prb_Str         line = prb_STR("line1");
+        prb_StrFindSpec spec = {};
+        spec.mode = prb_StrFindMode_LineBreak;
+        prb_StrFindResult find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1")));
+        prb_assert(find.match.len == 0);
+        prb_assert(find.afterMatch.len == 0);
+
+        spec.direction = prb_StrDirection_FromEnd;
+        find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1")));
+        prb_assert(find.match.len == 0);
+        prb_assert(find.afterMatch.len == 0);
     }
 
     prb_endTempMemory(temp);

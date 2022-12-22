@@ -299,6 +299,7 @@ typedef struct prb_ProcessHandle {
 typedef enum prb_StrFindMode {
     prb_StrFindMode_Exact,
     prb_StrFindMode_AnyChar,
+    prb_StrFindMode_LineBreak,
 } prb_StrFindMode;
 
 typedef enum prb_StrDirection {
@@ -1810,115 +1811,161 @@ prb_strTrim(prb_Str str) {
 
 prb_PUBLICDEF prb_StrFindResult
 prb_strFind(prb_Str str, prb_StrFindSpec spec) {
-    prb_assert(str.ptr && spec.pattern.ptr && str.len >= 0 && spec.pattern.len >= 0);
     prb_StrFindResult result = {};
 
-    if (spec.pattern.len > 0) {
-        prb_StrFindMode mode = spec.mode;
-        if (spec.pattern.len == 1 && mode == prb_StrFindMode_Exact) {
-            mode = prb_StrFindMode_AnyChar;
-        }
+    prb_StrFindMode mode = spec.mode;
+    if (spec.pattern.len == 1 && mode == prb_StrFindMode_Exact) {
+        mode = prb_StrFindMode_AnyChar;
+    }
 
-        switch (mode) {
-            case prb_StrFindMode_Exact: {
-                // Raita string matching algorithm
-                // https://en.wikipedia.org/wiki/Raita_algorithm
+    switch (mode) {
+        case prb_StrFindMode_Exact: {
+            // Raita string matching algorithm
+            // https://en.wikipedia.org/wiki/Raita_algorithm
 
-                if (str.len >= spec.pattern.len) {
-                    uint8_t* bstr = (uint8_t*)str.ptr;
-                    uint8_t* pat = (uint8_t*)spec.pattern.ptr;
-                    int32_t  charOffsets[256];
+            if (str.len >= spec.pattern.len && spec.pattern.len > 0) {
+                uint8_t* bstr = (uint8_t*)str.ptr;
+                uint8_t* pat = (uint8_t*)spec.pattern.ptr;
+                int32_t  charOffsets[256];
 
-                    for (int32_t i = 0; i < 256; ++i) {
-                        charOffsets[i] = spec.pattern.len;
-                    }
+                for (int32_t i = 0; i < 256; ++i) {
+                    charOffsets[i] = spec.pattern.len;
+                }
 
-                    {
-                        int32_t from = 0;
-                        int32_t to = spec.pattern.len - 1;
-                        int32_t delta = 1;
-                        if (spec.direction == prb_StrDirection_FromEnd) {
-                            from = spec.pattern.len - 1;
-                            to = 0;
-                            delta = -1;
-                        }
-
-                        int32_t count = 0;
-                        for (int32_t i = from; i != to; i += delta) {
-                            uint8_t patternChar = pat[i];
-                            charOffsets[patternChar] = spec.pattern.len - count++ - 1;
-                        }
-
-                        if (spec.direction == prb_StrDirection_FromEnd) {
-                            for (int32_t i = 0; i < 256; ++i) {
-                                charOffsets[i] *= -1;
-                            }
-                        }
-                    }
-
-                    uint8_t patFirstCh = pat[0];
-                    uint8_t patMiddleCh = pat[spec.pattern.len / 2];
-                    uint8_t patLastCh = pat[spec.pattern.len - 1];
-
-                    if (spec.direction == prb_StrDirection_FromEnd && str.len < 0) {
-                        str.len = prb_strlen(str.ptr);
-                    }
-
-                    int32_t off = 0;
+                {
+                    int32_t from = 0;
+                    int32_t to = spec.pattern.len - 1;
+                    int32_t delta = 1;
                     if (spec.direction == prb_StrDirection_FromEnd) {
-                        off = str.len - spec.pattern.len;
+                        from = spec.pattern.len - 1;
+                        to = 0;
+                        delta = -1;
                     }
 
-                    for (;;) {
-                        bool notEnoughStrLeft = false;
-                        switch (spec.direction) {
-                            case prb_StrDirection_FromStart: notEnoughStrLeft = off + spec.pattern.len > str.len; break;
-                            case prb_StrDirection_FromEnd: notEnoughStrLeft = off < 0; break;
-                        }
+                    int32_t count = 0;
+                    for (int32_t i = from; i != to; i += delta) {
+                        uint8_t patternChar = pat[i];
+                        charOffsets[patternChar] = spec.pattern.len - count++ - 1;
+                    }
 
-                        if (notEnoughStrLeft) {
-                            break;
+                    if (spec.direction == prb_StrDirection_FromEnd) {
+                        for (int32_t i = 0; i < 256; ++i) {
+                            charOffsets[i] *= -1;
                         }
-
-                        uint8_t strFirstChar = bstr[off];
-                        uint8_t strLastCh = bstr[off + spec.pattern.len - 1];
-                        if (patLastCh == strLastCh && patMiddleCh == bstr[off + spec.pattern.len / 2] && patFirstCh == strFirstChar
-                            && prb_memeq(pat + 1, bstr + off + 1, spec.pattern.len - 2)) {
-                            result.found = true;
-                            result.beforeMatch = prb_strSlice(str, 0, off);
-                            result.match = prb_strSlice(str, off, off + spec.pattern.len);
-                            result.afterMatch = prb_strSlice(str, off + spec.pattern.len, str.len);
-                            break;
-                        }
-
-                        uint8_t relChar = strLastCh;
-                        if (spec.direction == prb_StrDirection_FromEnd) {
-                            relChar = strFirstChar;
-                        }
-                        off += charOffsets[relChar];
                     }
                 }
-            } break;
 
-            case prb_StrFindMode_AnyChar: {
-                for (prb_Utf8CharIter iter = prb_createUtf8CharIter(str, spec.direction);
-                     prb_utf8CharIterNext(&iter) == prb_Success && !result.found;) {
-                    if (iter.curIsValid) {
-                        for (prb_Utf8CharIter patIter = prb_createUtf8CharIter(spec.pattern, prb_StrDirection_FromStart);
-                             prb_utf8CharIterNext(&patIter) == prb_Success && !result.found;) {
-                            if (patIter.curIsValid) {
-                                if (iter.curUtf32Char == patIter.curUtf32Char) {
-                                    result.found = true;
-                                    result.beforeMatch = prb_strSlice(str, 0, iter.curByteOffset);
-                                    result.match = prb_strSlice(str, iter.curByteOffset, iter.curByteOffset + iter.curUtf8Bytes);
-                                    result.afterMatch = prb_strSlice(str, iter.curByteOffset + iter.curUtf8Bytes, str.len);
-                                    break;
-                                }
+                uint8_t patFirstCh = pat[0];
+                uint8_t patMiddleCh = pat[spec.pattern.len / 2];
+                uint8_t patLastCh = pat[spec.pattern.len - 1];
+
+                if (spec.direction == prb_StrDirection_FromEnd && str.len < 0) {
+                    str.len = prb_strlen(str.ptr);
+                }
+
+                int32_t off = 0;
+                if (spec.direction == prb_StrDirection_FromEnd) {
+                    off = str.len - spec.pattern.len;
+                }
+
+                for (;;) {
+                    bool notEnoughStrLeft = false;
+                    switch (spec.direction) {
+                        case prb_StrDirection_FromStart: notEnoughStrLeft = off + spec.pattern.len > str.len; break;
+                        case prb_StrDirection_FromEnd: notEnoughStrLeft = off < 0; break;
+                    }
+
+                    if (notEnoughStrLeft) {
+                        break;
+                    }
+
+                    uint8_t strFirstChar = bstr[off];
+                    uint8_t strLastCh = bstr[off + spec.pattern.len - 1];
+                    if (patLastCh == strLastCh && patMiddleCh == bstr[off + spec.pattern.len / 2] && patFirstCh == strFirstChar
+                        && prb_memeq(pat + 1, bstr + off + 1, spec.pattern.len - 2)) {
+                        result.found = true;
+                        result.beforeMatch = prb_strSlice(str, 0, off);
+                        result.match = prb_strSlice(str, off, off + spec.pattern.len);
+                        result.afterMatch = prb_strSlice(str, off + spec.pattern.len, str.len);
+                        break;
+                    }
+
+                    uint8_t relChar = strLastCh;
+                    if (spec.direction == prb_StrDirection_FromEnd) {
+                        relChar = strFirstChar;
+                    }
+                    off += charOffsets[relChar];
+                }
+            }
+        } break;
+
+        case prb_StrFindMode_AnyChar: {
+            for (prb_Utf8CharIter iter = prb_createUtf8CharIter(str, spec.direction);
+                    prb_utf8CharIterNext(&iter) == prb_Success && !result.found;) {
+                if (iter.curIsValid) {
+                    for (prb_Utf8CharIter patIter = prb_createUtf8CharIter(spec.pattern, prb_StrDirection_FromStart);
+                            prb_utf8CharIterNext(&patIter) == prb_Success && !result.found;) {
+                        if (patIter.curIsValid) {
+                            if (iter.curUtf32Char == patIter.curUtf32Char) {
+                                result.found = true;
+                                result.beforeMatch = prb_strSlice(str, 0, iter.curByteOffset);
+                                result.match = prb_strSlice(str, iter.curByteOffset, iter.curByteOffset + iter.curUtf8Bytes);
+                                result.afterMatch = prb_strSlice(str, iter.curByteOffset + iter.curUtf8Bytes, str.len);
+                                break;
                             }
                         }
                     }
                 }
-            } break;
+            }
+        } break;
+
+        case prb_StrFindMode_LineBreak: {
+            if (str.len > 0) {
+                int32_t start = 0;
+                int32_t onePastEnd = str.len;
+                int32_t delta = 1;
+                if (spec.direction == prb_StrDirection_FromEnd) {
+                    start = str.len - 1;
+                    onePastEnd = -1;
+                    delta = -1;
+                }
+
+                bool found = false;
+                int32_t index = start;
+                for (;index != onePastEnd; index += delta) {
+                    char ch = str.ptr[index];
+                    if (ch == '\n' || ch == '\r') {
+                        found = true;
+                        break;
+                    }
+                }
+
+                int32_t lineEndLen = 0;
+                if (found) {
+                    lineEndLen = 1;
+                    bool isForwardDouble = spec.direction == prb_StrDirection_FromStart && index + 1 < str.len && str.ptr[index] == '\r' && str.ptr[index + 1] == '\n';
+                    bool isBackwardDouble = spec.direction == prb_StrDirection_FromEnd && index - 1 >= 0 && str.ptr[index] == '\n' && str.ptr[index - 1] == '\r';
+                    if (isForwardDouble || isBackwardDouble) {
+                        lineEndLen = 2;
+                    }
+                }
+
+                int32_t lineEndIndex = index;
+                if (spec.direction == prb_StrDirection_FromEnd) {
+                    lineEndIndex = index - lineEndLen + 1;
+                }
+
+                result.found = true;
+                result.beforeMatch = prb_strSlice(str, 0, lineEndIndex);
+                result.match = prb_strSlice(str, lineEndIndex, lineEndIndex + lineEndLen);
+                result.afterMatch = prb_strSlice(str, lineEndIndex + lineEndLen, str.len);
+
+                if (spec.direction == prb_StrDirection_FromEnd) {
+                    prb_Str temp = result.beforeMatch;
+                    result.beforeMatch = result.afterMatch;
+                    result.afterMatch = temp;
+                }
+            }   
         }
     }
 
