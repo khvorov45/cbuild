@@ -510,10 +510,9 @@ main() {
                 prb_Str entry = entries[entryIndex];
                 if (prb_strEndsWith(entry, prb_STR(".log"))) {
                     prb_StrFindSpec strFindSpec = {};
-                    strFindSpec.str = prb_getLastEntryInPath(entry);
                     strFindSpec.pattern = prb_STR("-san-");
                     strFindSpec.mode = prb_StrFindMode_Exact;
-                    prb_StrFindResult findRes = prb_strFind(strFindSpec);
+                    prb_StrFindResult findRes = prb_strFind(prb_getLastEntryInPath(entry), strFindSpec);
                     if (findRes.found) {
                         prb_ReadEntireFileResult staticAnalysisOutRead = prb_readEntireFile(arena, entry);
                         prb_assert(staticAnalysisOutRead.success);

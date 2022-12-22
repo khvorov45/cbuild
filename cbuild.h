@@ -306,12 +306,10 @@ typedef enum prb_StrDirection {
     prb_StrDirection_FromEnd,
 } prb_StrDirection;
 
-// TODO(khvorov) Simplify
 typedef struct prb_StrFindSpec {
-    prb_Str          str;
-    prb_Str          pattern;
-    prb_StrDirection direction;
     prb_StrFindMode  mode;
+    prb_StrDirection direction;
+    prb_Str          pattern;
 } prb_StrFindSpec;
 
 typedef struct prb_StrFindResult {
@@ -319,6 +317,14 @@ typedef struct prb_StrFindResult {
     int32_t matchByteIndex;
     int32_t matchLen;
 } prb_StrFindResult;
+
+typedef struct prb_StrScanner {
+    prb_Str ogstr;
+    prb_StrFindSpec spec;
+    prb_Str beforeMatch;
+    prb_Str match;
+    prb_Str afterMatch;
+} prb_StrScanner;
 
 typedef struct prb_LineIter {
     prb_Str ogstr;
@@ -477,10 +483,10 @@ prb_PUBLICDEC const char*       prb_strGetNullTerminated(prb_Arena* arena, prb_S
 prb_PUBLICDEC prb_Str           prb_strFromBytes(prb_Bytes bytes);
 prb_PUBLICDEC prb_Str           prb_strTrimSide(prb_Str str, prb_StrDirection dir);
 prb_PUBLICDEC prb_Str           prb_strTrim(prb_Str str);
-prb_PUBLICDEC prb_StrFindResult prb_strFind(prb_StrFindSpec spec);
+prb_PUBLICDEC prb_StrFindResult prb_strFind(prb_Str str, prb_StrFindSpec spec);
 prb_PUBLICDEC bool              prb_strStartsWith(prb_Str str, prb_Str pattern);
 prb_PUBLICDEC bool              prb_strEndsWith(prb_Str str, prb_Str pattern);
-prb_PUBLICDEC prb_Str           prb_strReplace(prb_Arena* arena, prb_StrFindSpec spec, prb_Str replacement);
+prb_PUBLICDEC prb_Str           prb_strReplace(prb_Arena* arena, prb_Str str, prb_StrFindSpec spec, prb_Str replacement);
 prb_PUBLICDEC prb_Str           prb_stringsJoin(prb_Arena* arena, prb_Str* strings, int32_t stringsCount, prb_Str sep);
 prb_PUBLICDEC prb_GrowingStr    prb_beginStr(prb_Arena* arena);
 prb_PUBLICDEC void              prb_addStrSegment(prb_GrowingStr* gstr, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
@@ -1441,11 +1447,10 @@ prb_charIsSep(char ch) {
 prb_PUBLICDEF prb_StrFindResult
 prb_findSepBeforeLastEntry(prb_Str path) {
     prb_StrFindSpec spec = {};
-    spec.str = path;
     spec.pattern = prb_STR("/\\");
     spec.mode = prb_StrFindMode_AnyChar;
     spec.direction = prb_StrDirection_FromEnd;
-    prb_StrFindResult result = prb_strFind(spec);
+    prb_StrFindResult result = prb_strFind(path, spec);
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1454,9 +1459,9 @@ prb_findSepBeforeLastEntry(prb_Str path) {
 #elif prb_PLATFORM_LINUX
 
     // NOTE(khvorov) Ignore trailing slash. Root path '/' does not have a separator before it
-    if (result.found && result.matchByteIndex == spec.str.len - 1) {
-        spec.str.len -= 1;
-        result = prb_strFind(spec);
+    if (result.found && result.matchByteIndex == path.len - 1) {
+        path.len -= 1;
+        result = prb_strFind(path, spec);
     }
 
 #else
@@ -1832,8 +1837,8 @@ prb_strTrim(prb_Str str) {
 }
 
 prb_PUBLICDEF prb_StrFindResult
-prb_strFind(prb_StrFindSpec spec) {
-    prb_assert(spec.str.ptr && spec.pattern.ptr && spec.str.len >= 0 && spec.pattern.len >= 0);
+prb_strFind(prb_Str str, prb_StrFindSpec spec) {
+    prb_assert(str.ptr && spec.pattern.ptr && str.len >= 0 && spec.pattern.len >= 0);
     prb_StrFindResult result = {};
 
     if (spec.pattern.len > 0) {
@@ -1847,8 +1852,8 @@ prb_strFind(prb_StrFindSpec spec) {
                 // Raita string matching algorithm
                 // https://en.wikipedia.org/wiki/Raita_algorithm
 
-                if (spec.str.len >= spec.pattern.len) {
-                    uint8_t* str = (uint8_t*)spec.str.ptr;
+                if (str.len >= spec.pattern.len) {
+                    uint8_t* bstr = (uint8_t*)str.ptr;
                     uint8_t* pat = (uint8_t*)spec.pattern.ptr;
                     int32_t  charOffsets[256];
 
@@ -1883,19 +1888,19 @@ prb_strFind(prb_StrFindSpec spec) {
                     uint8_t patMiddleCh = pat[spec.pattern.len / 2];
                     uint8_t patLastCh = pat[spec.pattern.len - 1];
 
-                    if (spec.direction == prb_StrDirection_FromEnd && spec.str.len < 0) {
-                        spec.str.len = prb_strlen(spec.str.ptr);
+                    if (spec.direction == prb_StrDirection_FromEnd && str.len < 0) {
+                        str.len = prb_strlen(str.ptr);
                     }
 
                     int32_t off = 0;
                     if (spec.direction == prb_StrDirection_FromEnd) {
-                        off = spec.str.len - spec.pattern.len;
+                        off = str.len - spec.pattern.len;
                     }
 
                     for (;;) {
                         bool notEnoughStrLeft = false;
                         switch (spec.direction) {
-                            case prb_StrDirection_FromStart: notEnoughStrLeft = off + spec.pattern.len > spec.str.len; break;
+                            case prb_StrDirection_FromStart: notEnoughStrLeft = off + spec.pattern.len > str.len; break;
                             case prb_StrDirection_FromEnd: notEnoughStrLeft = off < 0; break;
                         }
 
@@ -1903,10 +1908,10 @@ prb_strFind(prb_StrFindSpec spec) {
                             break;
                         }
 
-                        uint8_t strFirstChar = str[off];
-                        uint8_t strLastCh = str[off + spec.pattern.len - 1];
-                        if (patLastCh == strLastCh && patMiddleCh == str[off + spec.pattern.len / 2] && patFirstCh == strFirstChar
-                            && prb_memeq(pat + 1, str + off + 1, spec.pattern.len - 2)) {
+                        uint8_t strFirstChar = bstr[off];
+                        uint8_t strLastCh = bstr[off + spec.pattern.len - 1];
+                        if (patLastCh == strLastCh && patMiddleCh == bstr[off + spec.pattern.len / 2] && patFirstCh == strFirstChar
+                            && prb_memeq(pat + 1, bstr + off + 1, spec.pattern.len - 2)) {
                             result.found = true;
                             result.matchByteIndex = off;
                             result.matchLen = spec.pattern.len;
@@ -1923,7 +1928,7 @@ prb_strFind(prb_StrFindSpec spec) {
             } break;
 
             case prb_StrFindMode_AnyChar: {
-                for (prb_Utf8CharIter iter = prb_createUtf8CharIter(spec.str, spec.direction);
+                for (prb_Utf8CharIter iter = prb_createUtf8CharIter(str, spec.direction);
                      prb_utf8CharIterNext(&iter) == prb_Success && !result.found;) {
                     if (iter.curIsValid) {
                         for (prb_Utf8CharIter patIter = prb_createUtf8CharIter(spec.pattern, prb_StrDirection_FromStart);
@@ -1965,16 +1970,16 @@ prb_strEndsWith(prb_Str str, prb_Str pattern) {
 }
 
 prb_PUBLICDEF prb_Str
-prb_strReplace(prb_Arena* arena, prb_StrFindSpec spec, prb_Str replacement) {
-    prb_Str           result = spec.str;
-    prb_StrFindResult findResult = prb_strFind(spec);
+prb_strReplace(prb_Arena* arena, prb_Str str, prb_StrFindSpec spec, prb_Str replacement) {
+    prb_Str           result = str;
+    prb_StrFindResult findResult = prb_strFind(str, spec);
     if (findResult.found) {
-        prb_Str strAfterMatch = prb_strSlice(spec.str, findResult.matchByteIndex + findResult.matchLen, spec.str.len);
+        prb_Str strAfterMatch = prb_strSlice(str, findResult.matchByteIndex + findResult.matchLen, str.len);
         result = prb_fmt(
             arena,
             "%.*s%.*s%.*s",
             findResult.matchByteIndex,
-            spec.str.ptr,
+            str.ptr,
             replacement.len,
             replacement.ptr,
             strAfterMatch.len,
@@ -2245,6 +2250,7 @@ prb_createLineIter(prb_Str str) {
 
 prb_PUBLICDEF prb_Status
 prb_lineIterNext(prb_LineIter* iter) {
+    // TODO(khvorov) Possibly remove in favor of string scanner?
     prb_Status result = prb_Failure;
 
     iter->curByteOffset += iter->curLine.len + iter->curLineEndLen;
@@ -2254,11 +2260,10 @@ prb_lineIterNext(prb_LineIter* iter) {
     if (iter->curByteOffset < iter->ogstr.len) {
         iter->curLine = prb_strSlice(iter->ogstr, iter->curByteOffset, iter->ogstr.len);
         prb_StrFindSpec spec = {};
-        spec.str = iter->curLine;
         spec.pattern = prb_STR("\r\n");
         spec.mode = prb_StrFindMode_AnyChar;
         spec.direction = prb_StrDirection_FromStart;
-        prb_StrFindResult lineEndResult = prb_strFind(spec);
+        prb_StrFindResult lineEndResult = prb_strFind(iter->curLine, spec);
         if (lineEndResult.found) {
             iter->curLine.len = lineEndResult.matchByteIndex;
             iter->curLineEndLen = 1;
@@ -2421,27 +2426,26 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
     // TODO(khvorov) Rework with string scanner
     {
         prb_StrFindSpec spec = {};
-        spec.str = str;
         spec.pattern = prb_STR(" ");
         spec.mode = prb_StrFindMode_AnyChar;
         spec.direction = prb_StrDirection_FromStart;
 
-        while (spec.str.len > 0) {
-            prb_StrFindResult spaceFind = prb_strFind(spec);
+        while (str.len > 0) {
+            prb_StrFindResult spaceFind = prb_strFind(str, spec);
             int32_t           onePastWordEnd = 0;
             if (spaceFind.found) {
                 onePastWordEnd = spaceFind.matchByteIndex;
             } else {
-                onePastWordEnd = spec.str.len;
+                onePastWordEnd = str.len;
             }
-            prb_Str arg = prb_strSlice(spec.str, 0, onePastWordEnd);
+            prb_Str arg = prb_strSlice(str, 0, onePastWordEnd);
             if (arg.len > 0) {
                 const char* argNull = prb_fmt(arena, "%.*s", prb_LIT(arg)).ptr;
                 prb_stbds_arrput(args, argNull);
             }
-            spec.str = prb_strSlice(spec.str, onePastWordEnd, spec.str.len);
-            while (spec.str.len > 0 && spec.str.ptr[0] == ' ') {
-                spec.str = prb_strSlice(spec.str, 1, spec.str.len);
+            str = prb_strSlice(str, onePastWordEnd, str.len);
+            while (str.len > 0 && str.ptr[0] == ' ') {
+                str = prb_strSlice(str, 1, str.len);
             }
         }
     }

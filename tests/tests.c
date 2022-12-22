@@ -1244,53 +1244,53 @@ test_strFind(prb_Arena* arena, void* data) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_StrFindSpec spec = {};
-    spec.str = prb_STR("p1at4pattern1 pattern2 pattern3p2a.t");
+    prb_Str str = prb_STR("p1at4pattern1 pattern2 pattern3p2a.t");
     spec.pattern = prb_STR("pattern");
     spec.mode = prb_StrFindMode_Exact;
     spec.direction = prb_StrDirection_FromStart;
 
     {
-        prb_StrFindResult res = prb_strFind(spec);
+        prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(res.found && res.matchByteIndex == 5 && res.matchLen == 7);
     }
 
     {
         spec.direction = prb_StrDirection_FromEnd;
-        prb_StrFindResult res = prb_strFind(spec);
+        prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(res.found && res.matchByteIndex == 23 && res.matchLen == 7);
         spec.direction = prb_StrDirection_FromStart;
     }
 
-    spec.str = prb_STR("p1at4pat1ern1 pat1ern2 pat1ern3p2a.p");
+    str = prb_STR("p1at4pat1ern1 pat1ern2 pat1ern3p2a.p");
     {
-        prb_StrFindResult res = prb_strFind(spec);
+        prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(!res.found && res.matchByteIndex == 0 && res.matchLen == 0);
     }
 
     {
         spec.direction = prb_StrDirection_FromEnd;
-        prb_StrFindResult res = prb_strFind(spec);
+        prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(!res.found && res.matchByteIndex == 0 && res.matchLen == 0);
         spec.direction = prb_StrDirection_FromStart;
     }
 
-    spec.str = prb_STR("中华人民共和国是目前世界上人口最多的国家");
+    str = prb_STR("中华人民共和国是目前世界上人口最多的国家");
     spec.pattern = prb_STR("民共和国");
     {
-        prb_StrFindResult res = prb_strFind(spec);
+        prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 4 * 3);
         spec.direction = prb_StrDirection_FromEnd;
-        res = prb_strFind(spec);
+        res = prb_strFind(str, spec);
         prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 4 * 3);
         spec.direction = prb_StrDirection_FromStart;
     }
 
     {
         spec.mode = prb_StrFindMode_AnyChar;
-        prb_StrFindResult res = prb_strFind(spec);
+        prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 1 * 3);
         spec.direction = prb_StrDirection_FromEnd;
-        res = prb_strFind(spec);
+        res = prb_strFind(str, spec);
         prb_assert(res.found && res.matchByteIndex == 18 * 3 && res.matchLen == 1 * 3);
         spec.direction = prb_StrDirection_FromStart;
         spec.mode = prb_StrFindMode_Exact;
@@ -2093,6 +2093,7 @@ assertArrsAreTheSame(prb_Arena* arena, prb_Str* arr1, prb_Str* arr2) {
 
 function void
 test_fileformat(prb_Arena* arena, void* data) {
+    // TODO(khvorov) rework with string scanner
     prb_unused(data);
     prb_TempMemory           temp = prb_beginTempMemory(arena);
     prb_Str                  fileParent = prb_getParentDir(arena, prb_STR(__FILE__));
@@ -2111,17 +2112,15 @@ test_fileformat(prb_Arena* arena, void* data) {
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEC"))) {
             prb_StrFindSpec spec = {};
-            spec.str = lineIter.curLine;
             spec.pattern = prb_STR("(");
             spec.mode = prb_StrFindMode_AnyChar;
             spec.direction = prb_StrDirection_FromStart;
-            prb_StrFindResult onePastNameEndRes = prb_strFind(spec);
+            prb_StrFindResult onePastNameEndRes = prb_strFind(lineIter.curLine, spec);
             prb_assert(onePastNameEndRes.found);
             prb_Str win = {lineIter.curLine.ptr, onePastNameEndRes.matchByteIndex};
-            spec.str = win;
             spec.pattern = prb_STR(" ");
             spec.direction = prb_StrDirection_FromEnd;
-            prb_StrFindResult nameStartRes = prb_strFind(spec);
+            prb_StrFindResult nameStartRes = prb_strFind(win, spec);
             prb_assert(nameStartRes.found);
             win = prb_strSlice(win, nameStartRes.matchByteIndex + 1, win.len);
             prb_Str name = prb_fmt(arena, "%.*s", win.len, win.ptr);
@@ -2137,11 +2136,10 @@ test_fileformat(prb_Arena* arena, void* data) {
 
         if (prb_strStartsWith(lineIter.curLine, prb_STR("// SECTION"))) {
             prb_StrFindSpec spec = {};
-            spec.str = lineIter.curLine;
             spec.pattern = prb_STR(" (implementation)");
             spec.mode = prb_StrFindMode_Exact;
             spec.direction = prb_StrDirection_FromStart;
-            prb_StrFindResult implementationRes = prb_strFind(spec);
+            prb_StrFindResult implementationRes = prb_strFind(lineIter.curLine, spec);
             prb_assert(implementationRes.found);
             prb_Str name = prb_fmt(arena, "%.*s", implementationRes.matchByteIndex, lineIter.curLine.ptr);
             arrput(implNames, name);
@@ -2149,11 +2147,10 @@ test_fileformat(prb_Arena* arena, void* data) {
             prb_assert(prb_lineIterNext(&lineIter) == prb_Success);
             prb_assert(prb_strStartsWith(lineIter.curLine, prb_STR("prb_")));
             prb_StrFindSpec spec = {};
-            spec.str = lineIter.curLine;
             spec.pattern = prb_STR("(");
             spec.mode = prb_StrFindMode_AnyChar;
             spec.direction = prb_StrDirection_FromStart;
-            prb_StrFindResult nameLenRes = prb_strFind(spec);
+            prb_StrFindResult nameLenRes = prb_strFind(lineIter.curLine, spec);
             prb_assert(nameLenRes.found);
             prb_Str name = prb_fmt(arena, "%.*s", nameLenRes.matchByteIndex, lineIter.curLine.ptr);
             arrput(implNames, name);
@@ -2177,10 +2174,9 @@ test_fileformat(prb_Arena* arena, void* data) {
             }
         } else if (prb_strStartsWith(testFileLineIter.curLine, testFunctionsPrefix)) {
             prb_StrFindSpec bracketSpec = {};
-            bracketSpec.str = testFileLineIter.curLine;
             bracketSpec.pattern = prb_STR("(");
             bracketSpec.mode = prb_StrFindMode_AnyChar;
-            prb_StrFindResult bracket = prb_strFind(bracketSpec);
+            prb_StrFindResult bracket = prb_strFind(testFileLineIter.curLine, bracketSpec);
             prb_assert(bracket.found);
             prb_Str name = prb_strSlice(testFileLineIter.curLine, testFunctionsPrefix.len, bracket.matchByteIndex);
             testNameToPrbName(arena, name, &testNames);
@@ -2203,10 +2199,9 @@ test_fileformat(prb_Arena* arena, void* data) {
         } else if (prb_strStartsWith(testFileLineIter.curLine, testCall)) {
             prb_Str         nameOn = prb_strSlice(testFileLineIter.curLine, testCall.len, testFileLineIter.curLine.len);
             prb_StrFindSpec commaSpec = {};
-            commaSpec.str = nameOn;
             commaSpec.pattern = prb_STR(",");
             commaSpec.mode = prb_StrFindMode_AnyChar;
-            prb_StrFindResult comma = prb_strFind(commaSpec);
+            prb_StrFindResult comma = prb_strFind(nameOn, commaSpec);
             prb_assert(comma.found);
             prb_Str name = prb_strSlice(nameOn, 0, comma.matchByteIndex);
             testNameToPrbName(arena, name, &testNamesInMain);

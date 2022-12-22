@@ -447,12 +447,11 @@ textfileReplace(prb_Arena* arena, prb_Str path, prb_Str pattern, prb_Str replace
     prb_ReadEntireFileResult content = prb_readEntireFile(arena, path);
     prb_assert(content.success);
     prb_StrFindSpec spec = {
-        .str = (prb_Str) {(const char*)content.content.data, content.content.len},
         .pattern = pattern,
         .mode = prb_StrFindMode_Exact,
         .direction = prb_StrDirection_FromStart,
     };
-    prb_Str newContent = prb_strReplace(arena, spec, replacement);
+    prb_Str newContent = prb_strReplace(arena, prb_strFromBytes(content.content), spec, replacement);
     prb_assert(prb_writeEntireFile(arena, path, newContent.ptr, newContent.len) == prb_Success);
 }
 
@@ -464,16 +463,17 @@ typedef struct GetStrInQuotesResult {
 
 static GetStrInQuotesResult
 getStrInQuotes(prb_Str str) {
+    // TODO(khvorov) rework with string scanner
     GetStrInQuotesResult result = {};
-    prb_StrFindSpec      quoteFindSpec = {.str = str, .pattern = prb_STR("\""), .mode = prb_StrFindMode_AnyChar};
-    prb_StrFindResult    quoteFindResult = prb_strFind(quoteFindSpec);
+    prb_StrFindSpec      quoteFindSpec = {.pattern = prb_STR("\""), .mode = prb_StrFindMode_AnyChar};
+    prb_StrFindResult    quoteFindResult = prb_strFind(str, quoteFindSpec);
     if (quoteFindResult.found) {
-        quoteFindSpec.str = prb_strSlice(str, quoteFindResult.matchByteIndex + 1, str.len);
-        quoteFindResult = prb_strFind(quoteFindSpec);
+        str = prb_strSlice(str, quoteFindResult.matchByteIndex + 1, str.len);
+        quoteFindResult = prb_strFind(str, quoteFindSpec);
         if (quoteFindResult.found) {
             result.success = true;
-            result.inquotes = (prb_Str) {quoteFindSpec.str.ptr, quoteFindResult.matchByteIndex};
-            result.past = prb_strSlice(quoteFindSpec.str, quoteFindResult.matchByteIndex + 1, quoteFindSpec.str.len);
+            result.inquotes = (prb_Str) {str.ptr, quoteFindResult.matchByteIndex};
+            result.past = prb_strSlice(str, quoteFindResult.matchByteIndex + 1, str.len);
         }
     }
     return result;
