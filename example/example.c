@@ -614,14 +614,14 @@ typedef struct CreateRendererResult {
 } CreateRendererResult;
 
 function CreateRendererResult
-createRenderer(Arena* arena) {
+createRenderer(Arena* arena, const char* windowName) {
     CreateRendererResult    result = {0};
     CreateFontManagerResult createFontManagerResult = createFontManager(arena);
     if (createFontManagerResult.success) {
         FontManager fontManager = createFontManagerResult.fontManager;
         i32         windowWidth = 1000;
         i32         windowHeight = 1000;
-        SDL_Window* sdlWindow = SDL_CreateWindow("example", 0, 0, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
+        SDL_Window* sdlWindow = SDL_CreateWindow(windowName, 0, 0, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
         if (sdlWindow) {
             SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
             if (sdlRenderer) {
@@ -1008,7 +1008,7 @@ main(int argc, char* argv[]) {
     int initResult = SDL_Init(SDL_INIT_VIDEO);
     if (initResult == 0) {
         Arena                virtualArena = createArenaFromVmem(3 * MEGABYTE);
-        CreateRendererResult createRendererResult = createRenderer(&virtualArena);
+        CreateRendererResult createRendererResult = createRenderer(&virtualArena, argv[0]);
         if (createRendererResult.success) {
             Renderer    renderer = createRendererResult.renderer;
             SDL_Window* sdlWindow = renderer.sdlWindow;

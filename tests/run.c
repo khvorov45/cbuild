@@ -415,9 +415,8 @@ main() {
         }
 
         // NOTE(khvorov) Compile all the examples in every supported way
-        {
-            prb_Str exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
-
+        prb_Str exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
+        {            
             // NOTE(khvorov) Compile the build program
             CompileSpec spec = {};
             {
@@ -523,7 +522,23 @@ main() {
             }
         }
 
-        // TODO(khvorov) Probably launch the examples to make sure they work
+        // NOTE(khvorov) Launch the examples to make sure they work
+        if (!runningOnCi) {
+            prb_ProcessHandle* runProcs = 0;
+            prb_Str* allInExample = prb_getAllDirEntries(arena, exampleDir, prb_Recursive_No);
+            for (i32 exampleEntryIndex = 0; exampleEntryIndex < arrlen(allInExample); exampleEntryIndex++) {
+                prb_Str exampleEntry = allInExample[exampleEntryIndex];
+                if (prb_strStartsWith(prb_getLastEntryInPath(exampleEntry), prb_STR("build-"))) {
+                    prb_Str buildExe = prb_pathJoin(arena, exampleEntry, prb_STR("example.bin"));
+                    prb_ProcessHandle proc = prb_execCmd(arena, (prb_ExecCmdSpec) {.cmd = buildExe, .dontwait = true});
+                    prb_assert(proc.status == prb_ProcessStatus_Launched);
+                    arrput(runProcs, proc);
+                }
+            }
+
+            // TODO(khvorov) Auto kill the processes in reverse order
+            prb_assert(prb_waitForProcesses(runProcs, arrlen(runProcs)));
+        }        
     }
 
     prb_writelnToStdout(arena, prb_fmt(arena, "%stest run took %.2fms%s", prb_colorEsc(prb_ColorID_Green).ptr, prb_getMsFrom(scriptStart), prb_colorEsc(prb_ColorID_Reset).ptr));
