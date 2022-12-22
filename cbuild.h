@@ -2275,21 +2275,13 @@ prb_lineIterNext(prb_LineIter* iter) {
     iter->curLineEndLen = 0;
 
     if (iter->curByteOffset < iter->ogstr.len) {
-        iter->curLine = prb_strSlice(iter->ogstr, iter->curByteOffset, iter->ogstr.len);
-        prb_StrFindSpec spec = {};
-        spec.pattern = prb_STR("\r\n");
-        spec.mode = prb_StrFindMode_AnyChar;
-        spec.direction = prb_StrDirection_FromStart;
-        prb_StrFindResult lineEndResult = prb_strFind(iter->curLine, spec);
-        if (lineEndResult.found) {
-            iter->curLine = lineEndResult.beforeMatch;
-            iter->curLineEndLen = 1;
-            if (iter->curLine.ptr[iter->curLine.len] == '\r'
-                && iter->curByteOffset + iter->curLine.len + 1 < iter->ogstr.len
-                && iter->curLine.ptr[iter->curLine.len + 1] == '\n') {
-                iter->curLineEndLen += 1;
-            }
-        }
+        prb_Str remaining = prb_strSlice(iter->ogstr, iter->curByteOffset, iter->ogstr.len);
+        prb_StrFindSpec lineBreakSpec = {};
+        lineBreakSpec.mode = prb_StrFindMode_LineBreak;
+        prb_StrFindResult find = prb_strFind(remaining, lineBreakSpec);
+        prb_assert(find.found);
+        iter->curLine = find.beforeMatch;
+        iter->curLineEndLen = find.match.len;
         iter->curLineCount += 1;
         result = prb_Success;
     }
