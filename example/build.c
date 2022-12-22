@@ -468,12 +468,12 @@ getStrInQuotes(prb_Str str) {
     prb_StrFindSpec      quoteFindSpec = {.pattern = prb_STR("\""), .mode = prb_StrFindMode_AnyChar};
     prb_StrFindResult    quoteFindResult = prb_strFind(str, quoteFindSpec);
     if (quoteFindResult.found) {
-        str = prb_strSlice(str, quoteFindResult.matchByteIndex + 1, str.len);
+        str = prb_strSlice(str, quoteFindResult.beforeMatch.len + 1, str.len);
         quoteFindResult = prb_strFind(str, quoteFindSpec);
         if (quoteFindResult.found) {
             result.success = true;
-            result.inquotes = (prb_Str) {str.ptr, quoteFindResult.matchByteIndex};
-            result.past = prb_strSlice(str, quoteFindResult.matchByteIndex + 1, str.len);
+            result.inquotes = (prb_Str) {str.ptr, quoteFindResult.beforeMatch.len};
+            result.past = prb_strSlice(str, quoteFindResult.beforeMatch.len + 1, str.len);
         }
     }
     return result;

@@ -235,7 +235,7 @@ main() {
     bool     runAllTests = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("all"));
     bool     runningOnCi = arrlen(args) >= 2 && prb_streq(args[1], prb_STR("ci"));
 
-    globalTestsDir = prb_getAbsolutePath(arena, prb_getParentDir(arena, prb_STR(__FILE__)));
+    globalTestsDir = prb_getParentDir(arena, prb_STR(__FILE__));
     prb_Str rootDir = prb_getParentDir(arena, globalTestsDir);
 
     // NOTE(khvorov) Remove artifacts

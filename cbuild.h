@@ -314,17 +314,10 @@ typedef struct prb_StrFindSpec {
 
 typedef struct prb_StrFindResult {
     bool    found;
-    int32_t matchByteIndex;
-    int32_t matchLen;
-} prb_StrFindResult;
-
-typedef struct prb_StrScanner {
-    prb_Str ogstr;
-    prb_StrFindSpec spec;
     prb_Str beforeMatch;
     prb_Str match;
     prb_Str afterMatch;
-} prb_StrScanner;
+} prb_StrFindResult;
 
 typedef struct prb_LineIter {
     prb_Str ogstr;
@@ -461,7 +454,6 @@ prb_PUBLICDEC prb_Str                  prb_getWorkingDir(prb_Arena* arena);
 prb_PUBLICDEC prb_Status               prb_setWorkingDir(prb_Arena* arena, prb_Str dir);
 prb_PUBLICDEC prb_Str                  prb_pathJoin(prb_Arena* arena, prb_Str path1, prb_Str path2);
 prb_PUBLICDEC bool                     prb_charIsSep(char ch);
-prb_PUBLICDEC prb_StrFindResult        prb_findSepBeforeLastEntry(prb_Str path);
 prb_PUBLICDEC prb_Str                  prb_getParentDir(prb_Arena* arena, prb_Str path);
 prb_PUBLICDEC prb_Str                  prb_getLastEntryInPath(prb_Str path);
 prb_PUBLICDEC prb_Str                  prb_replaceExt(prb_Arena* arena, prb_Str path, prb_Str newExt);
@@ -1444,49 +1436,29 @@ prb_charIsSep(char ch) {
     return result;
 }
 
-prb_PUBLICDEF prb_StrFindResult
-prb_findSepBeforeLastEntry(prb_Str path) {
-    prb_StrFindSpec spec = {};
-    spec.pattern = prb_STR("/\\");
-    spec.mode = prb_StrFindMode_AnyChar;
-    spec.direction = prb_StrDirection_FromEnd;
-    prb_StrFindResult result = prb_strFind(path, spec);
-
-#if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
-#elif prb_PLATFORM_LINUX
-
-    // NOTE(khvorov) Ignore trailing slash. Root path '/' does not have a separator before it
-    if (result.found && result.matchByteIndex == path.len - 1) {
-        path.len -= 1;
-        result = prb_strFind(path, spec);
-    }
-
-#else
-#error unimplemented
-#endif
-
-    return result;
-}
-
 prb_PUBLICDEF prb_Str
 prb_getParentDir(prb_Arena* arena, prb_Str path) {
+    prb_assert(path.ptr && path.len > 0);
     prb_Str           pathAbs = prb_getAbsolutePath(arena, path);
-    prb_StrFindResult findResult = prb_findSepBeforeLastEntry(pathAbs);
-    prb_Str           result = findResult.found ? (prb_Str) {pathAbs.ptr, prb_max(findResult.matchByteIndex, 1)} : pathAbs;
+    prb_PathEntryIter iter = prb_createPathEntryIter(pathAbs);
+    while (prb_pathEntryIterNext(&iter)) {
+        prb_PathEntryIter iterCopy = iter;
+        if (prb_pathEntryIterNext(&iterCopy)) {
+            if (!prb_pathEntryIterNext(&iterCopy)) {
+                break;
+            }
+        }
+    }
+    prb_Str result = iter.curEntryPath;
     return result;
 }
 
 prb_PUBLICDEF prb_Str
 prb_getLastEntryInPath(prb_Str path) {
-    prb_StrFindResult findResult = prb_findSepBeforeLastEntry(path);
-    prb_Str           result = path;
-    if (findResult.found) {
-        prb_assert(path.len > 1);
-        result = prb_strSlice(path, findResult.matchByteIndex + 1, path.len);
-    }
+    prb_assert(path.ptr && path.len > 0);
+    prb_PathEntryIter iter = prb_createPathEntryIter(path);
+    while (prb_pathEntryIterNext(&iter)) {}
+    prb_Str result = iter.curEntryName;
     return result;
 }
 
@@ -1913,8 +1885,9 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
                         if (patLastCh == strLastCh && patMiddleCh == bstr[off + spec.pattern.len / 2] && patFirstCh == strFirstChar
                             && prb_memeq(pat + 1, bstr + off + 1, spec.pattern.len - 2)) {
                             result.found = true;
-                            result.matchByteIndex = off;
-                            result.matchLen = spec.pattern.len;
+                            result.beforeMatch = prb_strSlice(str, 0, off);
+                            result.match = prb_strSlice(str, off, off + spec.pattern.len);
+                            result.afterMatch = prb_strSlice(str, off + spec.pattern.len, str.len);
                             break;
                         }
 
@@ -1936,8 +1909,9 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
                             if (patIter.curIsValid) {
                                 if (iter.curUtf32Char == patIter.curUtf32Char) {
                                     result.found = true;
-                                    result.matchByteIndex = iter.curByteOffset;
-                                    result.matchLen = iter.curUtf8Bytes;
+                                    result.beforeMatch = prb_strSlice(str, 0, iter.curByteOffset);
+                                    result.match = prb_strSlice(str, iter.curByteOffset, iter.curByteOffset + iter.curUtf8Bytes);
+                                    result.afterMatch = prb_strSlice(str, iter.curByteOffset + iter.curUtf8Bytes, str.len);
                                     break;
                                 }
                             }
@@ -1974,16 +1948,12 @@ prb_strReplace(prb_Arena* arena, prb_Str str, prb_StrFindSpec spec, prb_Str repl
     prb_Str           result = str;
     prb_StrFindResult findResult = prb_strFind(str, spec);
     if (findResult.found) {
-        prb_Str strAfterMatch = prb_strSlice(str, findResult.matchByteIndex + findResult.matchLen, str.len);
         result = prb_fmt(
             arena,
             "%.*s%.*s%.*s",
-            findResult.matchByteIndex,
-            str.ptr,
-            replacement.len,
-            replacement.ptr,
-            strAfterMatch.len,
-            strAfterMatch.ptr
+            prb_LIT(findResult.beforeMatch),
+            prb_LIT(replacement),
+            prb_LIT(findResult.afterMatch)
         );
     }
     return result;
@@ -2265,7 +2235,7 @@ prb_lineIterNext(prb_LineIter* iter) {
         spec.direction = prb_StrDirection_FromStart;
         prb_StrFindResult lineEndResult = prb_strFind(iter->curLine, spec);
         if (lineEndResult.found) {
-            iter->curLine.len = lineEndResult.matchByteIndex;
+            iter->curLine = lineEndResult.beforeMatch;
             iter->curLineEndLen = 1;
             if (iter->curLine.ptr[iter->curLine.len] == '\r'
                 && iter->curByteOffset + iter->curLine.len + 1 < iter->ogstr.len
@@ -2434,7 +2404,7 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
             prb_StrFindResult spaceFind = prb_strFind(str, spec);
             int32_t           onePastWordEnd = 0;
             if (spaceFind.found) {
-                onePastWordEnd = spaceFind.matchByteIndex;
+                onePastWordEnd = spaceFind.beforeMatch.len;
             } else {
                 onePastWordEnd = str.len;
             }

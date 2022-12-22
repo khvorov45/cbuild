@@ -375,6 +375,8 @@ test_getAbsolutePath(prb_Arena* arena, void* data) {
     prb_Str fileAbs = prb_getAbsolutePath(arena, filename);
     prb_Str fileWithCwd = prb_pathJoin(arena, cwd, filename);
     prb_assert(prb_streq(fileAbs, fileWithCwd));
+
+    // TODO(khvorov) Test trailing slash
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/home")), prb_STR("/home")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/nonexistant/file.txt")), prb_STR("/nonexistant/file.txt")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("dir/file.md")), prb_pathJoin(arena, cwd, prb_STR("dir/file.md"))));
@@ -766,85 +768,6 @@ test_charIsSep(prb_Arena* arena, void* data) {
 }
 
 function void
-test_findSepBeforeLastEntry(prb_Arena* arena, void* data) {
-    prb_unused(data);
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path"));
-        prb_assert(res.found);
-        prb_assert(res.matchByteIndex == prb_strlen("test"));
-        prb_assert(res.matchLen == 1);
-    }
-
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path/"));
-        prb_assert(res.found);
-        prb_assert(res.matchByteIndex == prb_strlen("test"));
-        prb_assert(res.matchLen == 1);
-    }
-
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("test/path2/path"));
-        prb_assert(res.found);
-        prb_assert(res.matchByteIndex == prb_strlen("test/path2"));
-        prb_assert(res.matchLen == 1);
-    }
-
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("test"));
-        prb_assert(!res.found);
-    }
-
-#if prb_PLATFORM_WINDOWS
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\"));
-        prb_assert(!res.found);
-    }
-
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\test"));
-        prb_assert(res.found);
-        prb_assert(res.matchByteIndex == 3);
-        prb_assert(res.matchLen == 1);
-    }
-
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("C:\\\\test/"));
-        prb_assert(res.found);
-        prb_assert(res.matchByteIndex == 3);
-        prb_assert(res.matchLen == 1);
-    }
-
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("//network"));
-        prb_assert(!res.found);
-    }
-#elif prb_PLATFORM_LINUX
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("/"));
-        prb_assert(!res.found);
-    }
-
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("/test"));
-        prb_assert(res.found);
-        prb_assert(res.matchByteIndex == 0);
-        prb_assert(res.matchLen == 1);
-    }
-
-    {
-        prb_StrFindResult res = prb_findSepBeforeLastEntry(prb_STR("/test/"));
-        prb_assert(res.found);
-        prb_assert(res.matchByteIndex == 0);
-        prb_assert(res.matchLen == 1);
-    }
-#endif
-
-    prb_endTempMemory(temp);
-}
-
-function void
 test_getParentDir(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
@@ -872,9 +795,12 @@ test_getLastEntryInPath(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("path")), prb_STR("path")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("path/")), prb_STR("path")));
     prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path")), prb_STR("path")));
-    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path/")), prb_STR("path/")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path/")), prb_STR("path")));
     prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test/path2/path")), prb_STR("path")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test////path2////path")), prb_STR("path")));
 
     prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test")), prb_STR("test")));
 
@@ -883,7 +809,7 @@ test_getLastEntryInPath(prb_Arena* arena, void* data) {
     prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("C:\\\\test/")), prb_STR("C:\\\\")));
 #elif prb_PLATFORM_LINUX
     prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/test")), prb_STR("test")));
-    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/test/")), prb_STR("test/")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/test/")), prb_STR("test")));
     prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/")), prb_STR("/")));
 #endif
 
@@ -908,6 +834,10 @@ function void
 test_pathEntryIter(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
+
+    // TODO(khvorov) Test trailing slash
+    // TODO(khvorov) Test multiple separators
+    // TODO(khvorov) Test empty path
 
     prb_PathEntryIter iter = prb_createPathEntryIter(prb_STR("path/../to/./file"));
     prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
@@ -1244,33 +1174,43 @@ test_strFind(prb_Arena* arena, void* data) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_StrFindSpec spec = {};
-    prb_Str str = prb_STR("p1at4pattern1 pattern2 pattern3p2a.t");
+    prb_Str         str = prb_STR("p1at4pattern1 pattern2 pattern3p2a.t");
     spec.pattern = prb_STR("pattern");
     spec.mode = prb_StrFindMode_Exact;
     spec.direction = prb_StrDirection_FromStart;
 
     {
         prb_StrFindResult res = prb_strFind(str, spec);
-        prb_assert(res.found && res.matchByteIndex == 5 && res.matchLen == 7);
+        prb_assert(
+            res.found
+            && prb_streq(res.beforeMatch, prb_STR("p1at4"))
+            && prb_streq(res.match, prb_STR("pattern"))
+            && prb_streq(res.afterMatch, prb_STR("1 pattern2 pattern3p2a.t"))
+        );
     }
 
     {
         spec.direction = prb_StrDirection_FromEnd;
         prb_StrFindResult res = prb_strFind(str, spec);
-        prb_assert(res.found && res.matchByteIndex == 23 && res.matchLen == 7);
+        prb_assert(
+            res.found
+            && prb_streq(res.beforeMatch, prb_STR("p1at4pattern1 pattern2 "))
+            && prb_streq(res.match, prb_STR("pattern"))
+            && prb_streq(res.afterMatch, prb_STR("3p2a.t"))
+        );
         spec.direction = prb_StrDirection_FromStart;
     }
 
     str = prb_STR("p1at4pat1ern1 pat1ern2 pat1ern3p2a.p");
     {
         prb_StrFindResult res = prb_strFind(str, spec);
-        prb_assert(!res.found && res.matchByteIndex == 0 && res.matchLen == 0);
+        prb_assert(!res.found);
     }
 
     {
         spec.direction = prb_StrDirection_FromEnd;
         prb_StrFindResult res = prb_strFind(str, spec);
-        prb_assert(!res.found && res.matchByteIndex == 0 && res.matchLen == 0);
+        prb_assert(!res.found);
         spec.direction = prb_StrDirection_FromStart;
     }
 
@@ -1278,20 +1218,40 @@ test_strFind(prb_Arena* arena, void* data) {
     spec.pattern = prb_STR("民共和国");
     {
         prb_StrFindResult res = prb_strFind(str, spec);
-        prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 4 * 3);
+        prb_assert(
+            res.found
+            && prb_streq(res.beforeMatch, prb_STR("中华人"))
+            && prb_streq(res.match, prb_STR("民共和国"))
+            && prb_streq(res.afterMatch, prb_STR("是目前世界上人口最多的国家"))
+        );        
         spec.direction = prb_StrDirection_FromEnd;
         res = prb_strFind(str, spec);
-        prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 4 * 3);
+        prb_assert(
+            res.found
+            && prb_streq(res.beforeMatch, prb_STR("中华人"))
+            && prb_streq(res.match, prb_STR("民共和国"))
+            && prb_streq(res.afterMatch, prb_STR("是目前世界上人口最多的国家"))
+        );
         spec.direction = prb_StrDirection_FromStart;
     }
 
     {
         spec.mode = prb_StrFindMode_AnyChar;
         prb_StrFindResult res = prb_strFind(str, spec);
-        prb_assert(res.found && res.matchByteIndex == 3 * 3 && res.matchLen == 1 * 3);
+        prb_assert(
+            res.found
+            && prb_streq(res.beforeMatch, prb_STR("中华人"))
+            && prb_streq(res.match, prb_STR("民"))
+            && prb_streq(res.afterMatch, prb_STR("共和国是目前世界上人口最多的国家"))
+        );
         spec.direction = prb_StrDirection_FromEnd;
         res = prb_strFind(str, spec);
-        prb_assert(res.found && res.matchByteIndex == 18 * 3 && res.matchLen == 1 * 3);
+        prb_assert(
+            res.found
+            && prb_streq(res.beforeMatch, prb_STR("中华人民共和国是目前世界上人口最多的"))
+            && prb_streq(res.match, prb_STR("国"))
+            && prb_streq(res.afterMatch, prb_STR("家"))
+        );
         spec.direction = prb_StrDirection_FromStart;
         spec.mode = prb_StrFindMode_Exact;
     }
@@ -2117,12 +2077,12 @@ test_fileformat(prb_Arena* arena, void* data) {
             spec.direction = prb_StrDirection_FromStart;
             prb_StrFindResult onePastNameEndRes = prb_strFind(lineIter.curLine, spec);
             prb_assert(onePastNameEndRes.found);
-            prb_Str win = {lineIter.curLine.ptr, onePastNameEndRes.matchByteIndex};
+            prb_Str win = {lineIter.curLine.ptr, onePastNameEndRes.beforeMatch.len};
             spec.pattern = prb_STR(" ");
             spec.direction = prb_StrDirection_FromEnd;
             prb_StrFindResult nameStartRes = prb_strFind(win, spec);
             prb_assert(nameStartRes.found);
-            win = prb_strSlice(win, nameStartRes.matchByteIndex + 1, win.len);
+            win = prb_strSlice(win, nameStartRes.beforeMatch.len + 1, win.len);
             prb_Str name = prb_fmt(arena, "%.*s", win.len, win.ptr);
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.curLine, prb_STR("#ifndef prb_NO_IMPLEMENTATION"))) {
@@ -2141,7 +2101,7 @@ test_fileformat(prb_Arena* arena, void* data) {
             spec.direction = prb_StrDirection_FromStart;
             prb_StrFindResult implementationRes = prb_strFind(lineIter.curLine, spec);
             prb_assert(implementationRes.found);
-            prb_Str name = prb_fmt(arena, "%.*s", implementationRes.matchByteIndex, lineIter.curLine.ptr);
+            prb_Str name = prb_fmt(arena, "%.*s", implementationRes.beforeMatch.len, lineIter.curLine.ptr);
             arrput(implNames, name);
         } else if (prb_strStartsWith(lineIter.curLine, prb_STR("prb_PUBLICDEF"))) {
             prb_assert(prb_lineIterNext(&lineIter) == prb_Success);
@@ -2152,7 +2112,7 @@ test_fileformat(prb_Arena* arena, void* data) {
             spec.direction = prb_StrDirection_FromStart;
             prb_StrFindResult nameLenRes = prb_strFind(lineIter.curLine, spec);
             prb_assert(nameLenRes.found);
-            prb_Str name = prb_fmt(arena, "%.*s", nameLenRes.matchByteIndex, lineIter.curLine.ptr);
+            prb_Str name = prb_fmt(arena, "%.*s", nameLenRes.beforeMatch.len, lineIter.curLine.ptr);
             arrput(implNames, name);
         }
     }
@@ -2178,7 +2138,7 @@ test_fileformat(prb_Arena* arena, void* data) {
             bracketSpec.mode = prb_StrFindMode_AnyChar;
             prb_StrFindResult bracket = prb_strFind(testFileLineIter.curLine, bracketSpec);
             prb_assert(bracket.found);
-            prb_Str name = prb_strSlice(testFileLineIter.curLine, testFunctionsPrefix.len, bracket.matchByteIndex);
+            prb_Str name = prb_strSlice(testFileLineIter.curLine, testFunctionsPrefix.len, bracket.beforeMatch.len);
             testNameToPrbName(arena, name, &testNames);
         }
     }
@@ -2203,7 +2163,7 @@ test_fileformat(prb_Arena* arena, void* data) {
             commaSpec.mode = prb_StrFindMode_AnyChar;
             prb_StrFindResult comma = prb_strFind(nameOn, commaSpec);
             prb_assert(comma.found);
-            prb_Str name = prb_strSlice(nameOn, 0, comma.matchByteIndex);
+            prb_Str name = prb_strSlice(nameOn, 0, comma.beforeMatch.len);
             testNameToPrbName(arena, name, &testNamesInMain);
         } else if (prb_strStartsWith(testFileLineIter.curLine, prb_STR("    test_setWorkingDir"))) {
             arrput(testNamesInMain, prb_STR("prb_setWorkingDir"));
@@ -2272,7 +2232,6 @@ main() {
     test_setWorkingDir(arena, 0);  // NOTE(khvorov) Changes global state
     arrput(jobs, prb_createJob(test_pathJoin, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_charIsSep, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_findSepBeforeLastEntry, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getParentDir, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getLastEntryInPath, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_replaceExt, 0, arena, 10 * prb_MEGABYTE));
