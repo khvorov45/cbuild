@@ -514,18 +514,19 @@ typedef struct ParseLogResult {
 static ParseLogResult
 parseLog(prb_Arena* arena, prb_Str str, prb_Str* columnNames) {
     prb_unused(str);
-    ParseLogResult result = {};
-    prb_LineIter   lineIter = prb_createLineIter(str);
-    if (prb_lineIterNext(&lineIter) == prb_Success) {
-        String3 headers = get3StrInQuotes(lineIter.curLine);
+    ParseLogResult  result = {};
+    prb_StrScanner  lineIter = prb_createStrScanner(str);
+    prb_StrFindSpec lineBreakSpec = {.mode = prb_StrFindMode_LineBreak};
+    if (prb_strScannerNext(&lineIter, lineBreakSpec) == prb_Success) {
+        String3 headers = get3StrInQuotes(lineIter.betweenLastMatches);
         if (headers.success) {
             bool expectedHeaders = prb_streq(headers.strings[LogColumn_ObjPath], columnNames[LogColumn_ObjPath])
                 && prb_streq(headers.strings[LogColumn_CompileCmd], columnNames[LogColumn_CompileCmd])
                 && prb_streq(headers.strings[LogColumn_PreprocessedHash], columnNames[LogColumn_PreprocessedHash]);
             if (expectedHeaders) {
                 result.success = true;
-                while (prb_lineIterNext(&lineIter) && result.success) {
-                    String3 row = get3StrInQuotes(lineIter.curLine);
+                while (prb_strScannerNext(&lineIter, lineBreakSpec) && result.success) {
+                    String3 row = get3StrInQuotes(lineIter.betweenLastMatches);
                     if (row.success) {
                         prb_ParsedNumber hashResult = prb_parseNumber(row.strings[LogColumn_PreprocessedHash]);
                         if (hashResult.kind == prb_ParsedNumberKind_U64) {

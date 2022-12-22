@@ -30,7 +30,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 */
 
 // TODO(khvorov) Job status enum should probably be separate from process status
-// TODO(khvorov) Pathfind iterator should probably not crash when given non-existant directories
 // TODO(khvorov) Set env variables when executing processes
 // TODO(khvorov) strReplace should just take a position and a length of the replacement
 // TODO(khvorov) strReplace should probably handle multiple replacements
@@ -320,13 +319,12 @@ typedef struct prb_StrFindResult {
     prb_Str afterMatch;
 } prb_StrFindResult;
 
-typedef struct prb_LineIter {
+typedef struct prb_StrScanner {
     prb_Str ogstr;
-    int32_t curLineCount;
-    int32_t curByteOffset;
-    prb_Str curLine;
-    int32_t curLineEndLen;
-} prb_LineIter;
+    prb_Str match;
+    int32_t matchCount;
+    prb_Str betweenLastMatches;
+} prb_StrScanner;
 
 typedef struct prb_WordIter {
     prb_Str ogstr;
@@ -491,8 +489,8 @@ prb_PUBLICDEC prb_Status        prb_writelnToStdout(prb_Arena* arena, prb_Str st
 prb_PUBLICDEC prb_Str           prb_colorEsc(prb_ColorID color);
 prb_PUBLICDEC prb_Utf8CharIter  prb_createUtf8CharIter(prb_Str str, prb_StrDirection direction);
 prb_PUBLICDEC prb_Status        prb_utf8CharIterNext(prb_Utf8CharIter* iter);
-prb_PUBLICDEC prb_LineIter      prb_createLineIter(prb_Str str);
-prb_PUBLICDEC prb_Status        prb_lineIterNext(prb_LineIter* iter);
+prb_PUBLICDEC prb_StrScanner    prb_createStrScanner(prb_Str str);
+prb_PUBLICDEC prb_Status        prb_strScannerNext(prb_StrScanner* scanner, prb_StrFindSpec spec);
 prb_PUBLICDEC prb_WordIter      prb_createWordIter(prb_Str str);
 prb_PUBLICDEC prb_Status        prb_wordIterNext(prb_WordIter* iter);
 prb_PUBLICDEC prb_ParsedNumber  prb_parseNumber(prb_Str str);
@@ -1901,10 +1899,10 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
 
         case prb_StrFindMode_AnyChar: {
             for (prb_Utf8CharIter iter = prb_createUtf8CharIter(str, spec.direction);
-                    prb_utf8CharIterNext(&iter) == prb_Success && !result.found;) {
+                 prb_utf8CharIterNext(&iter) == prb_Success && !result.found;) {
                 if (iter.curIsValid) {
                     for (prb_Utf8CharIter patIter = prb_createUtf8CharIter(spec.pattern, prb_StrDirection_FromStart);
-                            prb_utf8CharIterNext(&patIter) == prb_Success && !result.found;) {
+                         prb_utf8CharIterNext(&patIter) == prb_Success && !result.found;) {
                         if (patIter.curIsValid) {
                             if (iter.curUtf32Char == patIter.curUtf32Char) {
                                 result.found = true;
@@ -1930,9 +1928,9 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
                     delta = -1;
                 }
 
-                bool found = false;
+                bool    found = false;
                 int32_t index = start;
-                for (;index != onePastEnd; index += delta) {
+                for (; index != onePastEnd; index += delta) {
                     char ch = str.ptr[index];
                     if (ch == '\n' || ch == '\r') {
                         found = true;
@@ -1965,7 +1963,7 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
                     result.beforeMatch = result.afterMatch;
                     result.afterMatch = temp;
                 }
-            }   
+            }
         }
     }
 
@@ -2252,37 +2250,33 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
     return result;
 }
 
-prb_PUBLICDEF prb_LineIter
-prb_createLineIter(prb_Str str) {
+prb_PUBLICDEF prb_StrScanner
+prb_createStrScanner(prb_Str str) {
     prb_assert(str.ptr && str.len >= 0);
-    prb_LineIter iter = {
-        .ogstr = str,
-        .curLineCount = 0,
-        .curByteOffset = 0,
-        .curLine = (prb_Str) {},
-        .curLineEndLen = 0,
-    };
+    prb_StrScanner iter = {};
+    iter.ogstr = str;
+    iter.betweenLastMatches = str;
+    iter.betweenLastMatches.len = 0;
+    iter.match = str;
+    iter.match.len = 0;
     return iter;
 }
 
 prb_PUBLICDEF prb_Status
-prb_lineIterNext(prb_LineIter* iter) {
-    // TODO(khvorov) Possibly remove in favor of string scanner?
+prb_strScannerNext(prb_StrScanner* scanner, prb_StrFindSpec spec) {
     prb_Status result = prb_Failure;
 
-    iter->curByteOffset += iter->curLine.len + iter->curLineEndLen;
-    iter->curLine = (prb_Str) {};
-    iter->curLineEndLen = 0;
+    prb_Str search = (prb_Str) {scanner->ogstr.ptr, (int32_t)(scanner->match.ptr - scanner->ogstr.ptr)};
+    if (spec.direction == prb_StrDirection_FromStart) {
+        const char* searchStart = scanner->match.ptr + scanner->match.len;
+        search = (prb_Str) {searchStart, (int32_t)((scanner->ogstr.ptr + scanner->ogstr.len) - searchStart)};
+    }
 
-    if (iter->curByteOffset < iter->ogstr.len) {
-        prb_Str remaining = prb_strSlice(iter->ogstr, iter->curByteOffset, iter->ogstr.len);
-        prb_StrFindSpec lineBreakSpec = {};
-        lineBreakSpec.mode = prb_StrFindMode_LineBreak;
-        prb_StrFindResult find = prb_strFind(remaining, lineBreakSpec);
-        prb_assert(find.found);
-        iter->curLine = find.beforeMatch;
-        iter->curLineEndLen = find.match.len;
-        iter->curLineCount += 1;
+    prb_StrFindResult find = prb_strFind(search, spec);
+    if (find.found) {
+        scanner->betweenLastMatches = find.beforeMatch;
+        scanner->match = find.match;
+        scanner->matchCount += 1;
         result = prb_Success;
     }
 
@@ -2636,13 +2630,15 @@ prb_debuggerPresent(prb_Arena* arena) {
 
 #elif prb_PLATFORM_LINUX
 
-    prb_Bytes    content = prb_linux_readFromProcSelf(arena, prb_STR("status"));
-    prb_Str      str = {(const char*)content.data, content.len};
-    prb_LineIter iter = prb_createLineIter(str);
-    while (prb_lineIterNext(&iter)) {
+    prb_Bytes       content = prb_linux_readFromProcSelf(arena, prb_STR("status"));
+    prb_Str         str = {(const char*)content.data, content.len};
+    prb_StrScanner  iter = prb_createStrScanner(str);
+    prb_StrFindSpec lineBreakSpec = {};
+    lineBreakSpec.mode = prb_StrFindMode_LineBreak;
+    while (prb_strScannerNext(&iter, lineBreakSpec)) {
         prb_Str search = prb_STR("TracerPid:");
-        if (prb_strStartsWith(iter.curLine, search)) {
-            prb_Str number = prb_strTrim(prb_strSlice(iter.curLine, search.len, iter.curLine.len));
+        if (prb_strStartsWith(iter.betweenLastMatches, search)) {
+            prb_Str number = prb_strTrim(prb_strSlice(iter.betweenLastMatches, search.len, iter.betweenLastMatches.len));
             result = number.len > 1 || number.ptr[0] != '0';
             break;
         }
