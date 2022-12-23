@@ -484,7 +484,7 @@ typedef struct String3 {
 static String3
 get3StrInQuotes(prb_Str str) {
     String3 result = {.success = true};
-    for (i32 index = 0; index < prb_arrayLength(result.strings) && result.success; index++) {
+    for (i32 index = 0; index < prb_arrayCount(result.strings) && result.success; index++) {
         GetStrInQuotesResult get1 = getStrInQuotes(str);
         if (get1.success) {
             result.strings[index] = get1.inquotes;
@@ -640,7 +640,7 @@ main() {
         prb_STR("lib"),
         prb_fmt(arena, "%.*s -Dfribidi_malloc=fribidiCustomMalloc -Dfribidi_free=fribidiCustomFree -DHAVE_STRING_H=1 -DHAVE_STRINGIZE=1", prb_LIT(fribidiNoConfigFlag)),
         fribidiCompileSouces,
-        prb_arrayLength(fribidiCompileSouces)
+        prb_arrayCount(fribidiCompileSouces)
     );
 
     // NOTE(khvorov) ICU
@@ -711,7 +711,7 @@ main() {
         prb_STR("icu4c/source/common"),
         prb_STR("-DU_COMMON_IMPLEMENTATION=1 -DU_COMBINED_IMPLEMENTATION=1 -DU_STATIC_IMPLEMENTATION=1"),
         icuCompileSources,
-        prb_arrayLength(icuCompileSources)
+        prb_arrayCount(icuCompileSources)
     );
 
     // NOTE(khvorov) Freetype
@@ -782,7 +782,7 @@ main() {
         prb_STR("include"),
         prb_fmt(arena, "-DFT2_BUILD_LIBRARY -DFT_CONFIG_OPTION_DISABLE_STREAM_SUPPORT -DFT_CONFIG_OPTION_USE_HARFBUZZ"),
         freetypeCompileSources,
-        prb_arrayLength(freetypeCompileSources)
+        prb_arrayCount(freetypeCompileSources)
     );
 
     // NOTE(khvorov) Harfbuzz
@@ -855,7 +855,7 @@ main() {
         prb_STR("src"),
         prb_fmt(arena, "%.*s %.*s -DHAVE_ICU=1 -DHAVE_FREETYPE=1 -DHB_CUSTOM_MALLOC=1", prb_LIT(icu.includeFlag), prb_LIT(freetype.includeFlag)),
         harfbuzzCompileSources,
-        prb_arrayLength(harfbuzzCompileSources)
+        prb_arrayCount(harfbuzzCompileSources)
     );
 
     // NOTE(khvorov) Freetype and harfbuzz depend on each other
@@ -934,9 +934,9 @@ main() {
         prb_STR("sdl"),
         Lang_C,
         prb_STR("include"),
-        prb_stringsJoin(arena, sdlCompileFlags, prb_arrayLength(sdlCompileFlags), prb_STR(" ")),
+        prb_stringsJoin(arena, sdlCompileFlags, prb_arrayCount(sdlCompileFlags), prb_STR(" ")),
         sdlCompileSources,
-        prb_arrayLength(sdlCompileSources)
+        prb_arrayCount(sdlCompileSources)
     );
 
     //
@@ -1134,7 +1134,7 @@ main() {
     prb_Str mainPreprocessedPath = prb_pathJoin(arena, project->compileOutDir, mainPreprocessedName);
     prb_Str mainObjPath = prb_replaceExt(arena, mainPreprocessedPath, prb_STR("obj"));
 
-    prb_Str mainFlagsStr = prb_stringsJoin(arena, mainFlags, prb_arrayLength(mainFlags), prb_STR(" "));
+    prb_Str mainFlagsStr = prb_stringsJoin(arena, mainFlags, prb_arrayCount(mainFlags), prb_STR(" "));
 
     prb_Str mainCmdPreprocess = constructCompileCmd(arena, project, mainFlagsStr, mainNotPreprocessedPath, mainPreprocessedPath, prb_STR(""));
     prb_writelnToStdout(arena, mainCmdPreprocess);
@@ -1152,7 +1152,7 @@ main() {
     prb_assert(mainHandleObj.status == prb_ProcessStatus_CompletedSuccess);
 
     prb_Str mainObjs[] = {mainObjPath, freetype.libFile, sdl.libFile, harfbuzz.libFile, icu.libFile, fribidi.libFile};
-    prb_Str mainObjsStr = prb_stringsJoin(arena, mainObjs, prb_arrayLength(mainObjs), prb_STR(" "));
+    prb_Str mainObjsStr = prb_stringsJoin(arena, mainObjs, prb_arrayCount(mainObjs), prb_STR(" "));
 
 #if prb_PLATFORM_WINDOWS
     prb_Str mainOutPath = prb_replaceExt(mainPreprocessedPath, prb_STR("exe"));

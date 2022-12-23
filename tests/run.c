@@ -398,9 +398,9 @@ main() {
             };
 
             TestJobSpec spec = {};
-            for (i32 compilerIndex = 0; compilerIndex < prb_arrayLength(compilers); compilerIndex++) {
+            for (i32 compilerIndex = 0; compilerIndex < prb_arrayCount(compilers); compilerIndex++) {
                 spec.compiler = compilers[compilerIndex];
-                for (i32 langIndex = 0; langIndex < prb_arrayLength(langs); langIndex++) {
+                for (i32 langIndex = 0; langIndex < prb_arrayCount(langs); langIndex++) {
                     spec.lang = langs[langIndex];
                     arrput(jobs, createTestJob(arena, spec));
                 }
@@ -443,9 +443,9 @@ main() {
 
             prb_Str buildModeArgs[] = {prb_STR("debug"), prb_STR("release")};
 
-            for (i32 compArgIndex = 0; compArgIndex < prb_arrayLength(compilerArgs); compArgIndex++) {
+            for (i32 compArgIndex = 0; compArgIndex < prb_arrayCount(compilerArgs); compArgIndex++) {
                 prb_Str compilerArg = compilerArgs[compArgIndex];
-                for (i32 buildModeArgIndex = 0; buildModeArgIndex < prb_arrayLength(buildModeArgs); buildModeArgIndex++) {
+                for (i32 buildModeArgIndex = 0; buildModeArgIndex < prb_arrayCount(buildModeArgs); buildModeArgIndex++) {
                     prb_Str         buildModeArg = buildModeArgs[buildModeArgIndex];
                     prb_ExecCmdSpec execSpec = {};
                     execSpec.cmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(spec.output), prb_LIT(compilerArg), prb_LIT(buildModeArg));

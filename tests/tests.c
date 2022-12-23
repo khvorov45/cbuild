@@ -96,7 +96,7 @@ testMacros(prb_Arena* arena, void* data) {
     prb_assert(prb_clamp(6, 2, 5) == 5);
 
     i32 testArr[] = {1, 2, 3};
-    prb_assert(prb_arrayLength(testArr) == 3);
+    prb_assert(prb_arrayCount(testArr) == 3);
 
     prb_arenaAlignFreePtr(arena, alignof(i32));
     void* ptrBefore = prb_arenaFreePtr(arena);
@@ -900,9 +900,9 @@ test_getAllDirEntries(prb_Arena* arena, void* data) {
     prb_Str       allDirs[] = {dir, dirNotNull, dirTrailingSlash};
     prb_Recursive modes[] = {prb_Recursive_Yes, prb_Recursive_No};
 
-    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayLength(allDirs); allDirsIndex++) {
+    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayCount(allDirs); allDirsIndex++) {
         prb_Str thisDir = allDirs[allDirsIndex];
-        for (i32 modesIndex = 0; modesIndex < prb_arrayLength(modes); modesIndex++) {
+        for (i32 modesIndex = 0; modesIndex < prb_arrayCount(modes); modesIndex++) {
             prb_Recursive thisMode = modes[modesIndex];
             prb_Str*      entries = prb_getAllDirEntries(arena, thisDir, thisMode);
             prb_assert(arrlen(entries) == 0);
@@ -917,20 +917,20 @@ test_getAllDirEntries(prb_Arena* arena, void* data) {
         prb_pathJoin(arena, dir, prb_STR("h4.h")),
     };
 
-    for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
+    for (usize fileIndex = 0; fileIndex < prb_arrayCount(files); fileIndex++) {
         prb_Str file = files[fileIndex];
         prb_assert(prb_writeEntireFile(arena, file, file.ptr, file.len) == prb_Success);
     }
 
-    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayLength(allDirs); allDirsIndex++) {
+    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayCount(allDirs); allDirsIndex++) {
         prb_Str thisDir = allDirs[allDirsIndex];
-        for (i32 modesIndex = 0; modesIndex < prb_arrayLength(modes); modesIndex++) {
+        for (i32 modesIndex = 0; modesIndex < prb_arrayCount(modes); modesIndex++) {
             prb_Recursive thisMode = modes[modesIndex];
             prb_Str*      entries = prb_getAllDirEntries(arena, thisDir, thisMode);
-            prb_assert(arrlen(entries) == prb_arrayLength(files));
+            prb_assert(arrlen(entries) == prb_arrayCount(files));
             for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
                 prb_Str entry = entries[entryIndex];
-                prb_assert(strIn(entry, files, prb_arrayLength(files)));
+                prb_assert(strIn(entry, files, prb_arrayCount(files)));
             }
             arrfree(entries);
         }
@@ -944,7 +944,7 @@ test_getAllDirEntries(prb_Arena* arena, void* data) {
         prb_pathJoin(arena, nestedDir, prb_STR("fn3.c")),
         prb_pathJoin(arena, nestedDir, prb_STR("hn4.h")),
     };
-    prb_assert(prb_arrayLength(nestedFiles) == prb_arrayLength(files));
+    prb_assert(prb_arrayCount(nestedFiles) == prb_arrayCount(files));
 
     prb_Str nestedNestedDir = prb_pathJoin(arena, nestedDir, prb_STR("nestednested"));
     prb_assert(prb_createDirIfNotExists(arena, nestedNestedDir) == prb_Success);
@@ -954,12 +954,12 @@ test_getAllDirEntries(prb_Arena* arena, void* data) {
         prb_pathJoin(arena, nestedNestedDir, prb_STR("fnn3.c")),
         prb_pathJoin(arena, nestedNestedDir, prb_STR("hnn4.h")),
     };
-    prb_assert(prb_arrayLength(nestedNestedFiles) == prb_arrayLength(files));
+    prb_assert(prb_arrayCount(nestedNestedFiles) == prb_arrayCount(files));
 
     prb_Str emptyNestedDir = prb_pathJoin(arena, dir, prb_STR("emptynested"));
     prb_assert(prb_createDirIfNotExists(arena, emptyNestedDir) == prb_Success);
 
-    for (usize fileIndex = 0; fileIndex < prb_arrayLength(files); fileIndex++) {
+    for (usize fileIndex = 0; fileIndex < prb_arrayCount(files); fileIndex++) {
         prb_Str file = files[fileIndex];
         prb_assert(prb_writeEntireFile(arena, file, file.ptr, file.len) == prb_Success);
         prb_Str nestedFile = nestedFiles[fileIndex];
@@ -968,29 +968,29 @@ test_getAllDirEntries(prb_Arena* arena, void* data) {
         prb_assert(prb_writeEntireFile(arena, nestedNestedFile, nestedNestedFile.ptr, nestedNestedFile.len) == prb_Success);
     }
 
-    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayLength(allDirs); allDirsIndex++) {
+    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayCount(allDirs); allDirsIndex++) {
         prb_Str  thisDir = allDirs[allDirsIndex];
         prb_Str* entries = prb_getAllDirEntries(arena, thisDir, prb_Recursive_No);
-        prb_assert(arrlen(entries) == prb_arrayLength(files) + 2);
+        prb_assert(arrlen(entries) == prb_arrayCount(files) + 2);
         for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
             prb_Str entry = entries[entryIndex];
-            prb_assert(strIn(entry, files, prb_arrayLength(files)) || prb_streq(entry, nestedDir) || prb_streq(entry, emptyNestedDir));
+            prb_assert(strIn(entry, files, prb_arrayCount(files)) || prb_streq(entry, nestedDir) || prb_streq(entry, emptyNestedDir));
         }
         arrfree(entries);
     }
 
-    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayLength(allDirs); allDirsIndex++) {
+    for (i32 allDirsIndex = 0; allDirsIndex < prb_arrayCount(allDirs); allDirsIndex++) {
         prb_Str  thisDir = allDirs[allDirsIndex];
         prb_Str* entries = prb_getAllDirEntries(arena, thisDir, prb_Recursive_Yes);
-        prb_assert(arrlen(entries) == prb_arrayLength(files) + 2 + prb_arrayLength(nestedFiles) + 1 + prb_arrayLength(nestedNestedFiles));
+        prb_assert(arrlen(entries) == prb_arrayCount(files) + 2 + prb_arrayCount(nestedFiles) + 1 + prb_arrayCount(nestedNestedFiles));
         for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
             prb_Str entry = entries[entryIndex];
-            bool    found = strIn(entry, files, prb_arrayLength(files))
+            bool    found = strIn(entry, files, prb_arrayCount(files))
                 || prb_streq(entry, nestedDir)
                 || prb_streq(entry, emptyNestedDir)
-                || strIn(entry, nestedFiles, prb_arrayLength(nestedFiles))
+                || strIn(entry, nestedFiles, prb_arrayCount(nestedFiles))
                 || prb_streq(entry, nestedNestedDir)
-                || strIn(entry, nestedNestedFiles, prb_arrayLength(nestedFiles));
+                || strIn(entry, nestedNestedFiles, prb_arrayCount(nestedFiles));
             prb_assert(found);
         }
         arrfree(entries);
@@ -1095,7 +1095,7 @@ test_binaryToCArray(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
     u8      bytes[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb, 0xc};
-    prb_Str carr = prb_binaryToCArray(arena, prb_STR("testarr"), bytes, prb_arrayLength(bytes));
+    prb_Str carr = prb_binaryToCArray(arena, prb_STR("testarr"), bytes, prb_arrayCount(bytes));
     prb_assert(prb_streq(carr, prb_STR("unsigned char testarr[] = {\n    0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa,\n    0xb, 0xc\n};")));
 }
 
@@ -1452,7 +1452,7 @@ test_utf8CharIter(prb_Arena* arena, void* data) {
         prb_Str str = prb_STR("abcדזון是太متشاтипуκαι");
         u32     charsUtf32[] = {97, 98, 99, 1491, 1494, 1493, 1503, 26159, 22826, 1605, 1578, 1588, 1575, 1090, 1080, 1087, 1091, 954, 945, 953};
         i32     utf8Bytes[] = {1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
-        prb_assert(prb_arrayLength(charsUtf32) == prb_arrayLength(utf8Bytes));
+        prb_assert(prb_arrayCount(charsUtf32) == prb_arrayCount(utf8Bytes));
 
         prb_Utf8CharIter iter = prb_createUtf8CharIter(str, prb_StrDirection_FromStart);
         prb_Utf8CharIter iterBackwards = prb_createUtf8CharIter(str, prb_StrDirection_FromEnd);
@@ -1460,8 +1460,8 @@ test_utf8CharIter(prb_Arena* arena, void* data) {
         prb_assert(iterBackwards.curCharCount == 0);
         i32 curTotalUtf8Bytes = 0;
         i32 curTotalUtf8BytesBackwards = 0;
-        for (i32 charIndex = 0; charIndex < prb_arrayLength(charsUtf32); charIndex++) {
-            i32 charIndexBackwards = prb_arrayLength(charsUtf32) - 1 - charIndex;
+        for (i32 charIndex = 0; charIndex < prb_arrayCount(charsUtf32); charIndex++) {
+            i32 charIndexBackwards = prb_arrayCount(charsUtf32) - 1 - charIndex;
             i32 charUtf8Bytes = utf8Bytes[charIndex];
             i32 charUtf8BytesBackwards = utf8Bytes[charIndexBackwards];
             prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
@@ -1482,9 +1482,9 @@ test_utf8CharIter(prb_Arena* arena, void* data) {
 
         prb_assert(prb_utf8CharIterNext(&iter) == prb_Failure);
         prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Failure);
-        prb_assert(iter.curCharCount == prb_arrayLength(charsUtf32));
+        prb_assert(iter.curCharCount == prb_arrayCount(charsUtf32));
         prb_assert(iter.curByteOffset == str.len);
-        prb_assert(iterBackwards.curCharCount == prb_arrayLength(charsUtf32));
+        prb_assert(iterBackwards.curCharCount == prb_arrayCount(charsUtf32));
         prb_assert(iterBackwards.curByteOffset == -1);
     }
 
@@ -1876,7 +1876,7 @@ test_getArgArrayFromStr(prb_Arena* arena, void* data) {
 
     prb_Str strings[] = {prb_STR("prg arg1 arg2 arg3"), prb_STR("  prg arg1 arg2  arg3 ")};
 
-    for (i32 strIndex = 0; strIndex < prb_arrayLength(strings); strIndex++) {
+    for (i32 strIndex = 0; strIndex < prb_arrayCount(strings); strIndex++) {
         const char** args = prb_getArgArrayFromStr(arena, strings[strIndex]);
         prb_assert(arrlen(args) == 4);
         prb_assert(prb_streq(prb_STR(args[0]), prb_STR("prg")));

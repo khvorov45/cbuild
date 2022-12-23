@@ -22,6 +22,7 @@ All memory allocation calls in stb ds are using libc realloc/free.
 
 If a prb_* function ever returns an array (pointer to multiple elements) then it's
 an stb ds array, so get its length with arrlen() (or prb_stbds_arrlen() without short names)
+Note that arrlen() is different from prb_arrayCount() which counts the length of a static array on the stack.
 
 All prb_* iterators are meant to be used in loops like this
 for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
@@ -107,7 +108,7 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #define prb_max(a, b) (((a) > (b)) ? (a) : (b))
 #define prb_min(a, b) (((a) < (b)) ? (a) : (b))
 #define prb_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
-#define prb_arrayLength(arr) (int32_t)(sizeof(arr) / sizeof(arr[0]))
+#define prb_arrayCount(arr) (int32_t)(sizeof(arr) / sizeof(arr[0]))
 #define prb_arenaAllocArray(arena, type, len) (type*)prb_arenaAllocAndZero(arena, (len) * sizeof(type), alignof(type))
 #define prb_arenaAllocStruct(arena, type) (type*)prb_arenaAllocAndZero(arena, sizeof(type), alignof(type))
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
