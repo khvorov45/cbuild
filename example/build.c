@@ -1,5 +1,7 @@
 #include "../cbuild.h"
 
+#define function
+
 typedef int32_t  i32;
 typedef uint64_t u64;
 
@@ -49,7 +51,7 @@ typedef enum Lang {
     Lang_Cpp,
 } Lang;
 
-static StaticLibInfo
+function StaticLibInfo
 getStaticLibInfo(
     prb_Arena*   arena,
     ProjectInfo* project,
@@ -86,16 +88,16 @@ getStaticLibInfo(
     return result;
 }
 
-static prb_ProcessHandle
+function prb_Process
 gitClone(prb_Arena* arena, StaticLibInfo lib, prb_Str downloadUrl) {
-    prb_TempMemory    temp = prb_beginTempMemory(arena);
-    prb_ProcessHandle handle = {};
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Process    handle = {};
     if (lib.notDownloaded) {
-        prb_ExecCmdSpec spec = {};
-        spec.cmd = prb_fmt(arena, "git clone %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(lib.downloadDir));
-        spec.dontwait = true;
-        prb_writelnToStdout(arena, spec.cmd);
-        handle = prb_execCmd(arena, spec);
+        prb_Str cmd = prb_fmt(arena, "git clone %.*s %.*s", prb_LIT(downloadUrl), prb_LIT(lib.downloadDir));
+        prb_writelnToStdout(arena, cmd);
+        handle = prb_createProcess(cmd, (prb_ProcessSpec) {});
+        // NOTE(khvorov) Launch here since we are putting cmd in temp memory
+        prb_assert(prb_launchProcesses(arena, &handle, 1));
     } else {
         prb_Str name = prb_getLastEntryInPath(lib.downloadDir);
         prb_Str msg = prb_fmt(arena, "skip git clone %.*s", prb_LIT(name));
@@ -106,31 +108,38 @@ gitClone(prb_Arena* arena, StaticLibInfo lib, prb_Str downloadUrl) {
     return handle;
 }
 
-static prb_Status
+function prb_Status
+execCmd(prb_Arena* arena, prb_Str cmd) {
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_writelnToStdout(arena, cmd);
+    prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+    prb_assert(prb_launchProcesses(arena, &proc, 1));
+    prb_Status status = prb_waitForProcesses(&proc, 1);
+    prb_endTempMemory(temp);
+    return status;
+}
+
+function prb_Status
 gitReset(prb_Arena* arena, StaticLibInfo lib, prb_Str commit) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_Status     result = prb_Success;
     if (lib.notDownloaded) {
         prb_Str cwd = prb_getWorkingDir(arena);
         prb_assert(prb_setWorkingDir(arena, lib.downloadDir) == prb_Success);
-        prb_ExecCmdSpec spec = {};
-        spec.cmd = prb_fmt(arena, "git checkout %.*s --", prb_LIT(commit));
-        prb_writelnToStdout(arena, spec.cmd);
-        prb_ProcessHandle handle = prb_execCmd(arena, spec);
-        prb_assert(handle.status == prb_ProcessStatus_CompletedSuccess);
+        prb_assert(execCmd(arena, prb_fmt(arena, "git checkout %.*s --", prb_LIT(commit))));
         prb_assert(prb_setWorkingDir(arena, cwd) == prb_Success);
     }
     prb_endTempMemory(temp);
     return result;
 }
 
-static bool
+function bool
 fileIsPreprocessed(prb_Str name) {
     bool result = prb_strEndsWith(name, prb_STR(".i")) || prb_strEndsWith(name, prb_STR(".ii"));
     return result;
 }
 
-static prb_Str
+function prb_Str
 constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_Str inputPath, prb_Str outputPath, prb_Str linkFlags) {
     prb_GrowingStr cmd = prb_beginStr(arena);
 
@@ -216,7 +225,7 @@ typedef struct StringFound {
     bool  value;
 } StringFound;
 
-static prb_Str
+function prb_Str
 strMallocCopy(prb_Str str) {
     prb_Str copy = {};
     copy.len = str.len;
@@ -226,7 +235,7 @@ strMallocCopy(prb_Str str) {
     return copy;
 }
 
-static void
+function void
 compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
     prb_TimeStart  compileStart = prb_timeStart();
     StaticLibInfo* lib = (StaticLibInfo*)staticLibInfo;
@@ -274,9 +283,9 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
     }
 
     // NOTE(khvorov) Preprocess
-    prb_Str            preprocessExt = lib->cpp ? prb_STR("ii") : prb_STR("i");
-    prb_Str*           outputPreprocess = 0;
-    prb_ProcessHandle* processesPreprocess = 0;
+    prb_Str      preprocessExt = lib->cpp ? prb_STR("ii") : prb_STR("i");
+    prb_Str*     outputPreprocess = 0;
+    prb_Process* processesPreprocess = 0;
     for (i32 inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
         prb_Str inputFilepath = inputPaths[inputPathIndex];
         prb_Str inputFilename = prb_getLastEntryInPath(inputFilepath);
@@ -285,19 +294,18 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         prb_Str outputPreprocessFilepath = prb_pathJoin(arena, lib->objDir, outputPreprocessFilename);
         arrput(outputPreprocess, outputPreprocessFilepath);
 
-        prb_ExecCmdSpec execCmdSpec = {};
-        execCmdSpec.dontwait = true;
-        execCmdSpec.cmd = constructCompileCmd(arena, lib->project, lib->compileFlags, inputFilepath, outputPreprocessFilepath, prb_STR(""));
-        prb_ProcessHandle proc = prb_execCmd(arena, execCmdSpec);
-        prb_assert(proc.status == prb_ProcessStatus_Launched);
+        prb_Str     cmd = constructCompileCmd(arena, lib->project, lib->compileFlags, inputFilepath, outputPreprocessFilepath, prb_STR(""));
+        prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
         arrput(processesPreprocess, proc);
     }
 
-    // NOTE(khvorov) Compile
+    prb_assert(prb_launchProcesses(arena, processesPreprocess, arrlen(processesPreprocess)));
     prb_Status preprocessStatus = prb_waitForProcesses(processesPreprocess, arrlen(processesPreprocess));
+
+    // NOTE(khvorov) Compile
     if (preprocessStatus == prb_Success) {
-        prb_Str*           outputObjs = 0;
-        prb_ProcessHandle* processesCompile = 0;
+        prb_Str*     outputObjs = 0;
+        prb_Process* processesCompile = 0;
         for (i32 inputPathIndex = 0; inputPathIndex < arrlen(inputPaths); inputPathIndex++) {
             prb_Str inputNotPreprocessedFilepath = inputPaths[inputPathIndex];
             prb_Str inputNotPreprocessedFilename = prb_getLastEntryInPath(inputNotPreprocessedFilepath);
@@ -331,10 +339,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
 
             if (shouldRecompile) {
                 prb_writelnToStdout(arena, compileCmd);
-                prb_ExecCmdSpec execCmdSpec = {};
-                execCmdSpec.cmd = compileCmd;
-                execCmdSpec.dontwait = true;
-                prb_ProcessHandle process = prb_execCmd(arena, execCmdSpec);
+                prb_Process process = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
                 arrput(processesCompile, process);
             }
 
@@ -359,8 +364,10 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             prb_writelnToStdout(arena, prb_fmt(arena, "skip compile %.*s", prb_LIT(lib->name)));
         }
 
+        prb_assert(prb_launchProcesses(arena, processesCompile, arrlen(processesCompile)));
         prb_Status compileStatus = prb_waitForProcesses(processesCompile, arrlen(processesCompile));
         arrfree(processesCompile);
+
         if (compileStatus == prb_Success) {
             prb_Str objsPathsString = prb_stringsJoin(arena, outputObjs, arrlen(outputObjs), prb_STR(" "));
 
@@ -386,13 +393,8 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
 #elif prb_PLATFORM_LINUX
                 prb_Str libCmd = prb_fmt(arena, "ar rcs %.*s %.*s", prb_LIT(lib->libFile), prb_LIT(objsPathsString));
 #endif
-                prb_writelnToStdout(arena, libCmd);
                 prb_assert(prb_removeFileIfExists(arena, lib->libFile) == prb_Success);
-                prb_ExecCmdSpec execCmdSpec = {};
-                execCmdSpec.cmd = libCmd;
-                prb_ProcessHandle libHandle = prb_execCmd(arena, execCmdSpec);
-                prb_assert(libHandle.status == prb_ProcessStatus_CompletedSuccess || libHandle.status == prb_ProcessStatus_CompletedFailed);
-                libStatus = libHandle.status == prb_ProcessStatus_CompletedSuccess ? prb_Success : prb_Failure;
+                libStatus = execCmd(arena, libCmd);
             } else {
                 prb_Str msg = prb_fmt(arena, "skip lib %.*s", prb_LIT(lib->name));
                 prb_writelnToStdout(arena, msg);
@@ -415,7 +417,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
     prb_endTempMemory(temp);
 }
 
-static void
+function void
 compileAndRunBidiGenTab(prb_Arena* arena, ProjectInfo* project, prb_Str src, prb_Str flags, prb_Str runArgs, prb_Str outpath) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
     if (!prb_isFile(arena, outpath)) {
@@ -426,23 +428,23 @@ compileAndRunBidiGenTab(prb_Arena* arena, ProjectInfo* project, prb_Str src, prb
 #else
 #error unimplemented
 #endif
-        prb_Str         packtabPath = prb_pathJoin(arena, prb_getParentDir(arena, src), prb_STR("packtab.c"));
-        prb_ExecCmdSpec execCmdSpec = {};
-        execCmdSpec.cmd = constructCompileCmd(arena, project, flags, prb_fmt(arena, "%.*s %.*s", prb_LIT(packtabPath), prb_LIT(src)), exeFilename, prb_STR(""));
-        prb_ProcessHandle handle = prb_execCmd(arena, execCmdSpec);
-        prb_assert(handle.status == prb_ProcessStatus_CompletedSuccess);
+        prb_Str packtabPath = prb_pathJoin(arena, prb_getParentDir(arena, src), prb_STR("packtab.c"));
+        prb_Str cmd = constructCompileCmd(arena, project, flags, prb_fmt(arena, "%.*s %.*s", prb_LIT(packtabPath), prb_LIT(src)), exeFilename, prb_STR(""));
+        prb_assert(execCmd(arena, cmd));
 
-        execCmdSpec.cmd = prb_fmt(arena, "%.*s %.*s", prb_LIT(exeFilename), prb_LIT(runArgs));
-        execCmdSpec.redirectStdout = true;
-        execCmdSpec.stdoutFilepath = outpath;
-        prb_writelnToStdout(arena, execCmdSpec.cmd);
-        prb_ProcessHandle handleRun = prb_execCmd(arena, execCmdSpec);
-        prb_assert(handleRun.status == prb_ProcessStatus_CompletedSuccess);
+        prb_Str cmdRun = prb_fmt(arena, "%.*s %.*s", prb_LIT(exeFilename), prb_LIT(runArgs));
+        prb_writelnToStdout(arena, cmdRun);
+        prb_ProcessSpec specRun = {};
+        specRun.redirectStdout = true;
+        specRun.stdoutFilepath = outpath;
+        prb_Process handleRun = prb_createProcess(cmdRun, specRun);
+        prb_assert(prb_launchProcesses(arena, &handleRun, 1));
+        prb_assert(prb_waitForProcesses(&handleRun, 1));
     }
     prb_endTempMemory(temp);
 }
 
-static void
+function void
 textfileReplace(prb_Arena* arena, prb_Str path, prb_Str pattern, prb_Str replacement) {
     prb_ReadEntireFileResult content = prb_readEntireFile(arena, path);
     prb_assert(content.success);
@@ -461,7 +463,7 @@ typedef struct GetStrInQuotesResult {
     prb_Str past;
 } GetStrInQuotesResult;
 
-static GetStrInQuotesResult
+function GetStrInQuotesResult
 getStrInQuotes(prb_Str str) {
     GetStrInQuotesResult result = {};
     prb_StrFindSpec      quoteFindSpec = {.pattern = prb_STR("\"")};
@@ -481,7 +483,7 @@ typedef struct String3 {
     prb_Str strings[3];
 } String3;
 
-static String3
+function String3
 get3StrInQuotes(prb_Str str) {
     String3 result = {.success = true};
     for (i32 index = 0; index < prb_arrayCount(result.strings) && result.success; index++) {
@@ -508,7 +510,7 @@ typedef struct ParseLogResult {
     bool             success;
 } ParseLogResult;
 
-static ParseLogResult
+function ParseLogResult
 parseLog(prb_Arena* arena, prb_Str str, prb_Str* columnNames) {
     prb_unused(str);
     ParseLogResult  result = {};
@@ -540,7 +542,7 @@ parseLog(prb_Arena* arena, prb_Str str, prb_Str* columnNames) {
     return result;
 }
 
-static void
+function void
 addLogRow(prb_GrowingStr* gstr, prb_Str* strings) {
     for (i32 colIndex = 0; colIndex < LogColumn_Count; colIndex++) {
         prb_addStrSegment(gstr, "\"%.*s\"", prb_LIT(strings[colIndex]));
@@ -552,7 +554,7 @@ addLogRow(prb_GrowingStr* gstr, prb_Str* strings) {
     }
 }
 
-static void
+function void
 writeLog(prb_Arena* arena, CompileLogEntry* log, prb_Str path, prb_Str* columnNames) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_Arena      numberFmtArena = prb_createArenaFromArena(arena, 100);
@@ -943,7 +945,7 @@ main() {
     // SECTION Download
     //
 
-    prb_ProcessHandle* downloadHandles = 0;
+    prb_Process* downloadHandles = 0;
     arrput(downloadHandles, gitClone(arena, fribidi, prb_STR("https://github.com/fribidi/fribidi")));
     arrput(downloadHandles, gitClone(arena, icu, prb_STR("https://github.com/unicode-org/icu")));
     arrput(downloadHandles, gitClone(arena, freetype, prb_STR("https://github.com/freetype/freetype")));
@@ -1138,18 +1140,11 @@ main() {
 
     prb_Str mainCmdPreprocess = constructCompileCmd(arena, project, mainFlagsStr, mainNotPreprocessedPath, mainPreprocessedPath, prb_STR(""));
     prb_writelnToStdout(arena, mainCmdPreprocess);
-
-    prb_ExecCmdSpec execCmdSpec = {};
-    execCmdSpec.cmd = mainCmdPreprocess;
-    execCmdSpec.dontwait = true;
-    prb_ProcessHandle mainHandlePre = prb_execCmd(arena, execCmdSpec);
+    prb_Process mainHandlePre = prb_createProcess(mainCmdPreprocess, (prb_ProcessSpec) {});
+    prb_assert(prb_launchProcesses(arena, &mainHandlePre, 1));
 
     prb_Str mainCmdObj = constructCompileCmd(arena, project, mainFlagsStr, mainNotPreprocessedPath, mainObjPath, prb_STR(""));
-    prb_writelnToStdout(arena, mainCmdObj);
-    execCmdSpec.cmd = mainCmdObj;
-    execCmdSpec.dontwait = false;
-    prb_ProcessHandle mainHandleObj = prb_execCmd(arena, execCmdSpec);
-    prb_assert(mainHandleObj.status == prb_ProcessStatus_CompletedSuccess);
+    prb_assert(execCmd(arena, mainCmdObj));
 
     prb_Str mainObjs[] = {mainObjPath, freetype.libFile, sdl.libFile, harfbuzz.libFile, icu.libFile, fribidi.libFile};
     prb_Str mainObjsStr = prb_stringsJoin(arena, mainObjs, prb_arrayCount(mainObjs), prb_STR(" "));
@@ -1163,10 +1158,8 @@ main() {
 #endif
 
     prb_Str mainCmdExe = constructCompileCmd(arena, project, mainFlagsStr, mainObjsStr, mainOutPath, mainLinkFlags);
-    prb_writelnToStdout(arena, mainCmdExe);
-    execCmdSpec.cmd = mainCmdExe;
-    prb_ProcessHandle mainHandleExe = prb_execCmd(arena, execCmdSpec);
-    prb_assert(mainHandleExe.status == prb_ProcessStatus_CompletedSuccess);
+    prb_assert(execCmd(arena, mainCmdExe));
+
     prb_assert(prb_waitForProcesses(&mainHandlePre, 1) == prb_Success);
 
     writeLog(arena, project->thisCompileLog, buildLogPath, logColumnNames);

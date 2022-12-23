@@ -124,6 +124,24 @@ typedef struct TestJobSpec {
     prb_Str     generatedLogPath;
 } TestJobSpec;
 
+function prb_Status
+execCmd(prb_Arena* arena, prb_Str cmd) {
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_writelnToStdout(arena, cmd);
+    prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+    prb_assert(prb_launchProcesses(arena, &proc, 1));
+    prb_Status result = prb_waitForProcesses(&proc, 1);
+    prb_endTempMemory(temp);
+    return result;
+}
+
+function void
+printFile(prb_Arena* arena, prb_Str file) {
+    prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, file);
+    prb_assert(readRes.success);
+    prb_writelnToStdout(arena, prb_strFromBytes(readRes.content));
+}
+
 function void
 compileAndRunTests(prb_Arena* arena, void* data) {
     TestJobSpec  spec_ = {};
@@ -176,23 +194,19 @@ compileAndRunTests(prb_Arena* arena, void* data) {
         CompileSpec preSpec = compileSpec;
         preSpec.input = prb_pathJoin(arena, globalTestsDir, prb_STR("precompile.c"));
         preSpec.output = prb_fmt(arena, "%.*s-%.*s.obj", preSpec.input.len - 2, preSpec.input.ptr, prb_LIT(outputSuffix));
-        prb_ExecCmdSpec execSpec = {};
-        execSpec.cmd = constructCompileCmd(arena, preSpec);
-        prb_writelnToStdout(arena, execSpec.cmd);
-        prb_assert(prb_execCmd(arena, execSpec).status == prb_ProcessStatus_CompletedSuccess);
+        prb_Str cmd = constructCompileCmd(arena, preSpec);
+        prb_assert(execCmd(arena, cmd));
 
         compileSpec.flags = prb_fmt(arena, "-Dprb_NO_IMPLEMENTATION %.*s", prb_LIT(compileSpec.flags));
         compileSpec.optObj = preSpec.output;
     }
 
     {
-        prb_ExecCmdSpec execSpec = {};
-        execSpec.cmd = constructCompileCmd(arena, compileSpec);
-        prb_writelnToStdout(arena, execSpec.cmd);
-        prb_assert(prb_execCmd(arena, execSpec).status == prb_ProcessStatus_CompletedSuccess);
+        prb_Str cmd = constructCompileCmd(arena, compileSpec);
+        prb_assert(execCmd(arena, cmd));
     }
 
-    prb_ExecCmdSpec execSpec = {};
+    prb_ProcessSpec execSpec = {};
     if (!spec->doNotRedirect) {
         execSpec.redirectStderr = true;
         execSpec.redirectStdout = true;
@@ -201,14 +215,12 @@ compileAndRunTests(prb_Arena* arena, void* data) {
         execSpec.stderrFilepath = outlog;
     }
 
-    execSpec.cmd = prb_fmt(arena, "%.*s %.*s", prb_LIT(compileSpec.output), prb_LIT(outputSuffix));
-    prb_writelnToStdout(arena, execSpec.cmd);
-    prb_ProcessHandle proc = prb_execCmd(arena, execSpec);
-    if (proc.status != prb_ProcessStatus_CompletedSuccess) {
+    prb_Str cmd = prb_fmt(arena, "%.*s %.*s", prb_LIT(compileSpec.output), prb_LIT(outputSuffix));
+    prb_Process proc = prb_createProcess(cmd, execSpec);
+    prb_assert(prb_launchProcesses(arena, &proc, 1));    
+    if (prb_waitForProcesses(&proc, 1) == prb_Failure) {
         if (!spec->doNotRedirect) {
-            prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, execSpec.stdoutFilepath);
-            prb_assert(readRes.success);
-            prb_writelnToStdout(arena, prb_strFromBytes(readRes.content));
+            printFile(arena, execSpec.stdoutFilepath);
         }
         prb_assert(!"test failed");
     }
@@ -269,35 +281,31 @@ main() {
 
         // NOTE(khvorov) Output compiler versions
         if (runningOnCi) {
-            prb_ExecCmdSpec spec = {};
-            spec.cmd = prb_STR("clang --version");
-            prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+            prb_assert(execCmd(arena, prb_STR("clang --version")));
 #if prb_PLATFORM_WINDOWS
 #error unimplemented
 #elif prb_PLATFORM_LINUX
-            spec.cmd = prb_STR("gcc --version");
-            prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+            prb_assert(execCmd(arena, prb_STR("gcc --version")));
 #else
 #error unimplemented
 #endif
         }
 
         // NOTE(khvorov) Start static analysis.
-        prb_ProcessHandle staticAnalysisProc = {};
-        prb_Str           staticAnalysisOutput = {};
+        prb_Process staticAnalysisProc = {};
+        prb_Str     staticAnalysisOutput = {};
         {
             prb_Str         mainFilePath = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
-            prb_ExecCmdSpec spec = {};
-            spec.cmd = prb_fmt(arena, "clang-tidy %.*s", prb_LIT(mainFilePath));
-            prb_writelnToStdout(arena, spec.cmd);
+            prb_ProcessSpec spec = {};
+            prb_Str         cmd = prb_fmt(arena, "clang-tidy %.*s", prb_LIT(mainFilePath));
+            prb_writelnToStdout(arena, cmd);
             staticAnalysisOutput = prb_pathJoin(arena, globalTestsDir, prb_STR("static_analysis.log"));
-            spec.dontwait = true;
             spec.redirectStdout = true;
             spec.redirectStderr = true;
             spec.stdoutFilepath = staticAnalysisOutput;
             spec.stderrFilepath = staticAnalysisOutput;
-            staticAnalysisProc = prb_execCmd(arena, spec);
-            prb_assert(staticAnalysisProc.status == prb_ProcessStatus_Launched);
+            staticAnalysisProc = prb_createProcess(cmd, spec);
+            prb_assert(prb_launchProcesses(arena, &staticAnalysisProc, 1));
         }
 
         // NOTE(khvorov) Run tests from different example directories because I
@@ -323,29 +331,26 @@ main() {
             spec.flags = prb_STR("-fprofile-instr-generate -fcoverage-mapping");
             spec.addOutputSuffix = prb_STR("coverage");
             compileAndRunTests(arena, &spec);
-            prb_Str         coverageIndexed = prb_replaceExt(arena, coverageRaw, prb_STR("profdata"));
-            prb_ExecCmdSpec execSpec = {};
-            execSpec.cmd = prb_fmt(arena, "llvm-profdata merge -sparse %.*s -o %.*s", prb_LIT(coverageRaw), prb_LIT(coverageIndexed));
-            prb_writelnToStdout(arena, execSpec.cmd);
-            prb_assert(prb_execCmd(arena, execSpec).status == prb_ProcessStatus_CompletedSuccess);
+            prb_Str coverageIndexed = prb_replaceExt(arena, coverageRaw, prb_STR("profdata"));
+            prb_assert(execCmd(arena, prb_fmt(arena, "llvm-profdata merge -sparse %.*s -o %.*s", prb_LIT(coverageRaw), prb_LIT(coverageIndexed))));
             prb_Str coverageText = prb_replaceExt(arena, coverageRaw, prb_STR("txt"));
-            execSpec.cmd = prb_fmt(arena, "llvm-cov show %.*s -instr-profile=%.*s", prb_LIT(spec.generatedCompileSpec.output), prb_LIT(coverageIndexed));
+            prb_Str cmd = prb_fmt(arena, "llvm-cov show %.*s -instr-profile=%.*s", prb_LIT(spec.generatedCompileSpec.output), prb_LIT(coverageIndexed));
+            prb_writelnToStdout(arena, cmd);
+            prb_ProcessSpec execSpec = {};
             execSpec.redirectStdout = true;
             execSpec.redirectStderr = true;
             execSpec.stdoutFilepath = coverageText;
             execSpec.stderrFilepath = coverageText;
-            prb_writelnToStdout(arena, execSpec.cmd);
-            prb_assert(prb_execCmd(arena, execSpec).status == prb_ProcessStatus_CompletedSuccess);
+            prb_Process covShowProc = prb_createProcess(cmd, execSpec);
+            prb_assert(prb_launchProcesses(arena, &covShowProc, 1));
+            prb_assert(prb_waitForProcesses(&covShowProc, 1));
         }
 
         // NOTE(khvorov) Check we can compile without stb ds short names
         {
-            prb_Str         mainFile = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
-            prb_Str         outfile = prb_pathJoin(arena, globalTestsDir, prb_STR("cbuild.gch"));
-            prb_ExecCmdSpec spec = {};
-            spec.cmd = prb_fmt(arena, "clang -Wall -Wextra -Werror -Wfatal-errors -Dprb_STBDS_NO_SHORT_NAMES %.*s -o %.*s", prb_LIT(mainFile), prb_LIT(outfile));
-            prb_writelnToStdout(arena, spec.cmd);
-            prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+            prb_Str mainFile = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
+            prb_Str outfile = prb_pathJoin(arena, globalTestsDir, prb_STR("cbuild.gch"));
+            prb_assert(execCmd(arena, prb_fmt(arena, "clang -Wall -Wextra -Werror -Wfatal-errors -Dprb_STBDS_NO_SHORT_NAMES %.*s -o %.*s", prb_LIT(mainFile), prb_LIT(outfile))));
             prb_removeFileIfExists(arena, outfile);
         }
 
@@ -416,17 +421,13 @@ main() {
 
         // NOTE(khvorov) Compile all the examples in every supported way
         prb_Str exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
-        {            
+        {
             // NOTE(khvorov) Compile the build program
             CompileSpec spec = {};
             {
                 spec.input = prb_pathJoin(arena, exampleDir, prb_STR("build.c"));
                 spec.output = prb_pathJoin(arena, exampleDir, prb_STR("build.bin"));
-                prb_ExecCmdSpec execSpec = {};
-                execSpec.cmd = constructCompileCmd(arena, spec);
-                prb_writelnToStdout(arena, execSpec.cmd);
-                prb_ProcessHandle exampleBuildProgramCompileProc = prb_execCmd(arena, execSpec);
-                prb_assert(exampleBuildProgramCompileProc.status == prb_ProcessStatus_CompletedSuccess);
+                prb_assert(execCmd(arena, constructCompileCmd(arena, spec)));
             }
 
             // NOTE(khvorov) Use the build program to compile the examples
@@ -446,15 +447,11 @@ main() {
             for (i32 compArgIndex = 0; compArgIndex < prb_arrayCount(compilerArgs); compArgIndex++) {
                 prb_Str compilerArg = compilerArgs[compArgIndex];
                 for (i32 buildModeArgIndex = 0; buildModeArgIndex < prb_arrayCount(buildModeArgs); buildModeArgIndex++) {
-                    prb_Str         buildModeArg = buildModeArgs[buildModeArgIndex];
-                    prb_ExecCmdSpec execSpec = {};
-                    execSpec.cmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(spec.output), prb_LIT(compilerArg), prb_LIT(buildModeArg));
-                    prb_writelnToStdout(arena, execSpec.cmd);
-                    prb_ProcessHandle proc = prb_execCmd(arena, execSpec);
-                    prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
+                    prb_Str buildModeArg = buildModeArgs[buildModeArgIndex];
+                    prb_Str cmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(spec.output), prb_LIT(compilerArg), prb_LIT(buildModeArg));
+                    prb_assert(execCmd(arena, cmd));
                     // NOTE(khvorov) Compile again to make sure incremental compilation code executes
-                    proc = prb_execCmd(arena, execSpec);
-                    prb_assert(proc.status == prb_ProcessStatus_CompletedSuccess);
+                    prb_assert(execCmd(arena, cmd));
                 }
             }
 
@@ -478,15 +475,11 @@ main() {
 #error unimplemented
 #endif
 
-                prb_ExecCmdSpec execBuildScriptSpec = {};
-                execBuildScriptSpec.cmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(buildScriptCmd), prb_LIT(compilerArgs[0]), prb_LIT(buildModeArgs[0]));
-                prb_writelnToStdout(arena, execBuildScriptSpec.cmd);
-                prb_assert(prb_execCmd(arena, execBuildScriptSpec).status == prb_ProcessStatus_CompletedSuccess);
+                prb_Str execBuildcmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(buildScriptCmd), prb_LIT(compilerArgs[0]), prb_LIT(buildModeArgs[0]));
+                prb_assert(execCmd(arena, execBuildcmd));
 
                 prb_assert(prb_setWorkingDir(arena, exampleDir) == prb_Success);
-                prb_writelnToStdout(arena, execBuildScriptSpec.cmd);
-                prb_assert(prb_execCmd(arena, execBuildScriptSpec).status == prb_ProcessStatus_CompletedSuccess);
-
+                prb_assert(execCmd(arena, execBuildcmd));
                 prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
             }
         }
@@ -496,10 +489,8 @@ main() {
         // NOTE(khvorov) Print result of static analysis
         prb_assert(prb_waitForProcesses(&staticAnalysisProc, 1));
         {
-            prb_ReadEntireFileResult staticAnalysisOutRead = prb_readEntireFile(arena, staticAnalysisOutput);
-            prb_assert(staticAnalysisOutRead.success);
             prb_writelnToStdout(arena, prb_STR("static analysis out:"));
-            prb_writelnToStdout(arena, prb_strFromBytes(staticAnalysisOutRead.content));
+            printFile(arena, staticAnalysisOutput);
         }
 
         // NOTE(khvorov) Print sanitizer output
@@ -513,10 +504,8 @@ main() {
                     strFindSpec.mode = prb_StrFindMode_Exact;
                     prb_StrFindResult findRes = prb_strFind(prb_getLastEntryInPath(entry), strFindSpec);
                     if (findRes.found) {
-                        prb_ReadEntireFileResult staticAnalysisOutRead = prb_readEntireFile(arena, entry);
-                        prb_assert(staticAnalysisOutRead.success);
                         prb_writelnToStdout(arena, entry);
-                        prb_writelnToStdout(arena, prb_strFromBytes(staticAnalysisOutRead.content));
+                        printFile(arena, entry);
                     }
                 }
             }
@@ -524,21 +513,20 @@ main() {
 
         // NOTE(khvorov) Launch the examples to make sure they work
         if (!runningOnCi) {
-            prb_ProcessHandle* runProcs = 0;
-            prb_Str* allInExample = prb_getAllDirEntries(arena, exampleDir, prb_Recursive_No);
+            prb_Process* runProcs = 0;
+            prb_Str*     allInExample = prb_getAllDirEntries(arena, exampleDir, prb_Recursive_No);
             for (i32 exampleEntryIndex = 0; exampleEntryIndex < arrlen(allInExample); exampleEntryIndex++) {
                 prb_Str exampleEntry = allInExample[exampleEntryIndex];
                 if (prb_strStartsWith(prb_getLastEntryInPath(exampleEntry), prb_STR("build-"))) {
                     prb_Str buildExe = prb_pathJoin(arena, exampleEntry, prb_STR("example.bin"));
-                    prb_ProcessHandle proc = prb_execCmd(arena, (prb_ExecCmdSpec) {.cmd = buildExe, .dontwait = true});
-                    prb_assert(proc.status == prb_ProcessStatus_Launched);
-                    arrput(runProcs, proc);
+                    arrput(runProcs, prb_createProcess(buildExe, (prb_ProcessSpec) {}));
                 }
             }
 
-            // TODO(khvorov) Auto kill the processes in reverse order
+            prb_assert(prb_launchProcesses(arena, runProcs, arrlen(runProcs)));
             prb_assert(prb_waitForProcesses(runProcs, arrlen(runProcs)));
-        }        
+            // TODO(khvorov) Auto kill the processes in reverse order
+        }
     }
 
     prb_writelnToStdout(arena, prb_fmt(arena, "%stest run took %.2fms%s", prb_colorEsc(prb_ColorID_Green).ptr, prb_getMsFrom(scriptStart), prb_colorEsc(prb_ColorID_Reset).ptr));

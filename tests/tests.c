@@ -54,6 +54,10 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_writeToStdout"));
         arrput(*prbNames, prb_STR("prb_writelnToStdout"));
         arrput(*prbNames, prb_STR("prb_colorEsc"));
+    } else if (prb_streq(testName, prb_STR("test_process"))) {
+        arrput(*prbNames, prb_STR("prb_createProcess"));
+        arrput(*prbNames, prb_STR("prb_launchProcesses"));
+        arrput(*prbNames, prb_STR("prb_waitForProcesses"));
     } else {
         prb_assert(prb_strStartsWith(testName, prb_STR("test_")));
         prb_Str noPrefix = prb_strSlice(testName, 5, testName.len);
@@ -1888,7 +1892,7 @@ test_getArgArrayFromStr(prb_Arena* arena, void* data) {
 }
 
 function void
-test_execCmd(prb_Arena* arena, void* data) {
+test_process(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
@@ -1910,43 +1914,46 @@ test_execCmd(prb_Arena* arena, void* data) {
     prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(helloWorldPath), prb_LIT(helloExe));
 
     {
-        prb_ExecCmdSpec spec = {};
-        spec.cmd = compileCmd;
-        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+        prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+        prb_assert(prb_launchProcesses(arena, &proc, 1));
+        prb_assert(prb_waitForProcesses(&proc, 1));
     }
 
     {
-        prb_ExecCmdSpec spec = {};
-        spec.cmd = helloExe;
+        prb_ProcessSpec spec = {};
         spec.redirectStdout = true;
         spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
         spec.redirectStderr = true;
-        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+        prb_Process proc = prb_createProcess(helloExe, spec);
+        prb_assert(prb_launchProcesses(arena, &proc, 1));
+        prb_assert(prb_waitForProcesses(&proc, 1));
         prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
         prb_assert(readRes.success);
         prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\n")));
     }
 
     {
-        prb_ExecCmdSpec spec = {};
-        spec.cmd = helloExe;
+        prb_ProcessSpec spec = {};
         spec.redirectStderr = true;
         spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
         spec.redirectStdout = true;
-        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+        prb_Process proc = prb_createProcess(helloExe, spec);
+        prb_assert(prb_launchProcesses(arena, &proc, 1));
+        prb_assert(prb_waitForProcesses(&proc, 1));
         prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stderrFilepath);
         prb_assert(readRes.success);
         prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("stderrout\n")));
     }
 
     {
-        prb_ExecCmdSpec spec = {};
-        spec.cmd = helloExe;
+        prb_ProcessSpec spec = {};
         spec.redirectStdout = true;
         spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
         spec.redirectStderr = true;
         spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
-        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+        prb_Process proc = prb_createProcess(helloExe, spec);
+        prb_assert(prb_launchProcesses(arena, &proc, 1));
+        prb_assert(prb_waitForProcesses(&proc, 1));
         {
             prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
             prb_assert(readRes.success);
@@ -1960,13 +1967,14 @@ test_execCmd(prb_Arena* arena, void* data) {
     }
 
     {
-        prb_ExecCmdSpec spec = {};
-        spec.cmd = helloExe;
+        prb_ProcessSpec spec = {};
         spec.redirectStdout = true;
         spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
         spec.redirectStderr = true;
         spec.stderrFilepath = spec.stdoutFilepath;
-        prb_assert(prb_execCmd(arena, spec).status == prb_ProcessStatus_CompletedSuccess);
+        prb_Process proc = prb_createProcess(helloExe, spec);
+        prb_assert(prb_launchProcesses(arena, &proc, 1));
+        prb_assert(prb_waitForProcesses(&proc, 1));
         prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
         prb_assert(readRes.success);
         prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\nstderrout\n")));
@@ -1974,13 +1982,6 @@ test_execCmd(prb_Arena* arena, void* data) {
 
     prb_removeDirIfExists(arena, dir);
     prb_endTempMemory(temp);
-}
-
-function void
-test_waitForProcesses(prb_Arena* arena, void* data) {
-    prb_unused(arena);
-    prb_unused(data);
-    // TODO(khvorov) Write
 }
 
 function void
@@ -2365,8 +2366,7 @@ main() {
     arrput(jobs, prb_createJob(test_getCmdline, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getCmdArgs, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getArgArrayFromStr, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_execCmd, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_waitForProcesses, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_process, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_sleep, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_debuggerPresent, 0, arena, 10 * prb_MEGABYTE));
     test_env(arena, 0);  // NOTE(khvorov) Changes global state

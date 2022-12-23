@@ -268,14 +268,12 @@ typedef struct prb_Bytes {
     int32_t  len;
 } prb_Bytes;
 
-typedef struct prb_ExecCmdSpec {
-    prb_Str cmd;
-    bool    dontwait;
+typedef struct prb_ProcessSpec {
     bool    redirectStdout;
     prb_Str stdoutFilepath;
     bool    redirectStderr;
     prb_Str stderrFilepath;
-} prb_ExecCmdSpec;
+} prb_ProcessSpec;
 
 typedef enum prb_ProcessStatus {
     prb_ProcessStatus_NotLaunched,
@@ -284,7 +282,9 @@ typedef enum prb_ProcessStatus {
     prb_ProcessStatus_CompletedFailed,
 } prb_ProcessStatus;
 
-typedef struct prb_ProcessHandle {
+typedef struct prb_Process {
+    prb_Str           cmd;
+    prb_ProcessSpec   spec;
     prb_ProcessStatus status;
 
 #if prb_PLATFORM_WINDOWS
@@ -294,7 +294,7 @@ typedef struct prb_ProcessHandle {
 #else
 #error unimplemented
 #endif
-} prb_ProcessHandle;
+} prb_Process;
 
 typedef enum prb_StrFindMode {
     prb_StrFindMode_Exact,
@@ -322,7 +322,7 @@ typedef struct prb_StrFindSpec {
 } prb_StrFindSpec;
 
 typedef struct prb_StrFindResult {
-    bool    found;
+    bool found;
     // In a left-to-right system `beforeMatch` is to the left of match
     prb_Str beforeMatch;
     prb_Str match;
@@ -500,17 +500,18 @@ prb_PUBLICDEC prb_Status        prb_strScannerMove(prb_StrScanner* scanner, prb_
 prb_PUBLICDEC prb_ParsedNumber  prb_parseNumber(prb_Str str);
 
 // SECTION Processes
-prb_PUBLICDEC void              prb_terminate(int32_t code);
-prb_PUBLICDEC prb_Str           prb_getCmdline(prb_Arena* arena);
-prb_PUBLICDEC prb_Str*          prb_getCmdArgs(prb_Arena* arena);
-prb_PUBLICDEC const char**      prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str);
-prb_PUBLICDEC prb_ProcessHandle prb_execCmd(prb_Arena* arena, prb_ExecCmdSpec spec);
-prb_PUBLICDEC prb_Status        prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount);
-prb_PUBLICDEC void              prb_sleep(float ms);
-prb_PUBLICDEC bool              prb_debuggerPresent(prb_Arena* arena);
-prb_PUBLICDEC prb_Status        prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value);
-prb_PUBLICDEC prb_GetenvResult  prb_getenv(prb_Arena* arena, prb_Str name);
-prb_PUBLICDEC prb_Status        prb_unsetenv(prb_Arena* arena, prb_Str name);
+prb_PUBLICDEC void             prb_terminate(int32_t code);
+prb_PUBLICDEC prb_Str          prb_getCmdline(prb_Arena* arena);
+prb_PUBLICDEC prb_Str*         prb_getCmdArgs(prb_Arena* arena);
+prb_PUBLICDEC const char**     prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str);
+prb_PUBLICDEC prb_Process      prb_createProcess(prb_Str cmd, prb_ProcessSpec spec);
+prb_PUBLICDEC prb_Status       prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount);
+prb_PUBLICDEC prb_Status       prb_waitForProcesses(prb_Process* handles, int32_t handleCount);
+prb_PUBLICDEC void             prb_sleep(float ms);
+prb_PUBLICDEC bool             prb_debuggerPresent(prb_Arena* arena);
+prb_PUBLICDEC prb_Status       prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value);
+prb_PUBLICDEC prb_GetenvResult prb_getenv(prb_Arena* arena, prb_Str name);
+prb_PUBLICDEC prb_Status       prb_unsetenv(prb_Arena* arena, prb_Str name);
 
 // SECTION Timing
 prb_PUBLICDEC prb_TimeStart prb_timeStart(void);
@@ -1904,10 +1905,10 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
         case prb_StrFindMode_AnyChar: {
             if (str.len > 0) {
                 for (prb_Utf8CharIter iter = prb_createUtf8CharIter(str, spec.direction);
-                    prb_utf8CharIterNext(&iter) == prb_Success && !result.found;) {
+                     prb_utf8CharIterNext(&iter) == prb_Success && !result.found;) {
                     if (iter.curIsValid) {
                         for (prb_Utf8CharIter patIter = prb_createUtf8CharIter(spec.pattern, prb_StrDirection_FromStart);
-                            prb_utf8CharIterNext(&patIter) == prb_Success && !result.found;) {
+                             prb_utf8CharIterNext(&patIter) == prb_Success && !result.found;) {
                             if (patIter.curIsValid) {
                                 if (iter.curUtf32Char == patIter.curUtf32Char) {
                                     result.found = true;
@@ -2289,7 +2290,7 @@ prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec, prb_StrScanner
         if (side == prb_StrScannerSide_BeforeMatch) {
             scanner->betweenLastMatches = find.afterMatch;
         }
-    
+
         scanner->match = find.match;
         scanner->matchCount += 1;
 
@@ -2431,7 +2432,7 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
     const char** args = 0;
 
     {
-        prb_StrScanner scanner = prb_createStrScanner(str);
+        prb_StrScanner  scanner = prb_createStrScanner(str);
         prb_StrFindSpec space = {};
         space.pattern = prb_STR(" ");
         space.alwaysMatchEnd = true;
@@ -2450,118 +2451,134 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
     return args;
 }
 
-prb_PUBLICDEF prb_ProcessHandle
-prb_execCmd(prb_Arena* arena, prb_ExecCmdSpec spec) {
-    prb_ProcessHandle result = {};
-    prb_TempMemory    temp = prb_beginTempMemory(arena);
+prb_PUBLICDEF prb_Process
+prb_createProcess(prb_Str cmd, prb_ProcessSpec spec) {
+    prb_Process proc = {};
+    proc.cmd = cmd;
+    proc.spec = spec;
+    return proc;
+}
+
+prb_PUBLICDEF prb_Status
+prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount) {
+    prb_Status     result = prb_Success;
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+
+    for (int32_t procIndex = 0; procIndex < procCount; procIndex++) {
+        prb_Process* proc = procs + procIndex;
+        if (proc->status == prb_ProcessStatus_NotLaunched) {
+            prb_ProcessSpec spec = proc->spec;
 
 #if prb_PLATFORM_WINDOWS
 
-    STARTUPINFOA        startupInfo = {.cb = sizeof(STARTUPINFOA)};
-    PROCESS_INFORMATION processInfo;
-    if (CreateProcessA(0, cmd.ptr, 0, 0, 0, 0, 0, 0, &startupInfo, &processInfo)) {
-        WaitForSingleObject(processInfo.hProcess, INFINITE);
-        DWORD exitCode;
-        if (GetExitCodeProcess(processInfo.hProcess, &exitCode)) {
-            if (exitCode == 0) {
-                cmdStatus = prb_Success;
+            STARTUPINFOA        startupInfo = {.cb = sizeof(STARTUPINFOA)};
+            PROCESS_INFORMATION processInfo;
+            if (CreateProcessA(0, cmd.ptr, 0, 0, 0, 0, 0, 0, &startupInfo, &processInfo)) {
+                WaitForSingleObject(processInfo.hProcess, INFINITE);
+                DWORD exitCode;
+                if (GetExitCodeProcess(processInfo.hProcess, &exitCode)) {
+                    if (exitCode == 0) {
+                        cmdStatus = prb_Success;
+                    }
+                }
             }
-        }
-    }
 
 #error unimplemented
 
 #elif prb_PLATFORM_LINUX
 
-    const char* stdoutPath = 0;
-    if (spec.redirectStdout) {
-        if (spec.stdoutFilepath.ptr && spec.stdoutFilepath.len > 0) {
-            stdoutPath = prb_strGetNullTerminated(arena, spec.stdoutFilepath);
-        } else {
-            stdoutPath = "/dev/null";
-        }
-    }
-
-    const char* stderrPath = 0;
-    if (spec.redirectStderr) {
-        if (spec.stderrFilepath.ptr && spec.stderrFilepath.len > 0) {
-            stderrPath = prb_strGetNullTerminated(arena, spec.stderrFilepath);
-        } else {
-            stderrPath = "/dev/null";
-        }
-    }
-
-    bool                        fileActionsSucceeded = true;
-    bool                        fileActionsInited = false;
-    posix_spawn_file_actions_t* fileActionsPtr = 0;
-    posix_spawn_file_actions_t  fileActions = {};
-    if (spec.redirectStdout || spec.redirectStderr) {
-        fileActionsPtr = &fileActions;
-        int initResult = posix_spawn_file_actions_init(&fileActions);
-        fileActionsSucceeded = initResult == 0;
-        fileActionsInited = initResult == 0;
-        if (fileActionsSucceeded) {
+            const char* stdoutPath = 0;
             if (spec.redirectStdout) {
-                int stdoutRedirectResult = posix_spawn_file_actions_addopen(
-                    &fileActions,
-                    STDOUT_FILENO,
-                    stdoutPath,
-                    O_WRONLY | O_CREAT | O_TRUNC,
-                    S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
-                );
-                fileActionsSucceeded = stdoutRedirectResult == 0;
-            }
-
-            if (fileActionsSucceeded && spec.redirectStderr) {
-                if (spec.redirectStdout && prb_streq(prb_STR(stdoutPath), prb_STR(stderrPath))) {
-                    int dupResult = posix_spawn_file_actions_adddup2(&fileActions, STDOUT_FILENO, STDERR_FILENO);
-                    fileActionsSucceeded = dupResult == 0;
+                if (spec.stdoutFilepath.ptr && spec.stdoutFilepath.len > 0) {
+                    stdoutPath = prb_strGetNullTerminated(arena, spec.stdoutFilepath);
                 } else {
-                    int stderrRedirectResult = posix_spawn_file_actions_addopen(
-                        &fileActions,
-                        STDERR_FILENO,
-                        stderrPath,
-                        O_WRONLY | O_CREAT | O_TRUNC,
-                        S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
-                    );
-                    fileActionsSucceeded = stderrRedirectResult == 0;
+                    stdoutPath = "/dev/null";
                 }
             }
-        }
-    }
 
-    if (fileActionsSucceeded) {
-        const char** args = prb_getArgArrayFromStr(arena, spec.cmd);
-        int          spawnResult = posix_spawnp(&result.pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
-        if (spawnResult == 0) {
-            result.status = prb_ProcessStatus_Launched;
-            if (!spec.dontwait) {
-                int   status = 0;
-                pid_t waitResult = waitpid(result.pid, &status, 0);
-                result.status = prb_ProcessStatus_CompletedFailed;
-                if (waitResult == result.pid && status == 0) {
-                    result.status = prb_ProcessStatus_CompletedSuccess;
+            const char* stderrPath = 0;
+            if (spec.redirectStderr) {
+                if (spec.stderrFilepath.ptr && spec.stderrFilepath.len > 0) {
+                    stderrPath = prb_strGetNullTerminated(arena, spec.stderrFilepath);
+                } else {
+                    stderrPath = "/dev/null";
                 }
             }
-        }
-        prb_stbds_arrfree(args);
-    }
 
-    if (fileActionsInited) {
-        posix_spawn_file_actions_destroy(fileActionsPtr);
-    }
+            bool                        fileActionsSucceeded = true;
+            bool                        fileActionsInited = false;
+            posix_spawn_file_actions_t* fileActionsPtr = 0;
+            posix_spawn_file_actions_t  fileActions = {};
+            if (spec.redirectStdout || spec.redirectStderr) {
+                fileActionsPtr = &fileActions;
+                int initResult = posix_spawn_file_actions_init(&fileActions);
+                fileActionsSucceeded = initResult == 0;
+                fileActionsInited = initResult == 0;
+                if (fileActionsSucceeded) {
+                    if (spec.redirectStdout) {
+                        int stdoutRedirectResult = posix_spawn_file_actions_addopen(
+                            &fileActions,
+                            STDOUT_FILENO,
+                            stdoutPath,
+                            O_WRONLY | O_CREAT | O_TRUNC,
+                            S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
+                        );
+                        fileActionsSucceeded = stdoutRedirectResult == 0;
+                    }
+
+                    if (fileActionsSucceeded && spec.redirectStderr) {
+                        if (spec.redirectStdout && prb_streq(prb_STR(stdoutPath), prb_STR(stderrPath))) {
+                            int dupResult = posix_spawn_file_actions_adddup2(&fileActions, STDOUT_FILENO, STDERR_FILENO);
+                            fileActionsSucceeded = dupResult == 0;
+                        } else {
+                            int stderrRedirectResult = posix_spawn_file_actions_addopen(
+                                &fileActions,
+                                STDERR_FILENO,
+                                stderrPath,
+                                O_WRONLY | O_CREAT | O_TRUNC,
+                                S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR
+                            );
+                            fileActionsSucceeded = stderrRedirectResult == 0;
+                        }
+                    }
+                }
+            }
+
+            if (fileActionsSucceeded) {
+                const char** args = prb_getArgArrayFromStr(arena, proc->cmd);
+                int          spawnResult = posix_spawnp(&proc->pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
+                if (spawnResult == 0) {
+                    proc->status = prb_ProcessStatus_Launched;
+                }
+                prb_stbds_arrfree(args);
+            }
+
+            if (fileActionsInited) {
+                posix_spawn_file_actions_destroy(fileActionsPtr);
+            }
 
 #else
 #error unimplemented
 #endif
+
+            if (proc->status != prb_ProcessStatus_Launched) {
+                result = prb_Failure;
+            }
+        }
+    }
 
     prb_endTempMemory(temp);
     return result;
 }
 
 prb_PUBLICDEF prb_Status
-prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
+prb_waitForProcesses(prb_Process* handles, int32_t handleCount) {
     prb_Status result = prb_Success;
+
+    for (int32_t handleIndex = 0; handleIndex < handleCount; handleIndex++) {
+        prb_Process* handle = handles + handleIndex;
+        prb_assert(handle->status != prb_ProcessStatus_NotLaunched);
+        if (handle->status == prb_ProcessStatus_Launched) {
 
 #if prb_PLATFORM_WINDOWS
 
@@ -2569,23 +2586,22 @@ prb_waitForProcesses(prb_ProcessHandle* handles, int32_t handleCount) {
 
 #elif prb_PLATFORM_LINUX
 
-    for (int32_t handleIndex = 0; handleIndex < handleCount; handleIndex++) {
-        prb_ProcessHandle* handle = handles + handleIndex;
-        if (handle->status == prb_ProcessStatus_Launched) {
             int32_t status = 0;
             pid_t   waitResult = waitpid(handle->pid, &status, 0);
             handle->status = prb_ProcessStatus_CompletedFailed;
             if (waitResult == handle->pid && status == 0) {
                 handle->status = prb_ProcessStatus_CompletedSuccess;
-            } else {
-                result = prb_Failure;
             }
-        }
-    }
 
 #else
 #error unimplemented
 #endif
+
+            if (handle->status != prb_ProcessStatus_CompletedSuccess) {
+                result = prb_Failure;
+            }
+        }
+    }
 
     return result;
 }
