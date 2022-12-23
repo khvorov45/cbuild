@@ -339,13 +339,6 @@ typedef struct prb_StrScanner {
     prb_Str betweenLastMatches;
 } prb_StrScanner;
 
-typedef struct prb_WordIter {
-    prb_Str ogstr;
-    int32_t curWordCount;
-    int32_t curByteOffset;
-    prb_Str curWord;
-} prb_WordIter;
-
 typedef struct prb_Utf8CharIter {
     prb_Str          str;
     prb_StrDirection direction;
@@ -504,8 +497,6 @@ prb_PUBLICDEC prb_Utf8CharIter  prb_createUtf8CharIter(prb_Str str, prb_StrDirec
 prb_PUBLICDEC prb_Status        prb_utf8CharIterNext(prb_Utf8CharIter* iter);
 prb_PUBLICDEC prb_StrScanner    prb_createStrScanner(prb_Str str);
 prb_PUBLICDEC prb_Status        prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec, prb_StrScannerSide side);
-prb_PUBLICDEC prb_WordIter      prb_createWordIter(prb_Str str);
-prb_PUBLICDEC prb_Status        prb_wordIterNext(prb_WordIter* iter);
 prb_PUBLICDEC prb_ParsedNumber  prb_parseNumber(prb_Str str);
 
 // SECTION Processes
@@ -2309,22 +2300,6 @@ prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec, prb_StrScanner
         result = prb_Success;
     }
 
-    return result;
-}
-
-prb_PUBLICDEF prb_WordIter
-prb_createWordIter(prb_Str str) {
-    prb_WordIter iter = {};
-    iter.ogstr = str;
-    return iter;
-}
-
-prb_PUBLICDEF prb_Status
-prb_wordIterNext(prb_WordIter* iter) {
-    prb_unused(iter);
-    prb_Status result = prb_Failure;
-    // TODO(khvorov) Implement
-    prb_assert(!"unimplemented");
     return result;
 }
 

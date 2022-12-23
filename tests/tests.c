@@ -43,9 +43,6 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
     } else if (prb_streq(testName, prb_STR("test_strScanner"))) {
         arrput(*prbNames, prb_STR("prb_createStrScanner"));
         arrput(*prbNames, prb_STR("prb_strScannerMove"));
-    } else if (prb_streq(testName, prb_STR("test_wordIter"))) {
-        arrput(*prbNames, prb_STR("prb_createWordIter"));
-        arrput(*prbNames, prb_STR("prb_wordIterNext"));
     } else if (prb_streq(testName, prb_STR("test_pathEntryIter"))) {
         arrput(*prbNames, prb_STR("prb_createPathEntryIter"));
         arrput(*prbNames, prb_STR("prb_pathEntryIterNext"));
@@ -1831,13 +1828,6 @@ test_strScanner(prb_Arena* arena, void* data) {
 }
 
 function void
-test_wordIter(prb_Arena* arena, void* data) {
-    prb_unused(arena);
-    prb_unused(data);
-    // TODO(khvorov) Write
-}
-
-function void
 test_parseNumber(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
@@ -2368,7 +2358,6 @@ main() {
     arrput(jobs, prb_createJob(test_writeToStdout, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_utf8CharIter, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_strScanner, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_wordIter, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_parseNumber, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Processes
