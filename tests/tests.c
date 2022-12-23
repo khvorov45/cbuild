@@ -33,32 +33,34 @@ setdiff(prb_Str* arr1, prb_Str* arr2) {
 
 function void
 testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
-    if (prb_streq(testName, prb_STR("pathFindIter"))) {
+    if (prb_streq(testName, prb_STR("test_pathFindIter"))) {
         arrput(*prbNames, prb_STR("prb_createPathFindIter"));
         arrput(*prbNames, prb_STR("prb_pathFindIterNext"));
         arrput(*prbNames, prb_STR("prb_destroyPathFindIter"));
-    } else if (prb_streq(testName, prb_STR("utf8CharIter"))) {
+    } else if (prb_streq(testName, prb_STR("test_utf8CharIter"))) {
         arrput(*prbNames, prb_STR("prb_createUtf8CharIter"));
         arrput(*prbNames, prb_STR("prb_utf8CharIterNext"));
-    } else if (prb_streq(testName, prb_STR("strScanner"))) {
+    } else if (prb_streq(testName, prb_STR("test_strScanner"))) {
         arrput(*prbNames, prb_STR("prb_createStrScanner"));
         arrput(*prbNames, prb_STR("prb_strScannerMove"));
-    } else if (prb_streq(testName, prb_STR("wordIter"))) {
+    } else if (prb_streq(testName, prb_STR("test_wordIter"))) {
         arrput(*prbNames, prb_STR("prb_createWordIter"));
         arrput(*prbNames, prb_STR("prb_wordIterNext"));
-    } else if (prb_streq(testName, prb_STR("pathEntryIter"))) {
+    } else if (prb_streq(testName, prb_STR("test_pathEntryIter"))) {
         arrput(*prbNames, prb_STR("prb_createPathEntryIter"));
         arrput(*prbNames, prb_STR("prb_pathEntryIterNext"));
-    } else if (prb_streq(testName, prb_STR("env"))) {
+    } else if (prb_streq(testName, prb_STR("test_env"))) {
         arrput(*prbNames, prb_STR("prb_setenv"));
         arrput(*prbNames, prb_STR("prb_getenv"));
         arrput(*prbNames, prb_STR("prb_unsetenv"));
-    } else if (prb_streq(testName, prb_STR("writeToStdout"))) {
+    } else if (prb_streq(testName, prb_STR("test_writeToStdout"))) {
         arrput(*prbNames, prb_STR("prb_writeToStdout"));
         arrput(*prbNames, prb_STR("prb_writelnToStdout"));
         arrput(*prbNames, prb_STR("prb_colorEsc"));
     } else {
-        prb_Str nameWithPrefix = prb_fmt(arena, "prb_%.*s", prb_LIT(testName));
+        prb_assert(prb_strStartsWith(testName, prb_STR("test_")));
+        prb_Str noPrefix = prb_strSlice(testName, 5, testName.len);
+        prb_Str nameWithPrefix = prb_fmt(arena, "prb_%.*s", prb_LIT(noPrefix));
         arrput(*prbNames, nameWithPrefix);
     }
 }
@@ -1271,9 +1273,9 @@ test_strFind(prb_Arena* arena, void* data) {
         spec.direction = prb_StrDirection_FromEnd;
         find = prb_strFind(line, spec);
         prb_assert(find.found);
-        prb_assert(prb_streq(find.beforeMatch, prb_STR("a")));
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1")));
         prb_assert(prb_streq(find.match, prb_STR("\r\n")));
-        prb_assert(prb_streq(find.afterMatch, prb_STR("line1")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("a")));
     }
 
     {
@@ -1289,9 +1291,9 @@ test_strFind(prb_Arena* arena, void* data) {
         spec.direction = prb_StrDirection_FromEnd;
         find = prb_strFind(line, spec);
         prb_assert(find.found);
-        prb_assert(prb_streq(find.beforeMatch, prb_STR("a")));
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1")));
         prb_assert(prb_streq(find.match, prb_STR("\r")));
-        prb_assert(prb_streq(find.afterMatch, prb_STR("line1")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("a")));
     }
 
     {
@@ -1307,9 +1309,9 @@ test_strFind(prb_Arena* arena, void* data) {
         spec.direction = prb_StrDirection_FromEnd;
         find = prb_strFind(line, spec);
         prb_assert(find.found);
-        prb_assert(prb_streq(find.beforeMatch, prb_STR("a")));
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1")));
         prb_assert(prb_streq(find.match, prb_STR("\n")));
-        prb_assert(prb_streq(find.afterMatch, prb_STR("line1")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("a")));
     }
 
     {
@@ -1325,9 +1327,9 @@ test_strFind(prb_Arena* arena, void* data) {
         spec.direction = prb_StrDirection_FromEnd;
         find = prb_strFind(line, spec);
         prb_assert(find.found);
-        prb_assert(prb_streq(find.beforeMatch, prb_STR("b")));
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1\na")));
         prb_assert(prb_streq(find.match, prb_STR("\n")));
-        prb_assert(prb_streq(find.afterMatch, prb_STR("line1\na")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("b")));
     }
 
     {
@@ -1343,9 +1345,9 @@ test_strFind(prb_Arena* arena, void* data) {
         spec.direction = prb_StrDirection_FromEnd;
         find = prb_strFind(line, spec);
         prb_assert(find.found);
-        prb_assert(prb_streq(find.beforeMatch, prb_STR("line1")));
+        prb_assert(find.beforeMatch.len == 0);
         prb_assert(find.match.len == 0);
-        prb_assert(find.afterMatch.len == 0);
+        prb_assert(prb_streq(find.afterMatch, prb_STR("line1")));
     }
 
     prb_endTempMemory(temp);
@@ -1719,105 +1721,113 @@ test_strScanner(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_unused(arena);
 
-    // TODO(khvorov) More tests
+    {
+        prb_Str        lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
+        prb_StrScanner iter = prb_createStrScanner(lines);
 
-    prb_Str        lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
-    prb_StrScanner iter = prb_createStrScanner(lines);
+        prb_StrFindSpec lineBreakSpec = {};
+        lineBreakSpec.mode = prb_StrFindMode_LineBreak;
 
-    prb_StrFindSpec lineBreakSpec = {};
-    lineBreakSpec.mode = prb_StrFindMode_LineBreak;
+        prb_assert(iter.matchCount == 0);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line1")));
+        prb_assert(iter.match.len == 2);
+        prb_assert(iter.matchCount == 1);
 
-    prb_assert(iter.matchCount == 0);
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line1")));
-    prb_assert(iter.betweenLastMatches.len == 5);
-    prb_assert(iter.match.len == 2);
-    prb_assert(iter.matchCount == 1);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line2")));
+        prb_assert(iter.match.len == 1);
+        prb_assert(iter.matchCount == 2);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line2")));
-    prb_assert(iter.betweenLastMatches.len == 5);
-    prb_assert(iter.match.len == 1);
-    prb_assert(iter.matchCount == 2);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line3")));
+        prb_assert(iter.betweenLastMatches.len == 5);
+        prb_assert(iter.match.len == 1);
+        prb_assert(iter.matchCount == 3);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line3")));
-    prb_assert(iter.betweenLastMatches.len == 5);
-    prb_assert(iter.match.len == 1);
-    prb_assert(iter.matchCount == 3);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line4")));
+        prb_assert(iter.match.len == 1);
+        prb_assert(iter.matchCount == 4);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line4")));
-    prb_assert(iter.betweenLastMatches.len == 5);
-    prb_assert(iter.match.len == 1);
-    prb_assert(iter.matchCount == 4);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(iter.betweenLastMatches.len == 0);
+        prb_assert(iter.match.len == 1);
+        prb_assert(iter.matchCount == 5);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(iter.betweenLastMatches.len == 0);
-    prb_assert(iter.match.len == 1);
-    prb_assert(iter.matchCount == 5);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line6")));
+        prb_assert(iter.match.len == 1);
+        prb_assert(iter.matchCount == 6);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line6")));
-    prb_assert(iter.betweenLastMatches.len == 5);
-    prb_assert(iter.match.len == 1);
-    prb_assert(iter.matchCount == 6);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(iter.betweenLastMatches.len == 0);
+        prb_assert(iter.match.len == 1);
+        prb_assert(iter.matchCount == 7);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(iter.betweenLastMatches.len == 0);
-    prb_assert(iter.match.len == 1);
-    prb_assert(iter.matchCount == 7);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line8")));
+        prb_assert(iter.match.len == 2);
+        prb_assert(iter.matchCount == 8);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line8")));
-    prb_assert(iter.betweenLastMatches.len == 5);
-    prb_assert(iter.match.len == 2);
-    prb_assert(iter.matchCount == 8);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(iter.betweenLastMatches.len == 0);
+        prb_assert(iter.match.len == 2);
+        prb_assert(iter.matchCount == 9);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(iter.betweenLastMatches.len == 0);
-    prb_assert(iter.match.len == 2);
-    prb_assert(iter.matchCount == 9);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line10")));
+        prb_assert(iter.match.len == 2);
+        prb_assert(iter.matchCount == 10);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line10")));
-    prb_assert(iter.betweenLastMatches.len == 6);
-    prb_assert(iter.match.len == 2);
-    prb_assert(iter.matchCount == 10);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(iter.betweenLastMatches.len == 0);
+        prb_assert(iter.match.len == 1);
+        prb_assert(iter.matchCount == 11);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(iter.betweenLastMatches.len == 0);
-    prb_assert(iter.match.len == 1);
-    prb_assert(iter.matchCount == 11);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line12")));
+        prb_assert(iter.match.len == 1);
+        prb_assert(iter.matchCount == 12);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line12")));
-    prb_assert(iter.betweenLastMatches.len == 6);
-    prb_assert(iter.match.len == 1);
-    prb_assert(iter.matchCount == 12);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(iter.betweenLastMatches.len == 0);
+        prb_assert(iter.match.len == 2);
+        prb_assert(iter.matchCount == 13);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(iter.betweenLastMatches.len == 0);
-    prb_assert(iter.match.len == 2);
-    prb_assert(iter.matchCount == 13);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line14")));
+        prb_assert(iter.match.len == 0);
+        prb_assert(iter.matchCount == 14);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(prb_strStartsWith(iter.betweenLastMatches, prb_STR("line14")));
-    prb_assert(iter.betweenLastMatches.len == 6);
-    prb_assert(iter.match.len == 0);
-    prb_assert(iter.matchCount == 14);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Failure);
+        prb_assert(iter.matchCount == 14);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Failure);
-    prb_assert(iter.matchCount == 14);
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_BeforeMatch));
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14")));
+        prb_assert(prb_streq(iter.beforeMatch, prb_STR("line1")));
+        prb_assert(iter.match.len == 2);
+        prb_assert(iter.matchCount == 15);
 
-    lines = prb_STR("\n");
-    iter = prb_createStrScanner(lines);
+        lineBreakSpec.direction = prb_StrDirection_FromEnd;
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch));
+        prb_assert(prb_streq(iter.afterMatch, prb_STR("line14")));
+        prb_assert(prb_streq(iter.betweenLastMatches, prb_STR("line2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r")));
+    }
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
-    prb_assert(iter.betweenLastMatches.len == 0);
-    prb_assert(iter.match.len == 1);
+    {
+        prb_Str        lines = prb_STR("\n");
+        prb_StrScanner iter = prb_createStrScanner(lines);
 
-    prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Failure);
+        prb_StrFindSpec lineBreakSpec = {};
+        lineBreakSpec.mode = prb_StrFindMode_LineBreak;
+
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
+        prb_assert(iter.betweenLastMatches.len == 0);
+        prb_assert(iter.match.len == 1);
+
+        prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Failure);
+    }
 }
 
 function void
@@ -1874,6 +1884,13 @@ test_getArgArrayFromStr(prb_Arena* arena, void* data) {
         prb_assert(prb_streq(prb_STR(args[2]), prb_STR("arg2")));
         prb_assert(prb_streq(prb_STR(args[3]), prb_STR("arg3")));
         prb_assert(args[4] == 0);
+        arrfree(args);
+    }
+
+    {
+        const char** args = prb_getArgArrayFromStr(arena, prb_STR("prg"));
+        prb_assert(arrlen(args) == 1);
+        prb_assert(prb_streq(prb_STR(args[0]), prb_STR("prg")));
         arrfree(args);
     }
 
@@ -2151,7 +2168,6 @@ assertArrsAreTheSame(prb_Arena* arena, prb_Str* arr1, prb_Str* arr2) {
 
 function void
 test_fileformat(prb_Arena* arena, void* data) {
-    // TODO(khvorov) rework with string scanner
     prb_unused(data);
     prb_TempMemory           temp = prb_beginTempMemory(arena);
     prb_Str                  fileParent = prb_getParentDir(arena, prb_STR(__FILE__));
@@ -2171,20 +2187,15 @@ test_fileformat(prb_Arena* arena, void* data) {
             prb_Str name = prb_fmt(arena, "%.*s", prb_LIT(lineIter.betweenLastMatches));
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_PUBLICDEC"))) {
-            prb_StrFindSpec spec = {};
-            spec.pattern = prb_STR("(");
-            spec.mode = prb_StrFindMode_AnyChar;
-            spec.direction = prb_StrDirection_FromStart;
-            prb_StrFindResult onePastNameEndRes = prb_strFind(lineIter.betweenLastMatches, spec);
-            prb_assert(onePastNameEndRes.found);
-            prb_Str win = {lineIter.betweenLastMatches.ptr, onePastNameEndRes.beforeMatch.len};
-            spec.pattern = prb_STR(" ");
-            spec.direction = prb_StrDirection_FromEnd;
-            prb_StrFindResult nameStartRes = prb_strFind(win, spec);
-            prb_assert(nameStartRes.found);
-            win = prb_strSlice(win, nameStartRes.beforeMatch.len + 1, win.len);
-            prb_Str name = prb_fmt(arena, "%.*s", win.len, win.ptr);
-            arrput(headerNames, name);
+            prb_StrScanner  scanner = prb_createStrScanner(lineIter.betweenLastMatches);
+            prb_StrFindSpec bracket = {};
+            bracket.pattern = prb_STR("(");
+            prb_assert(prb_strScannerMove(&scanner, bracket, prb_StrScannerSide_AfterMatch));
+            prb_StrFindSpec space = {};
+            space.pattern = prb_STR(" ");
+            space.direction = prb_StrDirection_FromEnd;
+            prb_assert(prb_strScannerMove(&scanner, space, prb_StrScannerSide_BeforeMatch));
+            arrput(headerNames, scanner.betweenLastMatches);
         } else if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("#ifndef prb_NO_IMPLEMENTATION"))) {
             break;
         }
@@ -2197,23 +2208,17 @@ test_fileformat(prb_Arena* arena, void* data) {
         if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("// SECTION"))) {
             prb_StrFindSpec spec = {};
             spec.pattern = prb_STR(" (implementation)");
-            spec.mode = prb_StrFindMode_Exact;
-            spec.direction = prb_StrDirection_FromStart;
             prb_StrFindResult implementationRes = prb_strFind(lineIter.betweenLastMatches, spec);
             prb_assert(implementationRes.found);
-            prb_Str name = prb_fmt(arena, "%.*s", implementationRes.beforeMatch.len, lineIter.betweenLastMatches.ptr);
-            arrput(implNames, name);
+            arrput(implNames, implementationRes.beforeMatch);
         } else if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_PUBLICDEF"))) {
             prb_assert(prb_strScannerMove(&lineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
             prb_assert(prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_")));
             prb_StrFindSpec spec = {};
             spec.pattern = prb_STR("(");
-            spec.mode = prb_StrFindMode_AnyChar;
-            spec.direction = prb_StrDirection_FromStart;
             prb_StrFindResult nameLenRes = prb_strFind(lineIter.betweenLastMatches, spec);
             prb_assert(nameLenRes.found);
-            prb_Str name = prb_fmt(arena, "%.*s", nameLenRes.beforeMatch.len, lineIter.betweenLastMatches.ptr);
-            arrput(implNames, name);
+            arrput(implNames, nameLenRes.beforeMatch);
         }
     }
 
@@ -2235,11 +2240,9 @@ test_fileformat(prb_Arena* arena, void* data) {
         } else if (prb_strStartsWith(testFileLineIter.betweenLastMatches, testFunctionsPrefix)) {
             prb_StrFindSpec bracketSpec = {};
             bracketSpec.pattern = prb_STR("(");
-            bracketSpec.mode = prb_StrFindMode_AnyChar;
             prb_StrFindResult bracket = prb_strFind(testFileLineIter.betweenLastMatches, bracketSpec);
             prb_assert(bracket.found);
-            prb_Str name = prb_strSlice(testFileLineIter.betweenLastMatches, testFunctionsPrefix.len, bracket.beforeMatch.len);
-            testNameToPrbName(arena, name, &testNames);
+            testNameToPrbName(arena, bracket.beforeMatch, &testNames);
         }
     }
 
@@ -2249,7 +2252,7 @@ test_fileformat(prb_Arena* arena, void* data) {
 
     prb_Str* testNamesInMain = 0;
     while (prb_strScannerMove(&testFileLineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch)) {
-        prb_Str testCall = prb_STR("    arrput(jobs, prb_createJob(test_");
+        prb_Str testCall = prb_STR("    arrput(jobs, prb_createJob(");
         if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("    // SECTION"))) {
             if (prb_streq(testFileLineIter.betweenLastMatches, prb_STR("    // SECTION Fileformat"))) {
                 break;
@@ -2257,14 +2260,14 @@ test_fileformat(prb_Arena* arena, void* data) {
                 arrput(testNamesInMain, prb_strSlice(testFileLineIter.betweenLastMatches, 4, testFileLineIter.betweenLastMatches.len));
             }
         } else if (prb_strStartsWith(testFileLineIter.betweenLastMatches, testCall)) {
-            prb_Str         nameOn = prb_strSlice(testFileLineIter.betweenLastMatches, testCall.len, testFileLineIter.betweenLastMatches.len);
-            prb_StrFindSpec commaSpec = {};
-            commaSpec.pattern = prb_STR(",");
-            commaSpec.mode = prb_StrFindMode_AnyChar;
-            prb_StrFindResult comma = prb_strFind(nameOn, commaSpec);
-            prb_assert(comma.found);
-            prb_Str name = prb_strSlice(nameOn, 0, comma.beforeMatch.len);
-            testNameToPrbName(arena, name, &testNamesInMain);
+            prb_Str nameOn = prb_strSlice(testFileLineIter.betweenLastMatches, testCall.len, testFileLineIter.betweenLastMatches.len);
+            if (prb_strStartsWith(nameOn, prb_STR("test_"))) {
+                prb_StrFindSpec commaSpec = {};
+                commaSpec.pattern = prb_STR(",");
+                prb_StrFindResult comma = prb_strFind(nameOn, commaSpec);
+                prb_assert(comma.found);
+                testNameToPrbName(arena, comma.beforeMatch, &testNamesInMain);
+            }
         } else if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("    test_setWorkingDir"))) {
             arrput(testNamesInMain, prb_STR("prb_setWorkingDir"));
         } else if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("    test_env"))) {

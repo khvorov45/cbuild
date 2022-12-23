@@ -314,13 +314,18 @@ typedef enum prb_StrScannerSide {
 typedef struct prb_StrFindSpec {
     prb_StrFindMode  mode;
     prb_StrDirection direction;
-    prb_Str          pattern;
+    // Not necessary if mode is LineBreak
+    prb_Str pattern;
+    // Only for mode AnyChar. When true, encountering end of string will result in a match.
+    bool alwaysMatchEnd;
 } prb_StrFindSpec;
 
 typedef struct prb_StrFindResult {
     bool    found;
+    // In a left-to-right system `beforeMatch` is to the left of match
     prb_Str beforeMatch;
     prb_Str match;
+    // In a left-to-right system `afterMatch` is to the right of match
     prb_Str afterMatch;
 } prb_StrFindResult;
 
@@ -1905,21 +1910,34 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
         } break;
 
         case prb_StrFindMode_AnyChar: {
-            for (prb_Utf8CharIter iter = prb_createUtf8CharIter(str, spec.direction);
-                 prb_utf8CharIterNext(&iter) == prb_Success && !result.found;) {
-                if (iter.curIsValid) {
-                    for (prb_Utf8CharIter patIter = prb_createUtf8CharIter(spec.pattern, prb_StrDirection_FromStart);
-                         prb_utf8CharIterNext(&patIter) == prb_Success && !result.found;) {
-                        if (patIter.curIsValid) {
-                            if (iter.curUtf32Char == patIter.curUtf32Char) {
-                                result.found = true;
-                                result.beforeMatch = prb_strSlice(str, 0, iter.curByteOffset);
-                                result.match = prb_strSlice(str, iter.curByteOffset, iter.curByteOffset + iter.curUtf8Bytes);
-                                result.afterMatch = prb_strSlice(str, iter.curByteOffset + iter.curUtf8Bytes, str.len);
-                                break;
+            if (str.len > 0) {
+                for (prb_Utf8CharIter iter = prb_createUtf8CharIter(str, spec.direction);
+                    prb_utf8CharIterNext(&iter) == prb_Success && !result.found;) {
+                    if (iter.curIsValid) {
+                        for (prb_Utf8CharIter patIter = prb_createUtf8CharIter(spec.pattern, prb_StrDirection_FromStart);
+                            prb_utf8CharIterNext(&patIter) == prb_Success && !result.found;) {
+                            if (patIter.curIsValid) {
+                                if (iter.curUtf32Char == patIter.curUtf32Char) {
+                                    result.found = true;
+                                    result.beforeMatch = prb_strSlice(str, 0, iter.curByteOffset);
+                                    result.match = prb_strSlice(str, iter.curByteOffset, iter.curByteOffset + iter.curUtf8Bytes);
+                                    result.afterMatch = prb_strSlice(str, iter.curByteOffset + iter.curUtf8Bytes, str.len);
+                                    break;
+                                }
                             }
                         }
                     }
+                }
+
+                if (!result.found && spec.alwaysMatchEnd) {
+                    int32_t matchPos = str.len;
+                    if (spec.direction == prb_StrDirection_FromEnd) {
+                        matchPos = 0;
+                    }
+                    result.found = true;
+                    result.beforeMatch = prb_strSlice(str, 0, matchPos);
+                    result.match = prb_strSlice(str, matchPos, matchPos);
+                    result.afterMatch = prb_strSlice(str, matchPos, str.len);
                 }
             }
         } break;
@@ -1964,12 +1982,6 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
                 result.beforeMatch = prb_strSlice(str, 0, lineEndIndex);
                 result.match = prb_strSlice(str, lineEndIndex, lineEndIndex + lineEndLen);
                 result.afterMatch = prb_strSlice(str, lineEndIndex + lineEndLen, str.len);
-
-                if (spec.direction == prb_StrDirection_FromEnd) {
-                    prb_Str temp = result.beforeMatch;
-                    result.beforeMatch = result.afterMatch;
-                    result.afterMatch = temp;
-                }
             }
         }
     }
@@ -2282,6 +2294,10 @@ prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec, prb_StrScanner
     prb_StrFindResult find = prb_strFind(search, spec);
     if (find.found) {
         scanner->betweenLastMatches = find.beforeMatch;
+        if (side == prb_StrScannerSide_BeforeMatch) {
+            scanner->betweenLastMatches = find.afterMatch;
+        }
+    
         scanner->match = find.match;
         scanner->matchCount += 1;
 
@@ -2438,29 +2454,15 @@ prb_PUBLICDEF const char**
 prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
     const char** args = 0;
 
-    // TODO(khvorov) Rework with string scanner
     {
-        prb_StrFindSpec spec = {};
-        spec.pattern = prb_STR(" ");
-        spec.mode = prb_StrFindMode_AnyChar;
-        spec.direction = prb_StrDirection_FromStart;
-
-        while (str.len > 0) {
-            prb_StrFindResult spaceFind = prb_strFind(str, spec);
-            int32_t           onePastWordEnd = 0;
-            if (spaceFind.found) {
-                onePastWordEnd = spaceFind.beforeMatch.len;
-            } else {
-                onePastWordEnd = str.len;
-            }
-            prb_Str arg = prb_strSlice(str, 0, onePastWordEnd);
-            if (arg.len > 0) {
-                const char* argNull = prb_fmt(arena, "%.*s", prb_LIT(arg)).ptr;
+        prb_StrScanner scanner = prb_createStrScanner(str);
+        prb_StrFindSpec space = {};
+        space.pattern = prb_STR(" ");
+        space.alwaysMatchEnd = true;
+        while (prb_strScannerMove(&scanner, space, prb_StrScannerSide_AfterMatch)) {
+            if (scanner.betweenLastMatches.len > 0) {
+                const char* argNull = prb_fmt(arena, "%.*s", prb_LIT(scanner.betweenLastMatches)).ptr;
                 prb_stbds_arrput(args, argNull);
-            }
-            str = prb_strSlice(str, onePastWordEnd, str.len);
-            while (str.len > 0 && str.ptr[0] == ' ') {
-                str = prb_strSlice(str, 1, str.len);
             }
         }
     }
