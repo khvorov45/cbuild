@@ -1100,14 +1100,13 @@ main() {
     arrput(compileJobs, prb_createJob(compileStaticLib, &harfbuzz, arena, 50 * prb_MEGABYTE));
     arrput(compileJobs, prb_createJob(compileStaticLib, &sdl, arena, 50 * prb_MEGABYTE));
     {
-        int32_t maxExtra = arrlen(compileJobs);
+        prb_ThreadMode threadMode = prb_ThreadMode_Multi;
         // NOTE(khvorov) Buggy debuggers can't always handle threads
         if (prb_debuggerPresent(arena)) {
-            maxExtra = 0;
+            threadMode = prb_ThreadMode_Single;
         }
-        prb_ConcurrencyLimiter limiter = prb_createConcurrencyLimiter(maxExtra);
-        prb_assert(prb_launchJobs(compileJobs, arrlen(compileJobs), &limiter) == prb_Success);
-        prb_assert(prb_waitForJobs(compileJobs, arrlen(compileJobs)) == prb_Success);
+        prb_assert(prb_launchJobs(compileJobs, arrlen(compileJobs), threadMode));
+        prb_assert(prb_waitForJobs(compileJobs, arrlen(compileJobs)));
     }
 
     prb_assert(fribidi.compileStatus == prb_ProcessStatus_CompletedSuccess);

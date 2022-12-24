@@ -55,7 +55,6 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_writelnToStdout"));
         arrput(*prbNames, prb_STR("prb_colorEsc"));
     } else if (prb_streq(testName, prb_STR("test_process"))) {
-        arrput(*prbNames, prb_STR("prb_createConcurrencyLimiter"));
         arrput(*prbNames, prb_STR("prb_createProcess"));
         arrput(*prbNames, prb_STR("prb_launchProcesses"));
         arrput(*prbNames, prb_STR("prb_waitForProcesses"));
@@ -2105,8 +2104,7 @@ test_jobs(prb_Arena* arena, void* data) {
             arrput(jobs, prb_createJob(foreverJob, data, arena, 0));
         }
 
-        prb_ConcurrencyLimiter limiter = prb_createConcurrencyLimiter(0);
-        prb_assert(prb_launchJobs(jobs, jobCount, &limiter));
+        prb_assert(prb_launchJobs(jobs, jobCount, prb_ThreadMode_Multi));
         prb_assert(prb_waitForJobs(jobs, jobCount));
     }
 }
@@ -2440,13 +2438,12 @@ main() {
     arrput(jobs, prb_createJob(test_fileformat, 0, arena, 10 * prb_MEGABYTE));
 
     // NOTE(khvorov) Running multithreaded is not necessarily faster here but it does test that codepath
-    int32_t maxExtra = arrlen(jobs);
+    prb_ThreadMode threadMode = prb_ThreadMode_Multi;
     if (prb_debuggerPresent(arena)) {
-        maxExtra = 0;
+        threadMode = prb_ThreadMode_Single;
     }
-    prb_ConcurrencyLimiter limiter = prb_createConcurrencyLimiter(maxExtra);
-    prb_assert(prb_launchJobs(jobs, arrlen(jobs), &limiter) == prb_Success);
-    prb_assert(prb_waitForJobs(jobs, arrlen(jobs)) == prb_Success);
+    prb_assert(prb_launchJobs(jobs, arrlen(jobs), threadMode));
+    prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
 
     prb_assert(arena->tempCount == 0);
     prb_assert(arena->base == baseStart);
