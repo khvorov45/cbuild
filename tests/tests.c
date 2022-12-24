@@ -58,6 +58,10 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_createProcess"));
         arrput(*prbNames, prb_STR("prb_launchProcesses"));
         arrput(*prbNames, prb_STR("prb_waitForProcesses"));
+    } else if (prb_streq(testName, prb_STR("test_jobs"))) {
+        arrput(*prbNames, prb_STR("prb_createJob"));
+        arrput(*prbNames, prb_STR("prb_launchJobs"));
+        arrput(*prbNames, prb_STR("prb_waitForJobs"));
     } else {
         prb_assert(prb_strStartsWith(testName, prb_STR("test_")));
         prb_Str noPrefix = prb_strSlice(testName, 5, testName.len);
@@ -2046,14 +2050,7 @@ test_getMsFrom(prb_Arena* arena, void* data) {
 //
 
 function void
-test_createJob(prb_Arena* arena, void* data) {
-    prb_unused(data);
-    prb_unused(arena);
-    // TODO(khvorov) Write
-}
-
-function void
-test_execJobs(prb_Arena* arena, void* data) {
+test_jobs(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_unused(arena);
     // TODO(khvorov) Write
@@ -2376,8 +2373,7 @@ main() {
     arrput(jobs, prb_createJob(test_getMsFrom, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Multithreading
-    arrput(jobs, prb_createJob(test_createJob, 0, arena, 10 * prb_MEGABYTE));
-    arrput(jobs, prb_createJob(test_execJobs, 0, arena, 10 * prb_MEGABYTE));
+    arrput(jobs, prb_createJob(test_jobs, 0, arena, 10 * prb_MEGABYTE));
 
     // SECTION Random numbers
     arrput(jobs, prb_createJob(test_createRng, 0, arena, 10 * prb_MEGABYTE));
@@ -2390,7 +2386,8 @@ main() {
 
     // NOTE(khvorov) Running multithreaded is not necessarily faster here but it does test that codepath
     prb_ThreadMode threadMode = prb_debuggerPresent(arena) ? prb_ThreadMode_Single : prb_ThreadMode_Multi;
-    prb_assert(prb_execJobs(jobs, arrlen(jobs), threadMode) == prb_Success);
+    prb_assert(prb_launchJobs(jobs, arrlen(jobs), threadMode) == prb_Success);
+    prb_assert(prb_waitForJobs(jobs, arrlen(jobs)) == prb_Success);
 
     prb_assert(arena->tempCount == 0);
     prb_assert(arena->base == baseStart);

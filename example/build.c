@@ -1105,7 +1105,8 @@ main() {
         if (prb_debuggerPresent(arena)) {
             mode = prb_ThreadMode_Single;
         }
-        prb_assert(prb_execJobs(compileJobs, arrlen(compileJobs), mode) == prb_Success);
+        prb_assert(prb_launchJobs(compileJobs, arrlen(compileJobs), mode) == prb_Success);
+        prb_assert(prb_waitForJobs(compileJobs, arrlen(compileJobs)) == prb_Success);
     }
 
     prb_assert(fribidi.compileStatus == prb_ProcessStatus_CompletedSuccess);

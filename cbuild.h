@@ -37,7 +37,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 // TODO(khvorov) Ability to check/change file executable permissions
 // TODO(khvorov) A way to limit the number of cores used when executing jobs/processes
 // TODO(khvorov) Small example in readme and doc comment. Probably actually test it works.
-// TODO(khvorov) Make multithread api similar to launching multiple processes
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
@@ -378,13 +377,19 @@ typedef struct prb_FileHash {
     uint64_t hash;
 } prb_FileHash;
 
+typedef enum prb_JobStatus {
+    prb_JobStatus_NotLaunched,
+    prb_JobStatus_Launched,
+    prb_JobStatus_Completed,
+} prb_JobStatus;
+
 typedef void (*prb_JobProc)(prb_Arena* arena, void* data);
 
 typedef struct prb_Job {
     prb_Arena         arena;
     prb_JobProc       proc;
     void*             data;
-    prb_ProcessStatus status;
+    prb_JobStatus     status;
 
 #if prb_PLATFORM_WINDOWS
 #error unimplemented
@@ -519,7 +524,8 @@ prb_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
 
 // SECTION Multithreading
 prb_PUBLICDEC prb_Job    prb_createJob(prb_JobProc proc, void* data, prb_Arena* arena, int32_t arenaBytes);
-prb_PUBLICDEC prb_Status prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode);
+prb_PUBLICDEC prb_Status prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode);
+prb_PUBLICDEC prb_Status prb_waitForJobs(prb_Job* jobs, int32_t jobsCount);
 
 // SECTION Random numbers
 prb_PUBLICDEC prb_Rng  prb_createRng(uint32_t seed);
@@ -2777,7 +2783,7 @@ prb_getMsFrom(prb_TimeStart timeStart) {
 static void*
 prb_linux_pthreadProc(void* data) {
     prb_Job* job = (prb_Job*)data;
-    prb_assert(job->status == prb_ProcessStatus_Launched);
+    prb_assert(job->status == prb_JobStatus_Launched);
     job->proc(&job->arena, job->data);
     return 0;
 }
@@ -2794,7 +2800,7 @@ prb_createJob(prb_JobProc proc, void* data, prb_Arena* arena, int32_t arenaBytes
 }
 
 prb_PUBLICDEF prb_Status
-prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
+prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
     prb_Status result = prb_Success;
 
 #if prb_PLATFORM_WINDOWS
@@ -2807,8 +2813,8 @@ prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
         case prb_ThreadMode_Single: {
             for (int32_t jobIndex = 0; jobIndex < jobsCount && result == prb_Success; jobIndex++) {
                 prb_Job* job = jobs + jobIndex;
-                if (job->status == prb_ProcessStatus_NotLaunched) {
-                    job->status = prb_ProcessStatus_Launched;
+                if (job->status == prb_JobStatus_NotLaunched) {
+                    job->status = prb_JobStatus_Launched;
                     prb_linux_pthreadProc(job);
                 }
             }
@@ -2817,20 +2823,9 @@ prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
         case prb_ThreadMode_Multi: {
             for (int32_t jobIndex = 0; jobIndex < jobsCount && result == prb_Success; jobIndex++) {
                 prb_Job* job = jobs + jobIndex;
-                if (job->status == prb_ProcessStatus_NotLaunched) {
-                    job->status = prb_ProcessStatus_Launched;
+                if (job->status == prb_JobStatus_NotLaunched) {
+                    job->status = prb_JobStatus_Launched;
                     if (pthread_create(&job->threadid, 0, prb_linux_pthreadProc, job) != 0) {
-                        result = prb_Failure;
-                    }
-                }
-            }
-
-            for (int32_t jobIndex = 0; jobIndex < jobsCount; jobIndex++) {
-                prb_Job* job = jobs + jobIndex;
-                if (job->status == prb_ProcessStatus_Launched) {
-                    if (pthread_join(job->threadid, 0) == 0) {
-                        job->status = prb_ProcessStatus_CompletedSuccess;
-                    } else {
                         result = prb_Failure;
                     }
                 }
@@ -2841,6 +2836,35 @@ prb_execJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
 #else
 #error unimplemented
 #endif
+
+    return result;
+}
+
+prb_PUBLICDEF prb_Status 
+prb_waitForJobs(prb_Job* jobs, int32_t jobsCount) {
+    prb_Status result = prb_Success;
+    for (int32_t jobIndex = 0; jobIndex < jobsCount; jobIndex++) {
+        prb_Job* job = jobs + jobIndex;
+        prb_assert(job->status != prb_JobStatus_NotLaunched);
+        if (job->status == prb_JobStatus_Launched) {
+
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+            if (pthread_join(job->threadid, 0) == 0) {
+                job->status = prb_JobStatus_Completed;
+            } else {
+                result = prb_Failure;
+            }
+
+#else
+#error unimplemented
+#endif
+        }
+    }    
 
     return result;
 }

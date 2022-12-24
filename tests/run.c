@@ -484,7 +484,8 @@ main() {
             }
         }
 
-        prb_assert(prb_execJobs(jobs, arrlen(jobs), prb_ThreadMode_Multi));
+        prb_assert(prb_launchJobs(jobs, arrlen(jobs), prb_ThreadMode_Multi));
+        prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
 
         // NOTE(khvorov) Print result of static analysis
         prb_assert(prb_waitForProcesses(&staticAnalysisProc, 1));
