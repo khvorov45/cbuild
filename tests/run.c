@@ -484,7 +484,8 @@ main() {
             }
         }
 
-        prb_assert(prb_launchJobs(jobs, arrlen(jobs), prb_ThreadMode_Multi));
+        prb_ConcurrencyLimiter limiter = prb_createConcurrencyLimiter(0);
+        prb_assert(prb_launchJobs(jobs, arrlen(jobs), &limiter));
         prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
 
         // NOTE(khvorov) Print result of static analysis

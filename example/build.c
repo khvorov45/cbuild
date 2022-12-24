@@ -1100,12 +1100,13 @@ main() {
     arrput(compileJobs, prb_createJob(compileStaticLib, &harfbuzz, arena, 50 * prb_MEGABYTE));
     arrput(compileJobs, prb_createJob(compileStaticLib, &sdl, arena, 50 * prb_MEGABYTE));
     {
-        prb_ThreadMode mode = prb_ThreadMode_Multi;
+        int32_t maxExtra = arrlen(compileJobs);
         // NOTE(khvorov) Buggy debuggers can't always handle threads
         if (prb_debuggerPresent(arena)) {
-            mode = prb_ThreadMode_Single;
+            maxExtra = 0;
         }
-        prb_assert(prb_launchJobs(compileJobs, arrlen(compileJobs), mode) == prb_Success);
+        prb_ConcurrencyLimiter limiter = prb_createConcurrencyLimiter(maxExtra);
+        prb_assert(prb_launchJobs(compileJobs, arrlen(compileJobs), &limiter) == prb_Success);
         prb_assert(prb_waitForJobs(compileJobs, arrlen(compileJobs)) == prb_Success);
     }
 

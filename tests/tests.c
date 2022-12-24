@@ -55,6 +55,7 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_writelnToStdout"));
         arrput(*prbNames, prb_STR("prb_colorEsc"));
     } else if (prb_streq(testName, prb_STR("test_process"))) {
+        arrput(*prbNames, prb_STR("prb_createConcurrencyLimiter"));
         arrput(*prbNames, prb_STR("prb_createProcess"));
         arrput(*prbNames, prb_STR("prb_launchProcesses"));
         arrput(*prbNames, prb_STR("prb_waitForProcesses"));
@@ -1902,9 +1903,6 @@ test_process(prb_Arena* arena, void* data) {
 
     prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_clearDir(arena, dir));
-    prb_Str helloWorldPath = prb_pathJoin(arena, dir, prb_STR("helloworld.c"));
-    prb_Str helloWorld = prb_STR("#include <stdio.h>\nint main() {printf(\"hello world\\n\"); fflush(stdout); fprintf(stderr, \"stderrout\\n\"); return 0;}");
-    prb_assert(prb_writeEntireFile(arena, helloWorldPath, helloWorld.ptr, helloWorld.len));
 
 #if prb_PLATFORM_WINDOWS
     prb_Str exeExt = prb_STR("exe");
@@ -1914,74 +1912,112 @@ test_process(prb_Arena* arena, void* data) {
 #error unimplemented
 #endif
 
-    prb_Str helloExe = prb_replaceExt(arena, helloWorldPath, exeExt);
-    prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(helloWorldPath), prb_LIT(helloExe));
-
     {
-        prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
-        prb_assert(prb_launchProcesses(arena, &proc, 1));
-        prb_assert(prb_waitForProcesses(&proc, 1));
-    }
+        prb_Str helloWorldPath = prb_pathJoin(arena, dir, prb_STR("helloworld.c"));
+        prb_Str helloWorld = prb_STR("#include <stdio.h>\nint main() {printf(\"hello world\\n\"); fflush(stdout); fprintf(stderr, \"stderrout\\n\"); return 0;}");
+        prb_assert(prb_writeEntireFile(arena, helloWorldPath, helloWorld.ptr, helloWorld.len));
 
-    {
-        prb_ProcessSpec spec = {};
-        spec.redirectStdout = true;
-        spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
-        spec.redirectStderr = true;
-        prb_Process proc = prb_createProcess(helloExe, spec);
-        prb_assert(prb_launchProcesses(arena, &proc, 1));
-        prb_assert(prb_waitForProcesses(&proc, 1));
-        prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
-        prb_assert(readRes.success);
-        prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\n")));
-    }
+        prb_Str helloExe = prb_replaceExt(arena, helloWorldPath, exeExt);
+        prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(helloWorldPath), prb_LIT(helloExe));
 
-    {
-        prb_ProcessSpec spec = {};
-        spec.redirectStderr = true;
-        spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
-        spec.redirectStdout = true;
-        prb_Process proc = prb_createProcess(helloExe, spec);
-        prb_assert(prb_launchProcesses(arena, &proc, 1));
-        prb_assert(prb_waitForProcesses(&proc, 1));
-        prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stderrFilepath);
-        prb_assert(readRes.success);
-        prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("stderrout\n")));
-    }
-
-    {
-        prb_ProcessSpec spec = {};
-        spec.redirectStdout = true;
-        spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
-        spec.redirectStderr = true;
-        spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
-        prb_Process proc = prb_createProcess(helloExe, spec);
-        prb_assert(prb_launchProcesses(arena, &proc, 1));
-        prb_assert(prb_waitForProcesses(&proc, 1));
         {
+            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1));
+            prb_assert(prb_waitForProcesses(&proc, 1));
+        }
+
+        {
+            prb_ProcessSpec spec = {};
+            spec.redirectStdout = true;
+            spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
+            spec.redirectStderr = true;
+            prb_Process proc = prb_createProcess(helloExe, spec);
+            prb_assert(prb_launchProcesses(arena, &proc, 1));
+            prb_assert(prb_waitForProcesses(&proc, 1));
             prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
             prb_assert(readRes.success);
             prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\n")));
         }
+
         {
+            prb_ProcessSpec spec = {};
+            spec.redirectStderr = true;
+            spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
+            spec.redirectStdout = true;
+            prb_Process proc = prb_createProcess(helloExe, spec);
+            prb_assert(prb_launchProcesses(arena, &proc, 1));
+            prb_assert(prb_waitForProcesses(&proc, 1));
             prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stderrFilepath);
             prb_assert(readRes.success);
             prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("stderrout\n")));
         }
+
+        {
+            prb_ProcessSpec spec = {};
+            spec.redirectStdout = true;
+            spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
+            spec.redirectStderr = true;
+            spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
+            prb_Process proc = prb_createProcess(helloExe, spec);
+            prb_assert(prb_launchProcesses(arena, &proc, 1));
+            prb_assert(prb_waitForProcesses(&proc, 1));
+            {
+                prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
+                prb_assert(readRes.success);
+                prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\n")));
+            }
+            {
+                prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stderrFilepath);
+                prb_assert(readRes.success);
+                prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("stderrout\n")));
+            }
+        }
+
+        {
+            prb_ProcessSpec spec = {};
+            spec.redirectStdout = true;
+            spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
+            spec.redirectStderr = true;
+            spec.stderrFilepath = spec.stdoutFilepath;
+            prb_Process proc = prb_createProcess(helloExe, spec);
+            prb_assert(prb_launchProcesses(arena, &proc, 1));
+            prb_assert(prb_waitForProcesses(&proc, 1));
+            prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
+            prb_assert(readRes.success);
+            prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\nstderrout\n")));
+        }
     }
 
-    {
-        prb_ProcessSpec spec = {};
-        spec.redirectStdout = true;
-        spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
-        spec.redirectStderr = true;
-        spec.stderrFilepath = spec.stdoutFilepath;
-        prb_Process proc = prb_createProcess(helloExe, spec);
-        prb_assert(prb_launchProcesses(arena, &proc, 1));
-        prb_assert(prb_waitForProcesses(&proc, 1));
-        prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
-        prb_assert(readRes.success);
-        prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\nstderrout\n")));
+    // TODO(khvorov) Run when we have concurrency limiter for processes
+    if (false) {
+        prb_Str programPath = prb_pathJoin(arena, dir, prb_STR("forever.c"));
+#if prb_PLATFORM_WINDOWS
+#error unimplemented
+#elif prb_PLATFORM_LINUX
+        prb_Str program = prb_STR("unsigned int sleep(unsigned int seconds);\nint main() {for (;;) {} return 0;}");
+#else
+#error unimplemented
+#endif
+        prb_assert(prb_writeEntireFile(arena, programPath, program.ptr, program.len));
+
+        prb_Str programExe = prb_replaceExt(arena, programPath, exeExt);
+        prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(programPath), prb_LIT(programExe));
+
+        {
+            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1));
+            prb_assert(prb_waitForProcesses(&proc, 1));
+        }
+
+        {
+            i32          procCount = 100;
+            prb_Process* procs = 0;
+            for (i32 procIndex = 0; procIndex < procCount; procIndex++) {
+                arrput(procs, prb_createProcess(programExe, (prb_ProcessSpec) {}));
+            }
+            prb_assert(prb_launchProcesses(arena, procs, procCount));
+            prb_assert(prb_waitForProcesses(procs, procCount));
+        }
     }
 
     prb_removeDirIfExists(arena, dir);
@@ -2050,10 +2086,29 @@ test_getMsFrom(prb_Arena* arena, void* data) {
 //
 
 function void
+foreverJob(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    for (;;) {}
+}
+
+function void
 test_jobs(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_unused(arena);
-    // TODO(khvorov) Write
+
+    // TODO(khvorov) Finish
+    if (false) {
+        prb_Job* jobs = 0;
+        i32      jobCount = 100;
+        for (i32 jobIndex = 0; jobIndex < jobCount; jobIndex++) {
+            arrput(jobs, prb_createJob(foreverJob, data, arena, 0));
+        }
+
+        prb_ConcurrencyLimiter limiter = prb_createConcurrencyLimiter(0);
+        prb_assert(prb_launchJobs(jobs, jobCount, &limiter));
+        prb_assert(prb_waitForJobs(jobs, jobCount));
+    }
 }
 
 // SECTION Random numbers
@@ -2385,8 +2440,12 @@ main() {
     arrput(jobs, prb_createJob(test_fileformat, 0, arena, 10 * prb_MEGABYTE));
 
     // NOTE(khvorov) Running multithreaded is not necessarily faster here but it does test that codepath
-    prb_ThreadMode threadMode = prb_debuggerPresent(arena) ? prb_ThreadMode_Single : prb_ThreadMode_Multi;
-    prb_assert(prb_launchJobs(jobs, arrlen(jobs), threadMode) == prb_Success);
+    int32_t maxExtra = arrlen(jobs);
+    if (prb_debuggerPresent(arena)) {
+        maxExtra = 0;
+    }
+    prb_ConcurrencyLimiter limiter = prb_createConcurrencyLimiter(maxExtra);
+    prb_assert(prb_launchJobs(jobs, arrlen(jobs), &limiter) == prb_Success);
     prb_assert(prb_waitForJobs(jobs, arrlen(jobs)) == prb_Success);
 
     prb_assert(arena->tempCount == 0);
