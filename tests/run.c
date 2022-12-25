@@ -246,6 +246,10 @@ main() {
     globalTestsDir = prb_getParentDir(arena, prb_STR(__FILE__));
     prb_Str rootDir = prb_getParentDir(arena, globalTestsDir);
 
+    if (!runningOnCi) {
+        prb_assert(prb_preventExecutionOnCores(arena, 1));
+    }
+
     // NOTE(khvorov) Remove artifacts
     {
         prb_Str* entries = prb_getAllDirEntries(arena, globalTestsDir, prb_Recursive_No);

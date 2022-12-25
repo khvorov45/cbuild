@@ -34,7 +34,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 // TODO(khvorov) strReplace should just take a position and a length of the replacement
 // TODO(khvorov) strReplace should probably handle multiple replacements
 // TODO(khvorov) Ability to check/change file executable permissions
-// TODO(khvorov) A way to limit the number of cores used when executing jobs/processes
 // TODO(khvorov) Small example in readme and doc comment. Probably actually test it works.
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
@@ -508,6 +507,7 @@ prb_PUBLICDEC void             prb_terminate(int32_t code);
 prb_PUBLICDEC prb_Str          prb_getCmdline(prb_Arena* arena);
 prb_PUBLICDEC prb_Str*         prb_getCmdArgs(prb_Arena* arena);
 prb_PUBLICDEC const char**     prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str);
+prb_PUBLICDEC prb_Status       prb_preventExecutionOnCores(prb_Arena* arena, int32_t coreCount);
 prb_PUBLICDEC prb_Process      prb_createProcess(prb_Str cmd, prb_ProcessSpec spec);
 prb_PUBLICDEC prb_Status       prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb_Background mode);
 prb_PUBLICDEC prb_Status       prb_waitForProcesses(prb_Process* handles, int32_t handleCount);
@@ -2464,6 +2464,63 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
     args[prb_stbds_arrlen(args)] = 0;
 
     return args;
+}
+
+prb_PUBLICDEF prb_Status
+prb_preventExecutionOnCores(prb_Arena* arena, int32_t coreCount) {
+    prb_Status result = prb_Failure;
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_unused(coreCount);
+
+#if prb_PLATFORM_WINDOWS
+#error unimplemented
+#elif prb_PLATFORM_LINUX
+
+    // NOTE(khvorov) The syscall is picky about alignment and can't handle buffers that are too big.
+    // I don't know how big is too big but a megabyte is apparently not too big.
+    int32_t reqAlign = alignof(unsigned long);
+    prb_arenaAlignFreePtr(arena, reqAlign);
+    unsigned long* affinity = (unsigned long*)prb_arenaFreePtr(arena);
+    int32_t arenaSize = prb_arenaFreeSize(arena);
+    int32_t arenaSizeAligned = arenaSize & (~(reqAlign - 1));
+    int32_t sizeReduced = prb_min(arenaSizeAligned, prb_MEGABYTE);
+    int bytesWritten = syscall(SYS_sched_getaffinity, 0, sizeReduced, affinity);
+    if (bytesWritten > 0) {
+        int32_t setBits = 0;
+        for (int32_t byteIndex = 0; byteIndex < bytesWritten; byteIndex++) {
+            uint8_t byte = ((uint8_t*)affinity)[byteIndex];
+            for (int32_t bitIndex = 0; bitIndex < 8; bitIndex++) {
+                uint8_t mask = 1 << bitIndex;
+                setBits += (byte & mask) != 0;
+            }
+        }
+        
+        int32_t coresToUnschedule = prb_min(coreCount, setBits - 1);
+        for (int32_t byteIndex = 0; byteIndex < bytesWritten && coresToUnschedule > 0; byteIndex++) {
+            uint8_t byte = ((uint8_t*)affinity)[byteIndex];
+            for (int32_t bitIndex = 0; bitIndex < 8 && coresToUnschedule > 0; bitIndex++) {
+                uint8_t mask = 1 << bitIndex;
+                bool coreIsScheduled = (byte & mask) != 0;
+                if (coreIsScheduled) {
+                    byte = byte & (~mask);
+                    ((uint8_t*)affinity)[byteIndex] = byte;
+                    coresToUnschedule -= 1;
+                }
+            }
+        }
+
+        int setAffinityResult = syscall(SYS_sched_setaffinity, 0, bytesWritten, affinity);
+        if (setAffinityResult == 0) {
+            result = prb_Success;
+        }
+    }
+
+#else
+#error unimplemented
+#endif
+
+    prb_endTempMemory(temp);
+    return result;
 }
 
 prb_PUBLICDEF prb_Process

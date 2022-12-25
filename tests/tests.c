@@ -1896,6 +1896,13 @@ test_getArgArrayFromStr(prb_Arena* arena, void* data) {
 }
 
 function void
+test_preventExecutionOnCores(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    // TODO(khvorov) Write
+}
+
+function void
 test_process(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_TempMemory temp = prb_beginTempMemory(arena);
@@ -2293,28 +2300,29 @@ test_fileformat(prb_Arena* arena, void* data) {
 
     prb_Str* testNamesInMain = 0;
     while (prb_strScannerMove(&testFileLineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch)) {
-        prb_Str testCall = prb_STR("    arrput(jobs, prb_createJob(");
+        if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("main() {"))) {
+            break;
+        }
+    }
+    while (prb_strScannerMove(&testFileLineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch)) {
         if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("    // SECTION"))) {
             if (prb_streq(testFileLineIter.betweenLastMatches, prb_STR("    // SECTION Fileformat"))) {
                 break;
             } else {
                 arrput(testNamesInMain, prb_strSlice(testFileLineIter.betweenLastMatches, 4, testFileLineIter.betweenLastMatches.len));
             }
-        } else if (prb_strStartsWith(testFileLineIter.betweenLastMatches, testCall)) {
-            prb_Str nameOn = prb_strSlice(testFileLineIter.betweenLastMatches, testCall.len, testFileLineIter.betweenLastMatches.len);
-            if (prb_strStartsWith(nameOn, prb_STR("test_"))) {
-                prb_StrFindSpec commaSpec = {};
-                commaSpec.pattern = prb_STR(",");
-                prb_StrFindResult comma = prb_strFind(nameOn, commaSpec);
-                prb_assert(comma.found);
-                testNameToPrbName(arena, comma.beforeMatch, &testNamesInMain);
-            }
-        } else if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("    test_setWorkingDir"))) {
-            arrput(testNamesInMain, prb_STR("prb_setWorkingDir"));
-        } else if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("    test_env"))) {
-            arrput(testNamesInMain, prb_STR("prb_setenv"));
-            arrput(testNamesInMain, prb_STR("prb_getenv"));
-            arrput(testNamesInMain, prb_STR("prb_unsetenv"));
+        } else {
+            prb_StrScanner scanner = prb_createStrScanner(testFileLineIter.betweenLastMatches);
+            prb_StrFindSpec spec = {};
+            spec.pattern = prb_STR("test_");
+            if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
+                spec.pattern = prb_STR("(,");
+                spec.mode = prb_StrFindMode_AnyChar;
+                if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
+                    prb_Str name = prb_fmt(arena, "test_%.*s", prb_LIT(scanner.betweenLastMatches));
+                    testNameToPrbName(arena, name, &testNamesInMain);
+                }
+            }            
         }
     }
 
@@ -2416,6 +2424,7 @@ main() {
     arrput(jobs, prb_createJob(test_getCmdline, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getCmdArgs, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_getArgArrayFromStr, 0, arena, 10 * prb_MEGABYTE));
+    test_preventExecutionOnCores(arena, 0);  // NOTE(khvorov) Changes global state
     arrput(jobs, prb_createJob(test_process, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_sleep, 0, arena, 10 * prb_MEGABYTE));
     arrput(jobs, prb_createJob(test_debuggerPresent, 0, arena, 10 * prb_MEGABYTE));
