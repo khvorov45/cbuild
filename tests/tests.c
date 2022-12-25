@@ -1921,8 +1921,7 @@ test_process(prb_Arena* arena, void* data) {
 
         {
             prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
-            prb_assert(prb_launchProcesses(arena, &proc, 1));
-            prb_assert(prb_waitForProcesses(&proc, 1));
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
 
         {
@@ -1931,8 +1930,7 @@ test_process(prb_Arena* arena, void* data) {
             spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
             spec.redirectStderr = true;
             prb_Process proc = prb_createProcess(helloExe, spec);
-            prb_assert(prb_launchProcesses(arena, &proc, 1));
-            prb_assert(prb_waitForProcesses(&proc, 1));
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
             prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
             prb_assert(readRes.success);
             prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\n")));
@@ -1944,8 +1942,7 @@ test_process(prb_Arena* arena, void* data) {
             spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
             spec.redirectStdout = true;
             prb_Process proc = prb_createProcess(helloExe, spec);
-            prb_assert(prb_launchProcesses(arena, &proc, 1));
-            prb_assert(prb_waitForProcesses(&proc, 1));
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
             prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stderrFilepath);
             prb_assert(readRes.success);
             prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("stderrout\n")));
@@ -1958,8 +1955,7 @@ test_process(prb_Arena* arena, void* data) {
             spec.redirectStderr = true;
             spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
             prb_Process proc = prb_createProcess(helloExe, spec);
-            prb_assert(prb_launchProcesses(arena, &proc, 1));
-            prb_assert(prb_waitForProcesses(&proc, 1));
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
             {
                 prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
                 prb_assert(readRes.success);
@@ -1979,8 +1975,7 @@ test_process(prb_Arena* arena, void* data) {
             spec.redirectStderr = true;
             spec.stderrFilepath = spec.stdoutFilepath;
             prb_Process proc = prb_createProcess(helloExe, spec);
-            prb_assert(prb_launchProcesses(arena, &proc, 1));
-            prb_assert(prb_waitForProcesses(&proc, 1));
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
             prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
             prb_assert(readRes.success);
             prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\nstderrout\n")));
@@ -2004,8 +1999,7 @@ test_process(prb_Arena* arena, void* data) {
 
         {
             prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
-            prb_assert(prb_launchProcesses(arena, &proc, 1));
-            prb_assert(prb_waitForProcesses(&proc, 1));
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
 
         {
@@ -2014,7 +2008,7 @@ test_process(prb_Arena* arena, void* data) {
             for (i32 procIndex = 0; procIndex < procCount; procIndex++) {
                 arrput(procs, prb_createProcess(programExe, (prb_ProcessSpec) {}));
             }
-            prb_assert(prb_launchProcesses(arena, procs, procCount));
+            prb_assert(prb_launchProcesses(arena, procs, procCount, prb_Background_Yes));
             prb_assert(prb_waitForProcesses(procs, procCount));
         }
     }
@@ -2085,10 +2079,16 @@ test_getMsFrom(prb_Arena* arena, void* data) {
 //
 
 function void
-foreverJob(prb_Arena* arena, void* data) {
+randomJob(prb_Arena* arena, void* data) {
     prb_unused(arena);
     prb_unused(data);
-    for (;;) {}
+    prb_Rng rng = prb_createRng(0);
+    for (;;) {
+        float num = prb_randomF3201(&rng);
+        if (num > 0.95f) {
+            break;
+        }
+    }
 }
 
 function void
@@ -2096,16 +2096,16 @@ test_jobs(prb_Arena* arena, void* data) {
     prb_unused(data);
     prb_unused(arena);
 
-    // TODO(khvorov) Finish
-    if (false) {
+    {
         prb_Job* jobs = 0;
         i32      jobCount = 100;
         for (i32 jobIndex = 0; jobIndex < jobCount; jobIndex++) {
-            arrput(jobs, prb_createJob(foreverJob, data, arena, 0));
+            arrput(jobs, prb_createJob(randomJob, data, arena, 0));
         }
 
-        prb_assert(prb_launchJobs(jobs, jobCount, prb_ThreadMode_Multi));
+        prb_assert(prb_launchJobs(jobs, jobCount, prb_Background_Yes));
         prb_assert(prb_waitForJobs(jobs, jobCount));
+        arrfree(jobs);
     }
 }
 
@@ -2438,9 +2438,9 @@ main() {
     arrput(jobs, prb_createJob(test_fileformat, 0, arena, 10 * prb_MEGABYTE));
 
     // NOTE(khvorov) Running multithreaded is not necessarily faster here but it does test that codepath
-    prb_ThreadMode threadMode = prb_ThreadMode_Multi;
+    prb_Background threadMode = prb_Background_Yes;
     if (prb_debuggerPresent(arena)) {
-        threadMode = prb_ThreadMode_Single;
+        threadMode = prb_Background_No;
     }
     prb_assert(prb_launchJobs(jobs, arrlen(jobs), threadMode));
     prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));

@@ -30,7 +30,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 }
 */
 
-// TODO(khvorov) Job status enum should probably be separate from process status
 // TODO(khvorov) Set env variables when executing processes
 // TODO(khvorov) strReplace should just take a position and a length of the replacement
 // TODO(khvorov) strReplace should probably handle multiple replacements
@@ -401,10 +400,10 @@ typedef struct prb_Job {
 #endif
 } prb_Job;
 
-typedef enum prb_ThreadMode {
-    prb_ThreadMode_Single,
-    prb_ThreadMode_Multi,
-} prb_ThreadMode;
+typedef enum prb_Background {
+    prb_Background_No,
+    prb_Background_Yes,
+} prb_Background;
 
 // TODO(khvorov) Finish
 typedef enum prb_ParsedNumberKind {
@@ -506,18 +505,18 @@ prb_PUBLICDEC prb_Status        prb_strScannerMove(prb_StrScanner* scanner, prb_
 prb_PUBLICDEC prb_ParsedNumber  prb_parseNumber(prb_Str str);
 
 // SECTION Processes
-prb_PUBLICDEC void                   prb_terminate(int32_t code);
-prb_PUBLICDEC prb_Str                prb_getCmdline(prb_Arena* arena);
-prb_PUBLICDEC prb_Str*               prb_getCmdArgs(prb_Arena* arena);
-prb_PUBLICDEC const char**           prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str);
-prb_PUBLICDEC prb_Process            prb_createProcess(prb_Str cmd, prb_ProcessSpec spec);
-prb_PUBLICDEC prb_Status             prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount);
-prb_PUBLICDEC prb_Status             prb_waitForProcesses(prb_Process* handles, int32_t handleCount);
-prb_PUBLICDEC void                   prb_sleep(float ms);
-prb_PUBLICDEC bool                   prb_debuggerPresent(prb_Arena* arena);
-prb_PUBLICDEC prb_Status             prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value);
-prb_PUBLICDEC prb_GetenvResult       prb_getenv(prb_Arena* arena, prb_Str name);
-prb_PUBLICDEC prb_Status             prb_unsetenv(prb_Arena* arena, prb_Str name);
+prb_PUBLICDEC void             prb_terminate(int32_t code);
+prb_PUBLICDEC prb_Str          prb_getCmdline(prb_Arena* arena);
+prb_PUBLICDEC prb_Str*         prb_getCmdArgs(prb_Arena* arena);
+prb_PUBLICDEC const char**     prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str);
+prb_PUBLICDEC prb_Process      prb_createProcess(prb_Str cmd, prb_ProcessSpec spec);
+prb_PUBLICDEC prb_Status       prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb_Background mode);
+prb_PUBLICDEC prb_Status       prb_waitForProcesses(prb_Process* handles, int32_t handleCount);
+prb_PUBLICDEC void             prb_sleep(float ms);
+prb_PUBLICDEC bool             prb_debuggerPresent(prb_Arena* arena);
+prb_PUBLICDEC prb_Status       prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value);
+prb_PUBLICDEC prb_GetenvResult prb_getenv(prb_Arena* arena, prb_Str name);
+prb_PUBLICDEC prb_Status       prb_unsetenv(prb_Arena* arena, prb_Str name);
 
 // SECTION Timing
 prb_PUBLICDEC prb_TimeStart prb_timeStart(void);
@@ -525,7 +524,7 @@ prb_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
 
 // SECTION Multithreading
 prb_PUBLICDEC prb_Job    prb_createJob(prb_JobProc proc, void* data, prb_Arena* arena, int32_t arenaBytes);
-prb_PUBLICDEC prb_Status prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode);
+prb_PUBLICDEC prb_Status prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_Background mode);
 prb_PUBLICDEC prb_Status prb_waitForJobs(prb_Job* jobs, int32_t jobsCount);
 
 // SECTION Random numbers
@@ -2363,6 +2362,16 @@ prb_linux_readFromProcSelf(prb_Arena* arena, prb_Str filename) {
     return result;
 }
 
+static void
+prb_linux_waitForProcess(prb_Process* handle) {
+    int32_t status = 0;
+    pid_t   waitResult = waitpid(handle->pid, &status, 0);
+    handle->status = prb_ProcessStatus_CompletedFailed;
+    if (waitResult == handle->pid && status == 0) {
+        handle->status = prb_ProcessStatus_CompletedSuccess;
+    }
+}
+
 #endif
 
 prb_PUBLICDEF void
@@ -2467,7 +2476,7 @@ prb_createProcess(prb_Str cmd, prb_ProcessSpec spec) {
 }
 
 prb_PUBLICDEF prb_Status
-prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount) {
+prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb_Background mode) {
     prb_Status     result = prb_Success;
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
@@ -2556,6 +2565,9 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount) {
                 int          spawnResult = posix_spawnp(&proc->pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
                 if (spawnResult == 0) {
                     proc->status = prb_ProcessStatus_Launched;
+                    if (mode == prb_Background_No) {
+                        prb_linux_waitForProcess(proc);
+                    }
                 }
                 prb_stbds_arrfree(args);
             }
@@ -2568,7 +2580,11 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount) {
 #error unimplemented
 #endif
 
-            if (proc->status != prb_ProcessStatus_Launched) {
+            prb_ProcessStatus reqStatus = prb_ProcessStatus_CompletedSuccess;
+            if (mode == prb_Background_Yes) {
+                reqStatus = prb_ProcessStatus_Launched;
+            }
+            if (proc->status != reqStatus) {
                 result = prb_Failure;
             }
         }
@@ -2591,14 +2607,7 @@ prb_waitForProcesses(prb_Process* handles, int32_t handleCount) {
 #error unimplemented
 
 #elif prb_PLATFORM_LINUX
-
-            int32_t status = 0;
-            pid_t   waitResult = waitpid(handle->pid, &status, 0);
-            handle->status = prb_ProcessStatus_CompletedFailed;
-            if (waitResult == handle->pid && status == 0) {
-                handle->status = prb_ProcessStatus_CompletedSuccess;
-            }
-
+            prb_linux_waitForProcess(handle);
 #else
 #error unimplemented
 #endif
@@ -2800,7 +2809,7 @@ prb_createJob(prb_JobProc proc, void* data, prb_Arena* arena, int32_t arenaBytes
 }
 
 prb_PUBLICDEF prb_Status
-prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
+prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_Background mode) {
     prb_Status result = prb_Success;
 
 #if prb_PLATFORM_WINDOWS
@@ -2810,7 +2819,7 @@ prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
 #elif prb_PLATFORM_LINUX
 
     switch (mode) {
-        case prb_ThreadMode_Single: {
+        case prb_Background_No: {
             for (int32_t jobIndex = 0; jobIndex < jobsCount && result == prb_Success; jobIndex++) {
                 prb_Job* job = jobs + jobIndex;
                 if (job->status == prb_JobStatus_NotLaunched) {
@@ -2820,7 +2829,7 @@ prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_ThreadMode mode) {
             }
         } break;
 
-        case prb_ThreadMode_Multi: {
+        case prb_Background_Yes: {
             for (int32_t jobIndex = 0; jobIndex < jobsCount && result == prb_Success; jobIndex++) {
                 prb_Job* job = jobs + jobIndex;
                 if (job->status == prb_JobStatus_NotLaunched) {

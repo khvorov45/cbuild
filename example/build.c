@@ -97,7 +97,7 @@ gitClone(prb_Arena* arena, StaticLibInfo lib, prb_Str downloadUrl) {
         prb_writelnToStdout(arena, cmd);
         handle = prb_createProcess(cmd, (prb_ProcessSpec) {});
         // NOTE(khvorov) Launch here since we are putting cmd in temp memory
-        prb_assert(prb_launchProcesses(arena, &handle, 1));
+        prb_assert(prb_launchProcesses(arena, &handle, 1, prb_Background_Yes));
     } else {
         prb_Str name = prb_getLastEntryInPath(lib.downloadDir);
         prb_Str msg = prb_fmt(arena, "skip git clone %.*s", prb_LIT(name));
@@ -110,12 +110,9 @@ gitClone(prb_Arena* arena, StaticLibInfo lib, prb_Str downloadUrl) {
 
 function prb_Status
 execCmd(prb_Arena* arena, prb_Str cmd) {
-    prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_writelnToStdout(arena, cmd);
     prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
-    prb_assert(prb_launchProcesses(arena, &proc, 1));
-    prb_Status status = prb_waitForProcesses(&proc, 1);
-    prb_endTempMemory(temp);
+    prb_Status status = prb_launchProcesses(arena, &proc, 1, prb_Background_No);
     return status;
 }
 
@@ -299,7 +296,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         arrput(processesPreprocess, proc);
     }
 
-    prb_assert(prb_launchProcesses(arena, processesPreprocess, arrlen(processesPreprocess)));
+    prb_assert(prb_launchProcesses(arena, processesPreprocess, arrlen(processesPreprocess), prb_Background_Yes));
     prb_Status preprocessStatus = prb_waitForProcesses(processesPreprocess, arrlen(processesPreprocess));
 
     // NOTE(khvorov) Compile
@@ -364,7 +361,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             prb_writelnToStdout(arena, prb_fmt(arena, "skip compile %.*s", prb_LIT(lib->name)));
         }
 
-        prb_assert(prb_launchProcesses(arena, processesCompile, arrlen(processesCompile)));
+        prb_assert(prb_launchProcesses(arena, processesCompile, arrlen(processesCompile), prb_Background_Yes));
         prb_Status compileStatus = prb_waitForProcesses(processesCompile, arrlen(processesCompile));
         arrfree(processesCompile);
 
@@ -438,8 +435,7 @@ compileAndRunBidiGenTab(prb_Arena* arena, ProjectInfo* project, prb_Str src, prb
         specRun.redirectStdout = true;
         specRun.stdoutFilepath = outpath;
         prb_Process handleRun = prb_createProcess(cmdRun, specRun);
-        prb_assert(prb_launchProcesses(arena, &handleRun, 1));
-        prb_assert(prb_waitForProcesses(&handleRun, 1));
+        prb_assert(prb_launchProcesses(arena, &handleRun, 1, prb_Background_No));
     }
     prb_endTempMemory(temp);
 }
@@ -1100,10 +1096,10 @@ main() {
     arrput(compileJobs, prb_createJob(compileStaticLib, &harfbuzz, arena, 50 * prb_MEGABYTE));
     arrput(compileJobs, prb_createJob(compileStaticLib, &sdl, arena, 50 * prb_MEGABYTE));
     {
-        prb_ThreadMode threadMode = prb_ThreadMode_Multi;
+        prb_Background threadMode = prb_Background_Yes;
         // NOTE(khvorov) Buggy debuggers can't always handle threads
         if (prb_debuggerPresent(arena)) {
-            threadMode = prb_ThreadMode_Single;
+            threadMode = prb_Background_No;
         }
         prb_assert(prb_launchJobs(compileJobs, arrlen(compileJobs), threadMode));
         prb_assert(prb_waitForJobs(compileJobs, arrlen(compileJobs)));
@@ -1142,7 +1138,7 @@ main() {
     prb_Str mainCmdPreprocess = constructCompileCmd(arena, project, mainFlagsStr, mainNotPreprocessedPath, mainPreprocessedPath, prb_STR(""));
     prb_writelnToStdout(arena, mainCmdPreprocess);
     prb_Process mainHandlePre = prb_createProcess(mainCmdPreprocess, (prb_ProcessSpec) {});
-    prb_assert(prb_launchProcesses(arena, &mainHandlePre, 1));
+    prb_assert(prb_launchProcesses(arena, &mainHandlePre, 1, prb_Background_Yes));
 
     prb_Str mainCmdObj = constructCompileCmd(arena, project, mainFlagsStr, mainNotPreprocessedPath, mainObjPath, prb_STR(""));
     prb_assert(execCmd(arena, mainCmdObj));

@@ -126,12 +126,9 @@ typedef struct TestJobSpec {
 
 function prb_Status
 execCmd(prb_Arena* arena, prb_Str cmd) {
-    prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_writelnToStdout(arena, cmd);
     prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
-    prb_assert(prb_launchProcesses(arena, &proc, 1));
-    prb_Status result = prb_waitForProcesses(&proc, 1);
-    prb_endTempMemory(temp);
+    prb_Status result = prb_launchProcesses(arena, &proc, 1, prb_Background_No);
     return result;
 }
 
@@ -217,8 +214,7 @@ compileAndRunTests(prb_Arena* arena, void* data) {
 
     prb_Str cmd = prb_fmt(arena, "%.*s %.*s", prb_LIT(compileSpec.output), prb_LIT(outputSuffix));
     prb_Process proc = prb_createProcess(cmd, execSpec);
-    prb_assert(prb_launchProcesses(arena, &proc, 1));    
-    if (prb_waitForProcesses(&proc, 1) == prb_Failure) {
+    if (prb_launchProcesses(arena, &proc, 1, prb_Background_No) == prb_Failure) {
         if (!spec->doNotRedirect) {
             printFile(arena, execSpec.stdoutFilepath);
         }
@@ -305,7 +301,7 @@ main() {
             spec.stdoutFilepath = staticAnalysisOutput;
             spec.stderrFilepath = staticAnalysisOutput;
             staticAnalysisProc = prb_createProcess(cmd, spec);
-            prb_assert(prb_launchProcesses(arena, &staticAnalysisProc, 1));
+            prb_assert(prb_launchProcesses(arena, &staticAnalysisProc, 1, prb_Background_Yes));
         }
 
         // NOTE(khvorov) Run tests from different example directories because I
@@ -342,8 +338,7 @@ main() {
             execSpec.stdoutFilepath = coverageText;
             execSpec.stderrFilepath = coverageText;
             prb_Process covShowProc = prb_createProcess(cmd, execSpec);
-            prb_assert(prb_launchProcesses(arena, &covShowProc, 1));
-            prb_assert(prb_waitForProcesses(&covShowProc, 1));
+            prb_assert(prb_launchProcesses(arena, &covShowProc, 1, prb_Background_No));
         }
 
         // NOTE(khvorov) Check we can compile without stb ds short names
@@ -484,7 +479,7 @@ main() {
             }
         }
 
-        prb_assert(prb_launchJobs(jobs, arrlen(jobs), prb_ThreadMode_Multi));
+        prb_assert(prb_launchJobs(jobs, arrlen(jobs), prb_Background_Yes));
         prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
 
         // NOTE(khvorov) Print result of static analysis
@@ -524,7 +519,7 @@ main() {
                 }
             }
 
-            prb_assert(prb_launchProcesses(arena, runProcs, arrlen(runProcs)));
+            prb_assert(prb_launchProcesses(arena, runProcs, arrlen(runProcs), prb_Background_Yes));
             prb_assert(prb_waitForProcesses(runProcs, arrlen(runProcs)));
             // TODO(khvorov) Auto kill the processes in reverse order
         }
