@@ -1,5 +1,7 @@
 #include "../cbuild.h"
 
+// TODO(khvorov) Remove void*
+
 #define function static
 #define global_variable static
 
