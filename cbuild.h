@@ -30,8 +30,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 }
 */
 
-// TODO(khvorov) strReplace should just take a position and a length of the replacement
-// TODO(khvorov) strReplace should probably handle multiple replacements
 // TODO(khvorov) Ability to check/change file executable permissions
 // TODO(khvorov) Small example in readme and doc comment. Probably actually test it works.
 
@@ -487,7 +485,6 @@ prb_PUBLICDEC prb_Str           prb_strTrim(prb_Str str);
 prb_PUBLICDEC prb_StrFindResult prb_strFind(prb_Str str, prb_StrFindSpec spec);
 prb_PUBLICDEC bool              prb_strStartsWith(prb_Str str, prb_Str pattern);
 prb_PUBLICDEC bool              prb_strEndsWith(prb_Str str, prb_Str pattern);
-prb_PUBLICDEC prb_Str           prb_strReplace(prb_Arena* arena, prb_Str str, prb_StrFindSpec spec, prb_Str replacement);
 prb_PUBLICDEC prb_Str           prb_stringsJoin(prb_Arena* arena, prb_Str* strings, int32_t stringsCount, prb_Str sep);
 prb_PUBLICDEC prb_GrowingStr    prb_beginStr(prb_Arena* arena);
 prb_PUBLICDEC void              prb_addStrSegment(prb_GrowingStr* gstr, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
@@ -2004,22 +2001,6 @@ prb_strEndsWith(prb_Str str, prb_Str pattern) {
     bool result = false;
     if (str.len > pattern.len) {
         result = prb_memeq(str.ptr + str.len - pattern.len, pattern.ptr, pattern.len);
-    }
-    return result;
-}
-
-prb_PUBLICDEF prb_Str
-prb_strReplace(prb_Arena* arena, prb_Str str, prb_StrFindSpec spec, prb_Str replacement) {
-    prb_Str           result = str;
-    prb_StrFindResult findResult = prb_strFind(str, spec);
-    if (findResult.found) {
-        result = prb_fmt(
-            arena,
-            "%.*s%.*s%.*s",
-            prb_LIT(findResult.beforeMatch),
-            prb_LIT(replacement),
-            prb_LIT(findResult.afterMatch)
-        );
     }
     return result;
 }

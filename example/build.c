@@ -444,12 +444,9 @@ function void
 textfileReplace(prb_Arena* arena, prb_Str path, prb_Str pattern, prb_Str replacement) {
     prb_ReadEntireFileResult content = prb_readEntireFile(arena, path);
     prb_assert(content.success);
-    prb_StrFindSpec spec = {
-        .pattern = pattern,
-        .mode = prb_StrFindMode_Exact,
-        .direction = prb_StrDirection_FromStart,
-    };
-    prb_Str newContent = prb_strReplace(arena, prb_strFromBytes(content.content), spec, replacement);
+    prb_StrFindResult find = prb_strFind(prb_strFromBytes(content.content), (prb_StrFindSpec) {.pattern = pattern});
+    prb_assert(find.found);
+    prb_Str newContent = prb_fmt(arena, "%.*s%.*s%.*s", prb_LIT(find.beforeMatch), prb_LIT(replacement), prb_LIT(find.afterMatch));
     prb_assert(prb_writeEntireFile(arena, path, newContent.ptr, newContent.len) == prb_Success);
 }
 

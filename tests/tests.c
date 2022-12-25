@@ -1328,12 +1328,6 @@ test_strEndsWith(prb_Arena* arena) {
 }
 
 function void
-test_strReplace(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
-}
-
-function void
 test_stringsJoin(prb_Arena* arena) {
     prb_unused(arena);
     // TODO(khvorov) Write
@@ -2379,7 +2373,6 @@ main() {
     test_strFind(arena);
     test_strStartsWith(arena);
     test_strEndsWith(arena);
-    test_strReplace(arena);
     test_stringsJoin(arena);
     test_beginStr(arena);
     test_addStrSegment(arena);
