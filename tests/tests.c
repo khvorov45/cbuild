@@ -58,10 +58,12 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_createProcess"));
         arrput(*prbNames, prb_STR("prb_launchProcesses"));
         arrput(*prbNames, prb_STR("prb_waitForProcesses"));
+        arrput(*prbNames, prb_STR("prb_killProcesses"));
     } else if (prb_streq(testName, prb_STR("test_jobs"))) {
         arrput(*prbNames, prb_STR("prb_createJob"));
         arrput(*prbNames, prb_STR("prb_launchJobs"));
         arrput(*prbNames, prb_STR("prb_waitForJobs"));
+        arrput(*prbNames, prb_STR("prb_killJobs"));
     } else {
         prb_assert(prb_strStartsWith(testName, prb_STR("test_")));
         prb_Str noPrefix = prb_strSlice(testName, 5, testName.len);

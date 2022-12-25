@@ -511,6 +511,7 @@ prb_PUBLICDEC prb_Status       prb_preventExecutionOnCores(prb_Arena* arena, int
 prb_PUBLICDEC prb_Process      prb_createProcess(prb_Str cmd, prb_ProcessSpec spec);
 prb_PUBLICDEC prb_Status       prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb_Background mode);
 prb_PUBLICDEC prb_Status       prb_waitForProcesses(prb_Process* handles, int32_t handleCount);
+prb_PUBLICDEC prb_Status       prb_killProcesses(prb_Process* handles, int32_t handleCount);
 prb_PUBLICDEC void             prb_sleep(float ms);
 prb_PUBLICDEC bool             prb_debuggerPresent(prb_Arena* arena);
 prb_PUBLICDEC prb_Status       prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value);
@@ -525,6 +526,7 @@ prb_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
 prb_PUBLICDEC prb_Job    prb_createJob(prb_JobProc proc, void* data, prb_Arena* arena, int32_t arenaBytes);
 prb_PUBLICDEC prb_Status prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_Background mode);
 prb_PUBLICDEC prb_Status prb_waitForJobs(prb_Job* jobs, int32_t jobsCount);
+prb_PUBLICDEC prb_Status prb_killJobs(prb_Job* jobs, int32_t jobsCount);
 
 // SECTION Random numbers
 prb_PUBLICDEC prb_Rng  prb_createRng(uint32_t seed);
@@ -2677,6 +2679,35 @@ prb_waitForProcesses(prb_Process* handles, int32_t handleCount) {
     return result;
 }
 
+prb_PUBLICDEF prb_Status
+prb_killProcesses(prb_Process* handles, int32_t handleCount) {
+    prb_Status result = prb_Success;
+
+    for (int32_t handleIndex = 0; handleIndex < handleCount; handleIndex++) {
+        prb_Process* handle = handles + handleIndex;
+        prb_assert(handle->status != prb_ProcessStatus_NotLaunched);
+        if (handle->status == prb_ProcessStatus_Launched) {
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+            if (kill(handle->pid, SIGKILL) == 0) {
+                handle->status = prb_ProcessStatus_CompletedFailed;
+            }
+#else
+#error unimplemented
+#endif
+
+            if (handle->status != prb_ProcessStatus_CompletedFailed) {
+                result = prb_Failure;
+            }
+        }
+    }
+
+    return result;    
+}
+
 prb_PUBLICDEF void
 prb_sleep(float ms) {
 #if prb_PLATFORM_WINDOWS
@@ -2919,6 +2950,34 @@ prb_waitForJobs(prb_Job* jobs, int32_t jobsCount) {
 #elif prb_PLATFORM_LINUX
 
             if (pthread_join(job->threadid, 0) == 0) {
+                job->status = prb_JobStatus_Completed;
+            } else {
+                result = prb_Failure;
+            }
+
+#else
+#error unimplemented
+#endif
+        }
+    }
+
+    return result;
+}
+
+prb_PUBLICDEF prb_Status
+prb_killJobs(prb_Job* jobs, int32_t jobsCount) {
+    prb_Status result = prb_Success;
+    for (int32_t jobIndex = 0; jobIndex < jobsCount; jobIndex++) {
+        prb_Job* job = jobs + jobIndex;
+        prb_assert(job->status != prb_JobStatus_NotLaunched);
+        if (job->status == prb_JobStatus_Launched) {
+#if prb_PLATFORM_WINDOWS
+
+#error unimplemented
+
+#elif prb_PLATFORM_LINUX
+
+            if (pthread_kill(job->threadid, SIGKILL) == 0) {
                 job->status = prb_JobStatus_Completed;
             } else {
                 result = prb_Failure;

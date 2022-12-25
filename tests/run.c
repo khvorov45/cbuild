@@ -128,7 +128,7 @@ function prb_Status
 execCmd(prb_Arena* arena, prb_Str cmd) {
     prb_writelnToStdout(arena, cmd);
     prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
-    prb_Status result = prb_launchProcesses(arena, &proc, 1, prb_Background_No);
+    prb_Status  result = prb_launchProcesses(arena, &proc, 1, prb_Background_No);
     return result;
 }
 
@@ -212,7 +212,7 @@ compileAndRunTests(prb_Arena* arena, void* data) {
         execSpec.stderrFilepath = outlog;
     }
 
-    prb_Str cmd = prb_fmt(arena, "%.*s %.*s", prb_LIT(compileSpec.output), prb_LIT(outputSuffix));
+    prb_Str     cmd = prb_fmt(arena, "%.*s %.*s", prb_LIT(compileSpec.output), prb_LIT(outputSuffix));
     prb_Process proc = prb_createProcess(cmd, execSpec);
     if (prb_launchProcesses(arena, &proc, 1, prb_Background_No) == prb_Failure) {
         if (!spec->doNotRedirect) {
@@ -245,6 +245,7 @@ main() {
 
     globalTestsDir = prb_getParentDir(arena, prb_STR(__FILE__));
     prb_Str rootDir = prb_getParentDir(arena, globalTestsDir);
+    prb_Str exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
 
     if (!runningOnCi) {
         prb_assert(prb_preventExecutionOnCores(arena, 1));
@@ -419,7 +420,6 @@ main() {
         }
 
         // NOTE(khvorov) Compile all the examples in every supported way
-        prb_Str exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
         {
             // NOTE(khvorov) Compile the build program
             CompileSpec spec = {};
@@ -513,19 +513,17 @@ main() {
 
         // NOTE(khvorov) Launch the examples to make sure they work
         if (!runningOnCi) {
-            prb_Process* runProcs = 0;
-            prb_Str*     allInExample = prb_getAllDirEntries(arena, exampleDir, prb_Recursive_No);
+            prb_Str* allInExample = prb_getAllDirEntries(arena, exampleDir, prb_Recursive_No);
             for (i32 exampleEntryIndex = 0; exampleEntryIndex < arrlen(allInExample); exampleEntryIndex++) {
                 prb_Str exampleEntry = allInExample[exampleEntryIndex];
                 if (prb_strStartsWith(prb_getLastEntryInPath(exampleEntry), prb_STR("build-"))) {
-                    prb_Str buildExe = prb_pathJoin(arena, exampleEntry, prb_STR("example.bin"));
-                    arrput(runProcs, prb_createProcess(buildExe, (prb_ProcessSpec) {}));
+                    prb_Str     buildExe = prb_pathJoin(arena, exampleEntry, prb_STR("example.bin"));
+                    prb_Process proc = prb_createProcess(buildExe, (prb_ProcessSpec) {});
+                    prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_Yes));
+                    prb_sleep(3000);
+                    prb_assert(prb_killProcesses(&proc, 1));
                 }
             }
-
-            prb_assert(prb_launchProcesses(arena, runProcs, arrlen(runProcs), prb_Background_Yes));
-            prb_assert(prb_waitForProcesses(runProcs, arrlen(runProcs)));
-            // TODO(khvorov) Auto kill the processes in reverse order
         }
     }
 
