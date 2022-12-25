@@ -30,7 +30,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 }
 */
 
-// TODO(khvorov) Set env variables when executing processes
 // TODO(khvorov) strReplace should just take a position and a length of the replacement
 // TODO(khvorov) strReplace should probably handle multiple replacements
 // TODO(khvorov) Ability to check/change file executable permissions
@@ -270,6 +269,8 @@ typedef struct prb_ProcessSpec {
     prb_Str stdoutFilepath;
     bool    redirectStderr;
     prb_Str stderrFilepath;
+    // Additional environment variables that look like this "var1=val1 var2=val2"
+    prb_Str addEnv;
 } prb_ProcessSpec;
 
 typedef enum prb_ProcessStatus {
@@ -2470,7 +2471,7 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
 
 prb_PUBLICDEF prb_Status
 prb_preventExecutionOnCores(prb_Arena* arena, int32_t coreCount) {
-    prb_Status result = prb_Failure;
+    prb_Status     result = prb_Failure;
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_unused(coreCount);
 
@@ -2483,10 +2484,10 @@ prb_preventExecutionOnCores(prb_Arena* arena, int32_t coreCount) {
     int32_t reqAlign = alignof(unsigned long);
     prb_arenaAlignFreePtr(arena, reqAlign);
     unsigned long* affinity = (unsigned long*)prb_arenaFreePtr(arena);
-    int32_t arenaSize = prb_arenaFreeSize(arena);
-    int32_t arenaSizeAligned = arenaSize & (~(reqAlign - 1));
-    int32_t sizeReduced = prb_min(arenaSizeAligned, prb_MEGABYTE);
-    int bytesWritten = syscall(SYS_sched_getaffinity, 0, sizeReduced, affinity);
+    int32_t        arenaSize = prb_arenaFreeSize(arena);
+    int32_t        arenaSizeAligned = arenaSize & (~(reqAlign - 1));
+    int32_t        sizeReduced = prb_min(arenaSizeAligned, prb_MEGABYTE);
+    int            bytesWritten = syscall(SYS_sched_getaffinity, 0, sizeReduced, affinity);
     if (bytesWritten > 0) {
         int32_t setBits = 0;
         for (int32_t byteIndex = 0; byteIndex < bytesWritten; byteIndex++) {
@@ -2496,13 +2497,13 @@ prb_preventExecutionOnCores(prb_Arena* arena, int32_t coreCount) {
                 setBits += (byte & mask) != 0;
             }
         }
-        
+
         int32_t coresToUnschedule = prb_min(coreCount, setBits - 1);
         for (int32_t byteIndex = 0; byteIndex < bytesWritten && coresToUnschedule > 0; byteIndex++) {
             uint8_t byte = ((uint8_t*)affinity)[byteIndex];
             for (int32_t bitIndex = 0; bitIndex < 8 && coresToUnschedule > 0; bitIndex++) {
                 uint8_t mask = 1 << bitIndex;
-                bool coreIsScheduled = (byte & mask) != 0;
+                bool    coreIsScheduled = (byte & mask) != 0;
                 if (coreIsScheduled) {
                     byte = byte & (~mask);
                     ((uint8_t*)affinity)[byteIndex] = byte;
@@ -2619,15 +2620,78 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb
             }
 
             if (fileActionsSucceeded) {
-                const char** args = prb_getArgArrayFromStr(arena, proc->cmd);
-                int          spawnResult = posix_spawnp(&proc->pid, args[0], fileActionsPtr, 0, (char**)args, __environ);
-                if (spawnResult == 0) {
-                    proc->status = prb_ProcessStatus_Launched;
-                    if (mode == prb_Background_No) {
-                        prb_linux_waitForProcess(proc);
+                bool   envSucceeded = true;
+                char** env = __environ;
+                bool   envAllocated = false;
+                if (proc->spec.addEnv.ptr && proc->spec.addEnv.len > 0) {
+                    envAllocated = true;
+                    env = 0;
+
+                    prb_StrFindSpec space = {};
+                    space.pattern = prb_STR(" ");
+                    space.alwaysMatchEnd = true;
+                    prb_StrFindSpec equals = {};
+                    equals.pattern = prb_STR("=");
+                    prb_StrScanner scanner = prb_createStrScanner(proc->spec.addEnv);
+                    prb_Str*       newVarNames = 0;
+                    while (envSucceeded && prb_strScannerMove(&scanner, space, prb_StrScannerSide_AfterMatch)) {
+                        if (scanner.betweenLastMatches.len > 0) {
+                            envSucceeded = false;
+                            prb_StrScanner nameScanner = prb_createStrScanner(scanner.betweenLastMatches);
+                            if (prb_strScannerMove(&nameScanner, equals, prb_StrScannerSide_AfterMatch)) {
+                                if (nameScanner.betweenLastMatches.len > 0) {
+                                    char* newEnvEntry = (char*)prb_strGetNullTerminated(arena, scanner.betweenLastMatches);
+                                    prb_stbds_arrput(env, newEnvEntry);
+                                    prb_stbds_arrput(newVarNames, nameScanner.betweenLastMatches);
+                                    envSucceeded = true;
+                                }
+                            }
+                        }
                     }
+
+                    if (envSucceeded) {
+                        for (int32_t envIndex = 0;; envIndex++) {
+                            char* existingEntry = __environ[envIndex];
+                            if (existingEntry) {
+                                prb_StrScanner nameScanner = prb_createStrScanner(prb_STR(existingEntry));
+                                prb_assert(prb_strScannerMove(&nameScanner, equals, prb_StrScannerSide_AfterMatch));
+                                prb_assert(nameScanner.betweenLastMatches.len > 0);
+                                prb_Str existingName = nameScanner.betweenLastMatches;
+                                bool    existingInNew = false;
+                                for (int32_t newVarIndex = 0; newVarIndex < prb_stbds_arrlen(newVarNames) && !existingInNew; newVarIndex++) {
+                                    prb_Str newVarName = newVarNames[newVarIndex];
+                                    existingInNew = prb_streq(newVarName, existingName);
+                                }
+                                if (!existingInNew) {
+                                    prb_stbds_arrput(env, existingEntry);
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+
+                        // NOTE(khvorov) Null-terminate the new env array
+                        prb_stbds_arrput(env, 0);
+                    }
+
+                    prb_stbds_arrfree(newVarNames);
                 }
-                prb_stbds_arrfree(args);
+
+                if (envSucceeded) {
+                    const char** args = prb_getArgArrayFromStr(arena, proc->cmd);
+                    int          spawnResult = posix_spawnp(&proc->pid, args[0], fileActionsPtr, 0, (char**)args, env);
+                    if (spawnResult == 0) {
+                        proc->status = prb_ProcessStatus_Launched;
+                        if (mode == prb_Background_No) {
+                            prb_linux_waitForProcess(proc);
+                        }
+                    }
+                    prb_stbds_arrfree(args);
+                }
+
+                if (envAllocated) {
+                    prb_stbds_arrfree(env);
+                }
             }
 
             if (fileActionsInited) {
@@ -2705,7 +2769,7 @@ prb_killProcesses(prb_Process* handles, int32_t handleCount) {
         }
     }
 
-    return result;    
+    return result;
 }
 
 prb_PUBLICDEF void

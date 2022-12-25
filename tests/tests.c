@@ -1925,20 +1925,28 @@ test_process(prb_Arena* arena) {
         }
     }
 
-    // TODO(khvorov) Run when we have concurrency limiter for processes
-    if (false) {
-        prb_Str programPath = prb_pathJoin(arena, dir, prb_STR("forever.c"));
-#if prb_PLATFORM_WINDOWS
-#error unimplemented
-#elif prb_PLATFORM_LINUX
-        prb_Str program = prb_STR("unsigned int sleep(unsigned int seconds);\nint main() {for (;;) {} return 0;}");
-#else
-#error unimplemented
-#endif
-        prb_assert(prb_writeEntireFile(arena, programPath, program.ptr, program.len));
+    // NOTE(khvorov) Env vars in child
+    {
+        prb_Str progPath = prb_pathJoin(arena, dir, prb_STR("env.c"));
+        prb_Str addEnv = prb_STR("test_env_var_1=1 test_env_var_2=2");
+        
+        const char* prog = "char *getenv(const char *name);\n"
+            "int main() {\n"
+            "char* var1 = getenv(\"test_env_var_1\");\n"
+            "if (var1 == 0) return 1;\n"
+            "if (var1[0] != '1') return 1;\n"
+            "if (var1[1] != '\\0') return 1;\n"
+            "char* var2 = getenv(\"test_env_var_2\");\n"
+            "if (var2 == 0) return 1;\n"
+            "if (var2[0] != '2') return 1;\n"
+            "if (var2[1] != '\\0') return 1;\n"
+            "return 0;\n"
+            "}";
+        prb_Str progStr = prb_STR(prog);
+        prb_assert(prb_writeEntireFile(arena, progPath, progStr.ptr, progStr.len));
 
-        prb_Str programExe = prb_replaceExt(arena, programPath, exeExt);
-        prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(programPath), prb_LIT(programExe));
+        prb_Str progExe = prb_replaceExt(arena, progPath, exeExt);
+        prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
 
         {
             prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
@@ -1946,13 +1954,54 @@ test_process(prb_Arena* arena) {
         }
 
         {
-            i32          procCount = 100;
-            prb_Process* procs = 0;
-            for (i32 procIndex = 0; procIndex < procCount; procIndex++) {
-                arrput(procs, prb_createProcess(programExe, (prb_ProcessSpec) {}));
-            }
-            prb_assert(prb_launchProcesses(arena, procs, procCount, prb_Background_Yes));
-            prb_assert(prb_waitForProcesses(procs, procCount));
+            prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No) == prb_Failure);
+        }
+
+        {
+            prb_ProcessSpec spec = {};
+            spec.addEnv = addEnv;
+            prb_Process proc = prb_createProcess(progExe, spec);
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+        }
+    }
+
+    // NOTE(khvorov) Env vars in child that override existing ones
+    {
+        prb_Str progPath = prb_pathJoin(arena, dir, prb_STR("envoverride.c"));
+        prb_Str addEnv = prb_STR("PATH=XXX");
+        
+        const char* prog = "char *getenv(const char *name);\n"
+            "int main() {\n"
+            "char* var1 = getenv(\"PATH\");\n"
+            "if (var1 == 0) return 1;\n"
+            "if (var1[0] != 'X') return 1;\n"
+            "if (var1[1] != 'X') return 1;\n"
+            "if (var1[2] != 'X') return 1;\n"
+            "if (var1[3] != '\\0') return 1;\n"
+            "return 0;\n"
+            "}";
+        prb_Str progStr = prb_STR(prog);
+        prb_assert(prb_writeEntireFile(arena, progPath, progStr.ptr, progStr.len));
+
+        prb_Str progExe = prb_replaceExt(arena, progPath, exeExt);
+        prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
+
+        {
+            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+        }
+
+        {
+            prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No) == prb_Failure);
+        }
+
+        {
+            prb_ProcessSpec spec = {};
+            spec.addEnv = addEnv;
+            prb_Process proc = prb_createProcess(progExe, spec);
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
     }
 
