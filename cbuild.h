@@ -35,7 +35,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 // TODO(khvorov) strReplace should probably handle multiple replacements
 // TODO(khvorov) Ability to check/change file executable permissions
 // TODO(khvorov) A way to limit the number of cores used when executing jobs/processes
-// TODO(khvorov) Probably merge launch and wait for process/job apis?
 // TODO(khvorov) Small example in readme and doc comment. Probably actually test it works.
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
