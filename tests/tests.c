@@ -1870,8 +1870,9 @@ test_process(prb_Arena* arena) {
     {
         prb_Str progPath = prb_pathJoin(arena, dir, prb_STR("env.c"));
         prb_Str addEnv = prb_STR("test_env_var_1=1 test_env_var_2=2");
-        
-        const char* prog = "char *getenv(const char *name);\n"
+
+        const char* prog =
+            "char *getenv(const char *name);\n"
             "int main() {\n"
             "char* var1 = getenv(\"test_env_var_1\");\n"
             "if (var1 == 0) return 1;\n"
@@ -1911,8 +1912,9 @@ test_process(prb_Arena* arena) {
     {
         prb_Str progPath = prb_pathJoin(arena, dir, prb_STR("envoverride.c"));
         prb_Str addEnv = prb_STR("PATH=XXX");
-        
-        const char* prog = "char *getenv(const char *name);\n"
+
+        const char* prog =
+            "char *getenv(const char *name);\n"
             "int main() {\n"
             "char* var1 = getenv(\"PATH\");\n"
             "if (var1 == 0) return 1;\n"
@@ -2132,13 +2134,17 @@ assertArrsAreTheSame(prb_Arena* arena, prb_Str* arr1, prb_Str* arr2) {
 
 function void
 test_fileformat(prb_Arena* arena) {
-    prb_TempMemory           temp = prb_beginTempMemory(arena);
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Str        tempDir = getTempPath(arena, __FUNCTION__);
+    prb_assert(prb_clearDir(arena, tempDir));
+
     prb_Str                  fileParent = prb_getParentDir(arena, prb_STR(__FILE__));
     prb_Str                  rootDir = prb_getParentDir(arena, fileParent);
     prb_Str                  prbFilepath = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
     prb_ReadEntireFileResult fileContents = prb_readEntireFile(arena, prbFilepath);
     prb_assert(fileContents.success);
-    prb_StrScanner lineIter = prb_createStrScanner(prb_strFromBytes(fileContents.content));
+    prb_Str        fileContentsStr = prb_strFromBytes(fileContents.content);
+    prb_StrScanner lineIter = prb_createStrScanner(fileContentsStr);
 
     prb_Str*        headerNames = 0;
     prb_StrFindSpec lineBreakSpec = {};
@@ -2249,6 +2255,52 @@ test_fileformat(prb_Arena* arena) {
     arrfree(implNames);
     arrfree(testNames);
     arrfree(testNamesInMain);
+
+    // NOTE(khvorov) Test the examples in comments work
+    {
+        prb_Str dir = prb_pathJoin(arena, tempDir, prb_STR("example-project"));
+        prb_assert(prb_clearDir(arena, dir));
+        prb_assert(prb_writeEntireFile(arena, prb_pathJoin(arena, dir, prb_STR("cbuild.h")), fileContentsStr.ptr, fileContentsStr.len));
+
+        {
+            prb_Str programCode = prb_STR("int main() {return 0;}");
+            prb_assert(prb_writeEntireFile(arena, prb_pathJoin(arena, dir, prb_STR("program.c")), programCode.ptr, programCode.len));
+        }
+
+        prb_ReadEntireFileResult readmeRead = prb_readEntireFile(arena, prb_pathJoin(arena, rootDir, prb_STR("README.md")));
+        prb_assert(readmeRead.success);
+        prb_Str strWithExample[] = {fileContentsStr, prb_strFromBytes(readmeRead.content)};
+
+        for (i32 strIndex = 0; strIndex < prb_arrayCount(strWithExample); strIndex++) {
+            prb_Str strToSearch = strWithExample[strIndex];
+
+            prb_Str exampleCode = {};
+            {
+                prb_StrScanner  scanner = prb_createStrScanner(strToSearch);
+                prb_StrFindSpec spec = {};
+                spec.pattern = prb_STR("```c");
+                prb_assert(prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch));
+                spec.pattern = prb_STR("```");
+                prb_assert(prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch));
+                exampleCode = scanner.betweenLastMatches;
+            }
+
+            prb_Str buildProgramSrc = prb_pathJoin(arena, dir, prb_STR("build.c"));
+            prb_assert(prb_writeEntireFile(arena, buildProgramSrc, exampleCode.ptr, exampleCode.len));
+            prb_Str buildProgramExe = prb_pathJoin(arena, dir, prb_STR("build.exe"));
+            {
+                prb_Str     cmd = prb_fmt(arena, "clang -Wall -Wextra %.*s -o %.*s", prb_LIT(buildProgramSrc), prb_LIT(buildProgramExe));
+                prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+                prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+            }
+            {
+                prb_Process proc = prb_createProcess(buildProgramExe, (prb_ProcessSpec) {});
+                prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+            }
+        }
+    }
+
+    prb_removePathIfExists(arena, tempDir);
     prb_endTempMemory(temp);
 }
 

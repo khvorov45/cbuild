@@ -1,7 +1,36 @@
 /* A set of utilities for writing "build scripts" as small C (or C++) programs.
 
 Repository: https://github.com/khvorov45/cbuild
-See example/build.c for an example build script.
+See example/build.c for a non-trivial example build program.
+
+A simple build program might look like this
+
+File structure
+
+project-directory
+|
+|-cbuild.h
+|-build.c
+|-program.c
+
+Contents of build.c:
+
+```c
+#include "cbuild.h"
+
+int main() {
+    prb_Arena arena_ = prb_createArenaFromVmem(1 * prb_GIGABYTE);
+    prb_Arena* arena = &arena_;
+    prb_Str rootDir = prb_getParentDir(arena, prb_STR(__FILE__));
+    prb_Str mainFile = prb_pathJoin(arena, rootDir, prb_STR("program.c"));
+    prb_Str mainOut = prb_replaceExt(arena, mainFile, prb_STR("exe"));
+    prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(mainFile), prb_LIT(mainOut));
+    prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+    prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+}
+```
+
+Compile and run `build.c` to compile the main program.
 
 If using in multiple translation units:
     - Define prb_NOT_STATIC in the translation unit that has the implementation
@@ -29,8 +58,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
     // pull stuff you need off iter
 }
 */
-
-// TODO(khvorov) Small example in readme and doc comment. Probably actually test it works.
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
