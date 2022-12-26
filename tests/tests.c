@@ -64,6 +64,9 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_launchJobs"));
         arrput(*prbNames, prb_STR("prb_waitForJobs"));
         arrput(*prbNames, prb_STR("prb_killJobs"));
+    } else if (prb_streq(testName, prb_STR("test_getAllDirEntries"))) {
+        arrput(*prbNames, prb_STR("prb_getAllDirEntriesCustomBuffer"));
+        arrput(*prbNames, prb_STR("prb_getAllDirEntries"));
     } else {
         prb_assert(prb_strStartsWith(testName, prb_STR("test_")));
         prb_Str noPrefix = prb_strSlice(testName, 5, testName.len);
@@ -282,33 +285,33 @@ test_pathExists(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempPath(arena, __FUNCTION__);
-    prb_assert(prb_removeFileOrDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_pathExists(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_pathExists(arena, dir));
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_pathExists(arena, dir));
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
-    prb_assert(prb_removeDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(!prb_pathExists(arena, dirTrailingSlash));
     prb_assert(!prb_pathExists(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(prb_pathExists(arena, dirTrailingSlash));
     prb_assert(prb_pathExists(arena, dir));
-    prb_assert(prb_removeDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(!prb_pathExists(arena, dirTrailingSlash));
     prb_assert(!prb_pathExists(arena, dir));
 
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
-    prb_assert(prb_removeDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirNotNull) == prb_Success);
     prb_assert(!prb_pathExists(arena, dirNotNull));
     prb_assert(!prb_pathExists(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dirNotNull) == prb_Success);
     prb_assert(prb_pathExists(arena, dirNotNull));
     prb_assert(prb_pathExists(arena, dir));
-    prb_assert(prb_removeDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirNotNull) == prb_Success);
     prb_assert(!prb_pathExists(arena, dirNotNull));
     prb_assert(!prb_pathExists(arena, dir));
 
@@ -316,23 +319,23 @@ test_pathExists(prb_Arena* arena) {
     prb_Str filepathNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(filepath));
     filepathNotNull.len = filepath.len;
 
-    prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepath) == prb_Success);
     prb_assert(!prb_pathExists(arena, filepath));
     prb_assert(!prb_pathExists(arena, filepathNotNull));
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
     prb_assert(prb_pathExists(arena, filepath));
     prb_assert(prb_pathExists(arena, filepathNotNull));
-    prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepath) == prb_Success);
     prb_assert(!prb_pathExists(arena, filepath));
     prb_assert(!prb_pathExists(arena, filepathNotNull));
 
-    prb_assert(prb_removeFileIfExists(arena, filepathNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepathNotNull) == prb_Success);
     prb_assert(!prb_pathExists(arena, filepathNotNull));
     prb_assert(!prb_pathExists(arena, filepath));
     prb_assert(prb_writeEntireFile(arena, filepathNotNull, "1", 1) == prb_Success);
     prb_assert(prb_pathExists(arena, filepathNotNull));
     prb_assert(prb_pathExists(arena, filepath));
-    prb_assert(prb_removeFileIfExists(arena, filepathNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepathNotNull) == prb_Success);
     prb_assert(!prb_pathExists(arena, filepathNotNull));
     prb_assert(!prb_pathExists(arena, filepath));
 
@@ -387,33 +390,33 @@ test_isDir(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempPath(arena, __FUNCTION__);
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_isDir(arena, dir));
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
-    prb_assert(prb_removeDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(!prb_isDir(arena, dirTrailingSlash));
     prb_assert(!prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(prb_isDir(arena, dirTrailingSlash));
     prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(!prb_isDir(arena, dirTrailingSlash));
     prb_assert(!prb_isDir(arena, dir));
 
     prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
     dirNotNull.len = dir.len;
-    prb_assert(prb_removeDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirNotNull) == prb_Success);
     prb_assert(!prb_isDir(arena, dirNotNull));
     prb_assert(!prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dirNotNull) == prb_Success);
     prb_assert(prb_isDir(arena, dirNotNull));
     prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirNotNull) == prb_Success);
     prb_assert(!prb_isDir(arena, dirNotNull));
     prb_assert(!prb_isDir(arena, dir));
 
@@ -430,23 +433,23 @@ test_isFile(prb_Arena* arena) {
     prb_Str filepathNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(filepath));
     filepathNotNull.len = filepath.len;
 
-    prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepath) == prb_Success);
     prb_assert(!prb_isFile(arena, filepath));
     prb_assert(!prb_isFile(arena, filepathNotNull));
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
     prb_assert(prb_isFile(arena, filepath));
     prb_assert(prb_isFile(arena, filepathNotNull));
-    prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepath) == prb_Success);
     prb_assert(!prb_isFile(arena, filepath));
     prb_assert(!prb_isFile(arena, filepathNotNull));
 
-    prb_assert(prb_removeFileIfExists(arena, filepathNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepathNotNull) == prb_Success);
     prb_assert(!prb_isFile(arena, filepathNotNull));
     prb_assert(!prb_isFile(arena, filepath));
     prb_assert(prb_writeEntireFile(arena, filepathNotNull, "1", 1) == prb_Success);
     prb_assert(prb_isFile(arena, filepathNotNull));
     prb_assert(prb_isFile(arena, filepath));
-    prb_assert(prb_removeFileIfExists(arena, filepathNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepathNotNull) == prb_Success);
     prb_assert(!prb_isFile(arena, filepathNotNull));
     prb_assert(!prb_isFile(arena, filepath));
 
@@ -466,7 +469,7 @@ test_dirIsEmpty(prb_Arena* arena) {
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("file.txt"));
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
     prb_assert(!prb_dirIsEmpty(arena, dir));
-    prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepath) == prb_Success);
     prb_assert(prb_dirIsEmpty(arena, dir));
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
@@ -475,7 +478,7 @@ test_dirIsEmpty(prb_Arena* arena) {
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
     prb_assert(!prb_dirIsEmpty(arena, dirTrailingSlash));
     prb_assert(!prb_dirIsEmpty(arena, dir));
-    prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepath) == prb_Success);
     prb_assert(prb_dirIsEmpty(arena, dirTrailingSlash));
     prb_assert(prb_dirIsEmpty(arena, dir));
 
@@ -486,11 +489,11 @@ test_dirIsEmpty(prb_Arena* arena) {
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
     prb_assert(!prb_dirIsEmpty(arena, dirNotNull));
     prb_assert(!prb_dirIsEmpty(arena, dir));
-    prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepath) == prb_Success);
     prb_assert(prb_dirIsEmpty(arena, dirNotNull));
     prb_assert(prb_dirIsEmpty(arena, dir));
 
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
 }
 
@@ -499,19 +502,19 @@ test_createDirIfNotExists(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempPath(arena, __FUNCTION__);
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_isDir(arena, dir));
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
 
     prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
     prb_assert(prb_createDirIfNotExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(prb_isDir(arena, dirTrailingSlash));
     prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeFileOrDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(!prb_isDir(arena, dirTrailingSlash));
     prb_assert(!prb_isDir(arena, dir));
 
@@ -520,7 +523,7 @@ test_createDirIfNotExists(prb_Arena* arena) {
     prb_assert(prb_createDirIfNotExists(arena, dirNotNull) == prb_Success);
     prb_assert(prb_isDir(arena, dirNotNull));
     prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeFileOrDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirNotNull) == prb_Success);
     prb_assert(!prb_isDir(arena, dirNotNull));
     prb_assert(!prb_isDir(arena, dir));
 
@@ -528,7 +531,7 @@ test_createDirIfNotExists(prb_Arena* arena) {
 }
 
 function void
-test_removeFileOrDirIfExists(prb_Arena* arena) {
+test_removePathIfExists(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str dir = getTempPath(arena, __FUNCTION__);
@@ -542,19 +545,19 @@ test_removeFileOrDirIfExists(prb_Arena* arena) {
     prb_assert(prb_isDir(arena, dir));
     prb_assert(prb_isFile(arena, filepath));
 
-    prb_assert(prb_removeFileOrDirIfExists(arena, filepath) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepath) == prb_Success);
     prb_assert(prb_isDir(arena, dir));
     prb_assert(!prb_isFile(arena, filepath));
 
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
 
-    prb_assert(prb_removeFileOrDirIfExists(arena, filepathNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filepathNotNull) == prb_Success);
     prb_assert(prb_isDir(arena, dir));
     prb_assert(!prb_isFile(arena, filepath));
 
     prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
 
-    prb_assert(prb_removeFileOrDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_assert(!prb_isDir(arena, dir));
     prb_assert(!prb_isFile(arena, filepath));
 
@@ -562,7 +565,7 @@ test_removeFileOrDirIfExists(prb_Arena* arena) {
     prb_assert(prb_createDirIfNotExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(prb_isDir(arena, dirTrailingSlash));
     prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeFileOrDirIfExists(arena, dirTrailingSlash) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirTrailingSlash) == prb_Success);
     prb_assert(!prb_isDir(arena, dirTrailingSlash));
     prb_assert(!prb_isDir(arena, dir));
 
@@ -571,63 +574,7 @@ test_removeFileOrDirIfExists(prb_Arena* arena) {
     prb_assert(prb_createDirIfNotExists(arena, dirNotNull) == prb_Success);
     prb_assert(prb_isDir(arena, dirNotNull));
     prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeFileOrDirIfExists(arena, dirNotNull) == prb_Success);
-    prb_assert(!prb_isDir(arena, dirNotNull));
-    prb_assert(!prb_isDir(arena, dir));
-
-    prb_endTempMemory(temp);
-}
-
-function void
-test_removeFileIfExists(prb_Arena* arena) {
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-
-    prb_Str dir = getTempPath(arena, __FUNCTION__);
-    prb_assert(prb_clearDir(arena, dir) == prb_Success);
-
-    prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("file.txt"));
-    prb_Str filepathNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(filepath));
-    filepathNotNull.len = filepath.len;
-
-    prb_assert(!prb_isFile(arena, filepath));
-    prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
-    prb_assert(prb_isFile(arena, filepath));
-    prb_assert(prb_removeFileIfExists(arena, filepath) == prb_Success);
-    prb_assert(!prb_isFile(arena, filepath));
-    prb_assert(prb_writeEntireFile(arena, filepath, "1", 1) == prb_Success);
-    prb_assert(prb_isFile(arena, filepath));
-    prb_assert(prb_removeFileIfExists(arena, filepathNotNull) == prb_Success);
-    prb_assert(!prb_isFile(arena, filepath));
-
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
-
-    prb_endTempMemory(temp);
-}
-
-function void
-test_removeDirIfExists(prb_Arena* arena) {
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-
-    prb_Str dir = getTempPath(arena, __FUNCTION__);
-    prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
-    prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
-    prb_assert(!prb_isDir(arena, dir));
-
-    prb_Str dirTrailingSlash = prb_fmt(arena, "%.*s/", prb_LIT(dir));
-    prb_assert(prb_createDirIfNotExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(prb_isDir(arena, dirTrailingSlash));
-    prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeDirIfExists(arena, dirTrailingSlash) == prb_Success);
-    prb_assert(!prb_isDir(arena, dirTrailingSlash));
-    prb_assert(!prb_isDir(arena, dir));
-
-    prb_Str dirNotNull = prb_fmt(arena, "%.*sabc", prb_LIT(dir));
-    dirNotNull.len = dir.len;
-    prb_assert(prb_createDirIfNotExists(arena, dirNotNull) == prb_Success);
-    prb_assert(prb_isDir(arena, dirNotNull));
-    prb_assert(prb_isDir(arena, dir));
-    prb_assert(prb_removeDirIfExists(arena, dirNotNull) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dirNotNull) == prb_Success);
     prb_assert(!prb_isDir(arena, dirNotNull));
     prb_assert(!prb_isDir(arena, dir));
 
@@ -666,7 +613,7 @@ test_clearDir(prb_Arena* arena) {
     prb_assert(prb_dirIsEmpty(arena, dirNotNull));
     prb_assert(prb_dirIsEmpty(arena, dir));
 
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
 
     prb_endTempMemory(temp);
 }
@@ -682,7 +629,7 @@ test_getWorkingDir(prb_Arena* arena) {
     prb_ReadEntireFileResult fileContent = prb_readEntireFile(arena, prb_pathJoin(arena, cwd, filename));
     prb_assert(fileContent.success);
     prb_assert(prb_streq((prb_Str) {(const char*)fileContent.content.data, fileContent.content.len}, filename));
-    prb_assert(prb_removeFileIfExists(arena, filename) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, filename) == prb_Success);
 
     prb_endTempMemory(temp);
 }
@@ -693,7 +640,7 @@ test_setWorkingDir(prb_Arena* arena) {
 
     prb_Str cwdInit = prb_getWorkingDir(arena);
     prb_Str newWd = getTempPath(arena, __FUNCTION__);
-    prb_assert(prb_removeDirIfExists(arena, newWd) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, newWd) == prb_Success);
     prb_Str newWdAbsolute = prb_getAbsolutePath(arena, newWd);
     prb_assert(prb_setWorkingDir(arena, newWd) == prb_Failure);
     prb_assert(prb_createDirIfNotExists(arena, newWd) == prb_Success);
@@ -708,7 +655,7 @@ test_setWorkingDir(prb_Arena* arena) {
     fileRead = prb_readEntireFile(arena, filename);
     prb_assert(!fileRead.success);
 
-    prb_removeDirIfExists(arena, newWd);
+    prb_removePathIfExists(arena, newWd);
     prb_endTempMemory(temp);
 }
 
@@ -970,7 +917,7 @@ test_getAllDirEntries(prb_Arena* arena) {
         arrfree(entries);
     }
 
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
 }
 
@@ -997,7 +944,7 @@ test_getLastModified(prb_Arena* arena) {
     u64 t2 = lastMod.timestamp;
     prb_assert(t2 > t1);
 
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
 }
 
@@ -1050,21 +997,13 @@ function void
 test_writeEntireFile(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_Str        dir = getTempPath(arena, __FUNCTION__);
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("filename.txt"));
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Failure);
     prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
     prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Success);
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
-}
-
-function void
-test_binaryToCArray(prb_Arena* arena) {
-    prb_unused(arena);
-    u8      bytes[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb, 0xc};
-    prb_Str carr = prb_binaryToCArray(arena, prb_STR("testarr"), bytes, prb_arrayCount(bytes));
-    prb_assert(prb_streq(carr, prb_STR("unsigned char testarr[] = {\n    0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa,\n    0xb, 0xc\n};")));
 }
 
 function void
@@ -1085,7 +1024,7 @@ test_getFileHash(prb_Arena* arena) {
     prb_FileHash hash3 = prb_getFileHash(arena, filepath);
     prb_assert(hash3.valid);
     prb_assert(hash3.hash == hash1.hash);
-    prb_assert(prb_removeDirIfExists(arena, dir) == prb_Success);
+    prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_FileHash hash4 = prb_getFileHash(arena, filepath);
     prb_assert(!hash4.valid);
     prb_endTempMemory(temp);
@@ -1778,6 +1717,14 @@ test_parseNumber(prb_Arena* arena) {
     // TODO(khvorov) Write
 }
 
+function void
+test_binaryToCArray(prb_Arena* arena) {
+    prb_unused(arena);
+    u8      bytes[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb, 0xc};
+    prb_Str carr = prb_binaryToCArray(arena, prb_STR("testarr"), bytes, prb_arrayCount(bytes));
+    prb_assert(prb_streq(carr, prb_STR("unsigned char testarr[] = {\n    0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa,\n    0xb, 0xc\n};")));
+}
+
 //
 // SECTION Processes
 //
@@ -1999,7 +1946,7 @@ test_process(prb_Arena* arena) {
         }
     }
 
-    prb_removeDirIfExists(arena, dir);
+    prb_removePathIfExists(arena, dir);
     prb_endTempMemory(temp);
 }
 
@@ -2342,9 +2289,7 @@ main() {
     test_isFile(arena);
     test_dirIsEmpty(arena);
     test_createDirIfNotExists(arena);
-    test_removeFileOrDirIfExists(arena);
-    test_removeFileIfExists(arena);
-    test_removeDirIfExists(arena);
+    test_removePathIfExists(arena);
     test_clearDir(arena);
     test_getWorkingDir(arena);
     test_setWorkingDir(arena);
@@ -2360,7 +2305,6 @@ main() {
     test_multitimeAdd(arena);
     test_readEntireFile(arena);
     test_writeEntireFile(arena);
-    test_binaryToCArray(arena);
     test_getFileHash(arena);
 
     // SECTION Strings
@@ -2383,6 +2327,7 @@ main() {
     test_utf8CharIter(arena);
     test_strScanner(arena);
     test_parseNumber(arena);
+    test_binaryToCArray(arena);
 
     // SECTION Processes
     test_terminate(arena);

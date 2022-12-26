@@ -453,9 +453,7 @@ prb_PUBLICDEC bool                     prb_isDir(prb_Arena* arena, prb_Str path)
 prb_PUBLICDEC bool                     prb_isFile(prb_Arena* arena, prb_Str path);
 prb_PUBLICDEC bool                     prb_dirIsEmpty(prb_Arena* arena, prb_Str path);
 prb_PUBLICDEC prb_Status               prb_createDirIfNotExists(prb_Arena* arena, prb_Str path);
-prb_PUBLICDEC prb_Status               prb_removeFileOrDirIfExists(prb_Arena* arena, prb_Str path);
-prb_PUBLICDEC prb_Status               prb_removeFileIfExists(prb_Arena* arena, prb_Str path);
-prb_PUBLICDEC prb_Status               prb_removeDirIfExists(prb_Arena* arena, prb_Str path);
+prb_PUBLICDEC prb_Status               prb_removePathIfExists(prb_Arena* arena, prb_Str path);
 prb_PUBLICDEC prb_Status               prb_clearDir(prb_Arena* arena, prb_Str path);
 prb_PUBLICDEC prb_Str                  prb_getWorkingDir(prb_Arena* arena);
 prb_PUBLICDEC prb_Status               prb_setWorkingDir(prb_Arena* arena, prb_Str dir);
@@ -466,13 +464,13 @@ prb_PUBLICDEC prb_Str                  prb_getLastEntryInPath(prb_Str path);
 prb_PUBLICDEC prb_Str                  prb_replaceExt(prb_Arena* arena, prb_Str path, prb_Str newExt);
 prb_PUBLICDEC prb_PathEntryIter        prb_createPathEntryIter(prb_Str path);
 prb_PUBLICDEC prb_Status               prb_pathEntryIterNext(prb_PathEntryIter* iter);
+prb_PUBLICDEC void                     prb_getAllDirEntriesCustomBuffer(prb_Arena* arena, prb_Str dir, prb_Recursive mode, prb_Str** storage);
 prb_PUBLICDEC prb_Str*                 prb_getAllDirEntries(prb_Arena* arena, prb_Str dir, prb_Recursive mode);
 prb_PUBLICDEC prb_FileTimestamp        prb_getLastModified(prb_Arena* arena, prb_Str path);
 prb_PUBLICDEC prb_Multitime            prb_createMultitime(void);
 prb_PUBLICDEC void                     prb_multitimeAdd(prb_Multitime* multitime, prb_FileTimestamp newTimestamp);
 prb_PUBLICDEC prb_ReadEntireFileResult prb_readEntireFile(prb_Arena* arena, prb_Str path);
 prb_PUBLICDEC prb_Status               prb_writeEntireFile(prb_Arena* arena, prb_Str path, const void* content, int32_t contentLen);
-prb_PUBLICDEC prb_Str                  prb_binaryToCArray(prb_Arena* arena, prb_Str arrayName, void* data, int32_t dataLen);
 prb_PUBLICDEC prb_FileHash             prb_getFileHash(prb_Arena* arena, prb_Str filepath);
 
 // SECTION Strings
@@ -499,6 +497,7 @@ prb_PUBLICDEC prb_Status        prb_utf8CharIterNext(prb_Utf8CharIter* iter);
 prb_PUBLICDEC prb_StrScanner    prb_createStrScanner(prb_Str str);
 prb_PUBLICDEC prb_Status        prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec, prb_StrScannerSide side);
 prb_PUBLICDEC prb_ParsedNumber  prb_parseNumber(prb_Str str);
+prb_PUBLICDEC prb_Str           prb_binaryToCArray(prb_Arena* arena, prb_Str arrayName, void* data, int32_t dataLen);
 
 // SECTION Processes
 prb_PUBLICDEC void             prb_terminate(int32_t code);
@@ -1279,42 +1278,7 @@ prb_createDirIfNotExists(prb_Arena* arena, prb_Str path) {
 }
 
 prb_PUBLICDEF prb_Status
-prb_removeFileOrDirIfExists(prb_Arena* arena, prb_Str path) {
-    prb_Status result = prb_Failure;
-    if (prb_isDir(arena, path)) {
-        result = prb_removeDirIfExists(arena, path);
-    } else {
-        result = prb_removeFileIfExists(arena, path);
-    }
-    return result;
-}
-
-prb_PUBLICDEF prb_Status
-prb_removeFileIfExists(prb_Arena* arena, prb_Str path) {
-    prb_Status     result = prb_Success;
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-    const char*    pathNull = prb_strGetNullTerminated(arena, path);
-
-#if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
-#elif prb_PLATFORM_LINUX
-
-    if (prb_isFile(arena, path)) {
-        result = unlink(pathNull) == 0 ? prb_Success : prb_Failure;
-    }
-
-#else
-#error unimplemented
-#endif
-
-    prb_endTempMemory(temp);
-    return result;
-}
-
-prb_PUBLICDEF prb_Status
-prb_removeDirIfExists(prb_Arena* arena, prb_Str path) {
+prb_removePathIfExists(prb_Arena* arena, prb_Str path) {
     prb_Status     result = prb_Success;
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
@@ -1331,19 +1295,33 @@ prb_removeDirIfExists(prb_Arena* arena, prb_Str path) {
 
 #elif prb_PLATFORM_LINUX
 
+    prb_Str* toRemove = 0;
+    const char* pathNull = prb_strGetNullTerminated(arena, path);
+    prb_Str pathNullStr = {pathNull, path.len};
+    prb_stbds_arrput(toRemove, pathNullStr);
     if (prb_isDir(arena, path)) {
-        prb_Str* entries = prb_getAllDirEntries(arena, path, prb_Recursive_Yes);
-        for (int32_t entryIndex = 0; entryIndex < prb_stbds_arrlen(entries) && result == prb_Success; entryIndex++) {
-            prb_Str entry = entries[entryIndex];
-            result = prb_removeFileOrDirIfExists(arena, entry);
-        }
-        prb_stbds_arrfree(entries);
-        if (result == prb_Success) {
-            prb_assert(prb_dirIsEmpty(arena, path));
-            const char* pathNull = prb_strGetNullTerminated(arena, path);
-            result = rmdir(pathNull) == 0 ? prb_Success : prb_Failure;
+        // NOTE(khvorov) These are null-terminated
+        prb_getAllDirEntriesCustomBuffer(arena, path, prb_Recursive_Yes, &toRemove);
+    }
+
+    // NOTE(khvorov) Remove all files
+    for (int32_t entryIndex = 0; entryIndex < prb_stbds_arrlen(toRemove) && result == prb_Success; entryIndex++) {
+        prb_Str entry = toRemove[entryIndex];
+        if (prb_isFile(arena, entry)) {
+            result = unlink(entry.ptr) == 0 ? prb_Success : prb_Failure;
         }
     }
+
+    // NOTE(khvorov) Remove all directories in reverse order because
+    // getAllDirEntries puts the most nested ones at the bottom
+    for (int32_t entryIndex = prb_stbds_arrlen(toRemove) - 1; entryIndex >= 0 && result == prb_Success; entryIndex--) {
+        prb_Str entry = toRemove[entryIndex];
+        if (prb_isDir(arena, entry)) {
+            result = rmdir(entry.ptr) == 0 ? prb_Success : prb_Failure;
+        }
+    }
+
+    prb_stbds_arrfree(toRemove);
 
 #else
 #error unimplemented
@@ -1355,7 +1333,7 @@ prb_removeDirIfExists(prb_Arena* arena, prb_Str path) {
 
 prb_PUBLICDEF prb_Status
 prb_clearDir(prb_Arena* arena, prb_Str path) {
-    prb_Status result = prb_removeFileOrDirIfExists(arena, path);
+    prb_Status result = prb_removePathIfExists(arena, path);
     if (result == prb_Success) {
         result = prb_createDirIfNotExists(arena, path);
     }
@@ -1542,9 +1520,8 @@ prb_pathEntryIterNext(prb_PathEntryIter* iter) {
     return result;
 }
 
-prb_PUBLICDEF prb_Str*
-prb_getAllDirEntries(prb_Arena* arena, prb_Str dir, prb_Recursive mode) {
-    prb_Str* entries = 0;
+prb_PUBLICDEF void
+prb_getAllDirEntriesCustomBuffer(prb_Arena* arena, prb_Str dir, prb_Recursive mode, prb_Str** storage) {
 
 #if prb_PLATFORM_WINDOWS
 
@@ -1579,7 +1556,7 @@ prb_getAllDirEntries(prb_Arena* arena, prb_Str dir, prb_Recursive mode) {
                                 prb_stbds_arrput(dirs, fullpath);
                             }
                         }
-                        prb_stbds_arrput(entries, fullpath);
+                        prb_stbds_arrput(*storage, fullpath);
                     }
                     offset += ent->d_reclen;
                 }
@@ -1592,7 +1569,12 @@ prb_getAllDirEntries(prb_Arena* arena, prb_Str dir, prb_Recursive mode) {
 #else
 #error unimplemented
 #endif
+}
 
+prb_PUBLICDEF prb_Str*
+prb_getAllDirEntries(prb_Arena* arena, prb_Str dir, prb_Recursive mode) {
+    prb_Str* entries = 0;
+    prb_getAllDirEntriesCustomBuffer(arena, dir, mode, &entries);
     return entries;
 }
 
@@ -1705,29 +1687,6 @@ prb_writeEntireFile(prb_Arena* arena, prb_Str path, const void* content, int32_t
 #endif
 
     return result;
-}
-
-prb_PUBLICDEF prb_Str
-prb_binaryToCArray(prb_Arena* arena, prb_Str arrayName, void* data, int32_t dataLen) {
-    prb_GrowingStr arrayGstr = prb_beginStr(arena);
-    prb_addStrSegment(&arrayGstr, "unsigned char %.*s[] = {\n    ", prb_LIT(arrayName));
-    for (int32_t byteIndex = 0; byteIndex < dataLen; byteIndex++) {
-        uint8_t byte = ((uint8_t*)data)[byteIndex];
-        prb_addStrSegment(&arrayGstr, "0x%x", byte);
-        if (byteIndex != dataLen - 1) {
-            prb_addStrSegment(&arrayGstr, ",");
-            if ((byteIndex + 1) % 10 == 0) {
-                prb_addStrSegment(&arrayGstr, "\n    ");
-            } else {
-                prb_addStrSegment(&arrayGstr, " ");
-            }
-        } else {
-            prb_addStrSegment(&arrayGstr, "\n");
-        }
-    }
-    prb_addStrSegment(&arrayGstr, "};");
-    prb_Str arrayStr = prb_endStr(&arrayGstr);
-    return arrayStr;
 }
 
 prb_PUBLICDEF prb_FileHash
@@ -2324,6 +2283,29 @@ prb_parseNumber(prb_Str str) {
         }
     }
     return number;
+}
+
+prb_PUBLICDEF prb_Str
+prb_binaryToCArray(prb_Arena* arena, prb_Str arrayName, void* data, int32_t dataLen) {
+    prb_GrowingStr arrayGstr = prb_beginStr(arena);
+    prb_addStrSegment(&arrayGstr, "unsigned char %.*s[] = {\n    ", prb_LIT(arrayName));
+    for (int32_t byteIndex = 0; byteIndex < dataLen; byteIndex++) {
+        uint8_t byte = ((uint8_t*)data)[byteIndex];
+        prb_addStrSegment(&arrayGstr, "0x%x", byte);
+        if (byteIndex != dataLen - 1) {
+            prb_addStrSegment(&arrayGstr, ",");
+            if ((byteIndex + 1) % 10 == 0) {
+                prb_addStrSegment(&arrayGstr, "\n    ");
+            } else {
+                prb_addStrSegment(&arrayGstr, " ");
+            }
+        } else {
+            prb_addStrSegment(&arrayGstr, "\n");
+        }
+    }
+    prb_addStrSegment(&arrayGstr, "};");
+    prb_Str arrayStr = prb_endStr(&arrayGstr);
+    return arrayStr;
 }
 
 //

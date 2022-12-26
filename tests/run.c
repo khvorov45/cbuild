@@ -266,7 +266,7 @@ main() {
                     || prb_strEndsWith(entry, prb_STR(".supp"))
                     || prb_strStartsWith(entryName, prb_STR("coverage"));
                 if (remove) {
-                    prb_assert(prb_removeFileIfExists(arena, entry));
+                    prb_assert(prb_removePathIfExists(arena, entry));
                 }
             }
         }
@@ -351,7 +351,7 @@ main() {
             prb_Str mainFile = prb_pathJoin(arena, rootDir, prb_STR("cbuild.h"));
             prb_Str outfile = prb_pathJoin(arena, globalTestsDir, prb_STR("cbuild.gch"));
             prb_assert(execCmd(arena, prb_fmt(arena, "clang -Wall -Wextra -Werror -Wfatal-errors -Dprb_STBDS_NO_SHORT_NAMES %.*s -o %.*s", prb_LIT(mainFile), prb_LIT(outfile))));
-            prb_removeFileIfExists(arena, outfile);
+            prb_removePathIfExists(arena, outfile);
         }
 
         prb_Job* jobs = 0;
