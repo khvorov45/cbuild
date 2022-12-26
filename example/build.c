@@ -274,7 +274,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             if (prb_strEndsWith(entry, prb_STR(".obj"))) {
                 shput(existingObjs, entry.ptr, false);
             } else {
-                prb_removeFileIfExists(arena, entry);
+                prb_removePathIfExists(arena, entry);
             }
         }
     }
@@ -353,7 +353,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         for (i32 existingObjIndex = 0; existingObjIndex < shlen(existingObjs); existingObjIndex++) {
             StringFound existingObj = existingObjs[existingObjIndex];
             if (!existingObj.value) {
-                prb_assert(prb_removeFileIfExists(arena, prb_STR(existingObj.key)) == prb_Success);
+                prb_assert(prb_removePathIfExists(arena, prb_STR(existingObj.key)) == prb_Success);
             }
         }
 
@@ -390,7 +390,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
 #elif prb_PLATFORM_LINUX
                 prb_Str libCmd = prb_fmt(arena, "ar rcs %.*s %.*s", prb_LIT(lib->libFile), prb_LIT(objsPathsString));
 #endif
-                prb_assert(prb_removeFileIfExists(arena, lib->libFile) == prb_Success);
+                prb_assert(prb_removePathIfExists(arena, lib->libFile) == prb_Success);
                 libStatus = execCmd(arena, libCmd);
             } else {
                 prb_Str msg = prb_fmt(arena, "skip lib %.*s", prb_LIT(lib->name));
