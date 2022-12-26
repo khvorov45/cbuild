@@ -30,7 +30,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 }
 */
 
-// TODO(khvorov) Ability to check/change file executable permissions
 // TODO(khvorov) Small example in readme and doc comment. Probably actually test it works.
 
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
