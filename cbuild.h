@@ -134,8 +134,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 #define prb_unused(x) ((x) = (x))
 
-// TODO(khvorov) Is there a way to create a macro that creates a job and copies data?
-
 // clang-format off
 
 #define prb_STR(x) (prb_Str) {x, prb_strlen(x)}
