@@ -1806,10 +1806,10 @@ test_parseNumber(prb_Arena* arena) {
     prb_assert(number.kind == prb_ParsedNumberKind_F64);
     prb_assert(number.parsedF64 == 0.1);
 
-    prb_Str int64min = prb_fmt(arena, "%ld", INT64_MIN);
+    prb_Str int64min = prb_fmt(arena, "%ld", INT64_MIN + 1);
     number = prb_parseNumber(int64min);
     prb_assert(number.kind == prb_ParsedNumberKind_I64);
-    prb_assert(number.parsedI64 == INT64_MIN);
+    prb_assert(number.parsedI64 == INT64_MIN + 1);
 
     prb_assert(prb_parseNumber(prb_STR(" 123")).kind == prb_ParsedNumberKind_None);
     prb_assert(prb_parseNumber(prb_STR(" 123")).kind == prb_ParsedNumberKind_None);
