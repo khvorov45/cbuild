@@ -1712,9 +1712,79 @@ test_strScanner(prb_Arena* arena) {
 }
 
 function void
+test_parseUint(prb_Arena* arena) {
+    prb_unused(arena);
+
+    prb_ParseUintResult parseResult = prb_parseUint(prb_STR("123"), 10);
+    prb_assert(parseResult.success);
+    prb_assert(parseResult.number == 123);
+
+    parseResult = prb_parseUint(prb_STR("123"), 16);
+    prb_assert(parseResult.success);
+    prb_assert(parseResult.number == 0x123);
+
+    parseResult = prb_parseUint(prb_STR("-123"), 16);
+    prb_assert(!parseResult.success);
+
+    parseResult = prb_parseUint(prb_STR("0x123"), 16);
+    prb_assert(!parseResult.success);
+}
+
+function void
 test_parseNumber(prb_Arena* arena) {
     prb_unused(arena);
-    // TODO(khvorov) Write
+    
+    prb_ParsedNumber number = prb_parseNumber(prb_STR("0x123"));
+    prb_assert(number.kind == prb_ParsedNumberKind_U64);
+    prb_assert(number.parsedU64 == 0x123);
+
+    number = prb_parseNumber(prb_STR("123"));
+    prb_assert(number.kind == prb_ParsedNumberKind_U64);
+    prb_assert(number.parsedU64 == 123);
+
+    number = prb_parseNumber(prb_STR("-123"));
+    prb_assert(number.kind == prb_ParsedNumberKind_I64);
+    prb_assert(number.parsedI64 == -123);
+
+    number = prb_parseNumber(prb_STR("-0x123"));
+    prb_assert(number.kind == prb_ParsedNumberKind_I64);
+    prb_assert(number.parsedI64 == -0x123);
+
+    number = prb_parseNumber(prb_STR("12.34"));
+    prb_assert(number.kind == prb_ParsedNumberKind_F64);
+    prb_assert(number.parsedF64 == 12.34);
+
+    number = prb_parseNumber(prb_STR("-12.34"));
+    prb_assert(number.kind == prb_ParsedNumberKind_F64);
+    prb_assert(number.parsedF64 == -12.34);
+
+    number = prb_parseNumber(prb_STR("-12.34"));
+    prb_assert(number.kind == prb_ParsedNumberKind_F64);
+    prb_assert(number.parsedF64 == -12.34);
+
+    number = prb_parseNumber(prb_STR("."));
+    prb_assert(number.kind == prb_ParsedNumberKind_F64);
+    prb_assert(number.parsedF64 == 0);
+
+    number = prb_parseNumber(prb_STR("1."));
+    prb_assert(number.kind == prb_ParsedNumberKind_F64);
+    prb_assert(number.parsedF64 == 1.0);
+
+    number = prb_parseNumber(prb_STR(".1"));
+    prb_assert(number.kind == prb_ParsedNumberKind_F64);
+    prb_assert(number.parsedF64 == 0.1);
+
+    prb_Str int64min = prb_fmt(arena, "%ld", INT64_MIN);
+    number = prb_parseNumber(int64min);
+    prb_assert(number.kind == prb_ParsedNumberKind_I64);
+    prb_assert(number.parsedI64 == INT64_MIN);
+
+    prb_assert(prb_parseNumber(prb_STR(" 123")).kind == prb_ParsedNumberKind_None);
+    prb_assert(prb_parseNumber(prb_STR(" 123")).kind == prb_ParsedNumberKind_None);
+    prb_assert(prb_parseNumber(prb_STR("123a")).kind == prb_ParsedNumberKind_None);
+    prb_assert(prb_parseNumber(prb_STR("123.a")).kind == prb_ParsedNumberKind_None);
+    prb_assert(prb_parseNumber(prb_STR("a.1")).kind == prb_ParsedNumberKind_None);
+    prb_assert(prb_parseNumber(prb_STR("1.1 ")).kind == prb_ParsedNumberKind_None);
 }
 
 function void
@@ -2378,6 +2448,7 @@ main() {
     test_writeToStdout(arena);
     test_utf8CharIter(arena);
     test_strScanner(arena);
+    test_parseUint(arena);
     test_parseNumber(arena);
     test_binaryToCArray(arena);
 

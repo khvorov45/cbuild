@@ -426,16 +426,24 @@ typedef enum prb_Background {
     prb_Background_Yes,
 } prb_Background;
 
-// TODO(khvorov) Finish
+typedef struct prb_ParseUintResult {
+    bool     success;
+    uint64_t number;
+} prb_ParseUintResult;
+
 typedef enum prb_ParsedNumberKind {
     prb_ParsedNumberKind_None,
     prb_ParsedNumberKind_U64,
+    prb_ParsedNumberKind_I64,
+    prb_ParsedNumberKind_F64,
 } prb_ParsedNumberKind;
 
 typedef struct prb_ParsedNumber {
     prb_ParsedNumberKind kind;
     union {
         uint64_t parsedU64;
+        int64_t  parsedI64;
+        double   parsedF64;
     };
 } prb_ParsedNumber;
 
@@ -498,30 +506,31 @@ prb_PUBLICDEC prb_Status               prb_writeEntireFile(prb_Arena* arena, prb
 prb_PUBLICDEC prb_FileHash             prb_getFileHash(prb_Arena* arena, prb_Str filepath);
 
 // SECTION Strings
-prb_PUBLICDEC bool              prb_streq(prb_Str str1, prb_Str str2);
-prb_PUBLICDEC prb_Str           prb_strSlice(prb_Str str, int32_t start, int32_t onePastEnd);
-prb_PUBLICDEC const char*       prb_strGetNullTerminated(prb_Arena* arena, prb_Str str);
-prb_PUBLICDEC prb_Str           prb_strFromBytes(prb_Bytes bytes);
-prb_PUBLICDEC prb_Str           prb_strTrimSide(prb_Str str, prb_StrDirection dir);
-prb_PUBLICDEC prb_Str           prb_strTrim(prb_Str str);
-prb_PUBLICDEC prb_StrFindResult prb_strFind(prb_Str str, prb_StrFindSpec spec);
-prb_PUBLICDEC bool              prb_strStartsWith(prb_Str str, prb_Str pattern);
-prb_PUBLICDEC bool              prb_strEndsWith(prb_Str str, prb_Str pattern);
-prb_PUBLICDEC prb_Str           prb_stringsJoin(prb_Arena* arena, prb_Str* strings, int32_t stringsCount, prb_Str sep);
-prb_PUBLICDEC prb_GrowingStr    prb_beginStr(prb_Arena* arena);
-prb_PUBLICDEC void              prb_addStrSegment(prb_GrowingStr* gstr, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC prb_Str           prb_endStr(prb_GrowingStr* gstr);
-prb_PUBLICDEC prb_Str           prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args);
-prb_PUBLICDEC prb_Str           prb_fmt(prb_Arena* arena, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
-prb_PUBLICDEC prb_Status        prb_writeToStdout(prb_Str str);
-prb_PUBLICDEC prb_Status        prb_writelnToStdout(prb_Arena* arena, prb_Str str);
-prb_PUBLICDEC prb_Str           prb_colorEsc(prb_ColorID color);
-prb_PUBLICDEC prb_Utf8CharIter  prb_createUtf8CharIter(prb_Str str, prb_StrDirection direction);
-prb_PUBLICDEC prb_Status        prb_utf8CharIterNext(prb_Utf8CharIter* iter);
-prb_PUBLICDEC prb_StrScanner    prb_createStrScanner(prb_Str str);
-prb_PUBLICDEC prb_Status        prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec, prb_StrScannerSide side);
-prb_PUBLICDEC prb_ParsedNumber  prb_parseNumber(prb_Str str);
-prb_PUBLICDEC prb_Str           prb_binaryToCArray(prb_Arena* arena, prb_Str arrayName, void* data, int32_t dataLen);
+prb_PUBLICDEC bool                prb_streq(prb_Str str1, prb_Str str2);
+prb_PUBLICDEC prb_Str             prb_strSlice(prb_Str str, int32_t start, int32_t onePastEnd);
+prb_PUBLICDEC const char*         prb_strGetNullTerminated(prb_Arena* arena, prb_Str str);
+prb_PUBLICDEC prb_Str             prb_strFromBytes(prb_Bytes bytes);
+prb_PUBLICDEC prb_Str             prb_strTrimSide(prb_Str str, prb_StrDirection dir);
+prb_PUBLICDEC prb_Str             prb_strTrim(prb_Str str);
+prb_PUBLICDEC prb_StrFindResult   prb_strFind(prb_Str str, prb_StrFindSpec spec);
+prb_PUBLICDEC bool                prb_strStartsWith(prb_Str str, prb_Str pattern);
+prb_PUBLICDEC bool                prb_strEndsWith(prb_Str str, prb_Str pattern);
+prb_PUBLICDEC prb_Str             prb_stringsJoin(prb_Arena* arena, prb_Str* strings, int32_t stringsCount, prb_Str sep);
+prb_PUBLICDEC prb_GrowingStr      prb_beginStr(prb_Arena* arena);
+prb_PUBLICDEC void                prb_addStrSegment(prb_GrowingStr* gstr, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_PUBLICDEC prb_Str             prb_endStr(prb_GrowingStr* gstr);
+prb_PUBLICDEC prb_Str             prb_vfmtCustomBuffer(void* buf, int32_t bufSize, const char* fmt, va_list args);
+prb_PUBLICDEC prb_Str             prb_fmt(prb_Arena* arena, const char* fmt, ...) prb_ATTRIBUTE_FORMAT(2, 3);
+prb_PUBLICDEC prb_Status          prb_writeToStdout(prb_Str str);
+prb_PUBLICDEC prb_Status          prb_writelnToStdout(prb_Arena* arena, prb_Str str);
+prb_PUBLICDEC prb_Str             prb_colorEsc(prb_ColorID color);
+prb_PUBLICDEC prb_Utf8CharIter    prb_createUtf8CharIter(prb_Str str, prb_StrDirection direction);
+prb_PUBLICDEC prb_Status          prb_utf8CharIterNext(prb_Utf8CharIter* iter);
+prb_PUBLICDEC prb_StrScanner      prb_createStrScanner(prb_Str str);
+prb_PUBLICDEC prb_Status          prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec, prb_StrScannerSide side);
+prb_PUBLICDEC prb_ParseUintResult prb_parseUint(prb_Str digits, uint64_t base);
+prb_PUBLICDEC prb_ParsedNumber    prb_parseNumber(prb_Str str);
+prb_PUBLICDEC prb_Str             prb_binaryToCArray(prb_Arena* arena, prb_Str arrayName, void* data, int32_t dataLen);
 
 // SECTION Processes
 prb_PUBLICDEC void             prb_terminate(int32_t code);
@@ -1319,9 +1328,9 @@ prb_removePathIfExists(prb_Arena* arena, prb_Str path) {
 
 #elif prb_PLATFORM_LINUX
 
-    prb_Str* toRemove = 0;
+    prb_Str*    toRemove = 0;
     const char* pathNull = prb_strGetNullTerminated(arena, path);
-    prb_Str pathNullStr = {pathNull, path.len};
+    prb_Str     pathNullStr = {pathNull, path.len};
     prb_stbds_arrput(toRemove, pathNullStr);
     if (prb_isDir(arena, path)) {
         // NOTE(khvorov) These are null-terminated
@@ -1546,7 +1555,6 @@ prb_pathEntryIterNext(prb_PathEntryIter* iter) {
 
 prb_PUBLICDEF void
 prb_getAllDirEntriesCustomBuffer(prb_Arena* arena, prb_Str dir, prb_Recursive mode, prb_Str** storage) {
-
 #if prb_PLATFORM_WINDOWS
 
 #error unimplemented
@@ -2276,36 +2284,109 @@ prb_strScannerMove(prb_StrScanner* scanner, prb_StrFindSpec spec, prb_StrScanner
     return result;
 }
 
-prb_PUBLICDEF prb_ParsedNumber
-prb_parseNumber(prb_Str str) {
-    prb_unused(str);
-    prb_ParsedNumber number = {};
-    if (str.len > 0) {
-        // NOTE(khvorov) Hex 0xabc123
-        if (prb_strStartsWith(str, prb_STR("0x"))) {
-            prb_Str digits = prb_strSlice(str, 2, str.len);
-            if (digits.len > 0) {
-                number.kind = prb_ParsedNumberKind_U64;
-                for (int32_t digitsIndex = 0; digitsIndex < digits.len && number.kind == prb_ParsedNumberKind_U64; digitsIndex++) {
-                    uint64_t value = 0;
-                    char     ch = digits.ptr[digitsIndex];
-                    if (ch >= '0' && ch <= '9') {
-                        value = ch - '0';
-                    } else if (ch >= 'A' && ch <= 'F') {
-                        value = ch - 'A' + 10;
-                    } else if (ch >= 'a' && ch <= 'f') {
-                        value = ch - 'a' + 10;
-                    } else {
-                        number.kind = prb_ParsedNumberKind_None;
-                    }
-                    number.parsedU64 = number.parsedU64 * 16 + value;
-                }
+prb_PUBLICDEF prb_ParseUintResult
+prb_parseUint(prb_Str digits, uint64_t base) {
+    prb_assert(base == 16 || base == 10);
+    prb_ParseUintResult result = {};
+    if (digits.len > 0) {
+        result.success = true;
+        for (int32_t digitsIndex = 0; digitsIndex < digits.len && result.success; digitsIndex++) {
+            uint64_t value = 0;
+            char     ch = digits.ptr[digitsIndex];
+            if (ch >= '0' && ch <= '9') {
+                value = ch - '0';
+            } else if (base == 16 && ch >= 'A' && ch <= 'F') {
+                value = ch - 'A' + 10;
+            } else if (base == 16 && ch >= 'a' && ch <= 'f') {
+                value = ch - 'a' + 10;
+            } else {
+                result.success = false;
             }
-        } else {
-            // TODO(khvorov) Implement
-            prb_assert(!"unimplemented");
+            result.number = result.number * base + value;
         }
     }
+    return result;
+}
+
+prb_PUBLICDEF prb_ParsedNumber
+prb_parseNumber(prb_Str str) {
+    prb_ParsedNumber number = {};
+
+    bool leadingMinus = false;
+    if (str.len > 0) {
+        leadingMinus = str.ptr[0] == '-';
+        if (leadingMinus) {
+            str = prb_strSlice(str, 1, str.len);
+        }
+    }
+
+    prb_ParseUintResult intParse = {};
+    bool                isReal = false;
+    double              realValue = 0.0;
+    if (str.len > 0) {
+        // NOTE(khvorov) Hex integer
+        if (prb_strStartsWith(str, prb_STR("0x"))) {
+            prb_Str digits = prb_strSlice(str, 2, str.len);
+            intParse = prb_parseUint(digits, 16);
+        } else {
+            prb_StrFindSpec dotFindSpec = {};
+            dotFindSpec.pattern = prb_STR(".");
+            prb_StrFindResult dotFind = prb_strFind(str, dotFindSpec);
+            if (dotFind.found) {
+                // NOTE(khvorov) Real number
+                prb_ParseUintResult leftOfDot = {};
+                if (dotFind.beforeMatch.len == 0) {
+                    leftOfDot.success = true;
+                } else {
+                    leftOfDot = prb_parseUint(dotFind.beforeMatch, 10);
+                }
+
+                if (leftOfDot.success) {
+                    realValue = (double)leftOfDot.number;
+
+                    prb_ParseUintResult rightOfDot = {};
+                    if (dotFind.afterMatch.len == 0) {
+                        rightOfDot.success = true;
+                    } else {
+                        rightOfDot = prb_parseUint(dotFind.afterMatch, 10);
+                    }
+
+                    if (rightOfDot.success) {
+                        isReal = true;
+                        int32_t digitsLeft = dotFind.afterMatch.len - 1;
+                        uint64_t divisor = 10;
+                        while (digitsLeft > 0) {
+                            divisor *= 10;
+                            digitsLeft -= 1;
+                        }
+                        double fraction = (double)rightOfDot.number / (double)divisor;
+                        realValue += fraction;
+                    }
+                }
+            } else {
+                // NOTE(khvorov) Decimal integer
+                intParse = prb_parseUint(str, 10);
+            }
+        }
+    }
+
+    if (intParse.success) {
+        if (leadingMinus) {
+            prb_assert(intParse.number <= (((uint64_t)INT64_MAX) + 1));
+            number.kind = prb_ParsedNumberKind_I64;
+            number.parsedI64 = -((int64_t)intParse.number);
+        } else {
+            number.kind = prb_ParsedNumberKind_U64;
+            number.parsedU64 = intParse.number;
+        }
+    } else if (isReal) {
+        number.kind = prb_ParsedNumberKind_F64;
+        number.parsedF64 = realValue;
+        if (leadingMinus) {
+            number.parsedF64 *= -1.0;
+        }
+    }
+
     return number;
 }
 
