@@ -298,6 +298,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
 
     prb_assert(prb_launchProcesses(arena, processesPreprocess, arrlen(processesPreprocess), prb_Background_Yes));
     prb_Status preprocessStatus = prb_waitForProcesses(processesPreprocess, arrlen(processesPreprocess));
+    arrfree(processesPreprocess);
 
     // NOTE(khvorov) Compile
     if (preprocessStatus == prb_Success) {
@@ -1086,21 +1087,13 @@ main() {
     // prb_assert(prb_clearDir(arena, harfbuzz.objDir) == prb_Success);
     // prb_assert(prb_clearDir(arena, sdl.objDir) == prb_Success);
 
-    prb_Job* compileJobs = 0;
-    arrput(compileJobs, prb_createJob(compileStaticLib, &fribidi, arena, 50 * prb_MEGABYTE));
-    arrput(compileJobs, prb_createJob(compileStaticLib, &icu, arena, 50 * prb_MEGABYTE));
-    arrput(compileJobs, prb_createJob(compileStaticLib, &freetype, arena, 50 * prb_MEGABYTE));
-    arrput(compileJobs, prb_createJob(compileStaticLib, &harfbuzz, arena, 50 * prb_MEGABYTE));
-    arrput(compileJobs, prb_createJob(compileStaticLib, &sdl, arena, 50 * prb_MEGABYTE));
-    {
-        prb_Background threadMode = prb_Background_Yes;
-        // NOTE(khvorov) Buggy debuggers can't always handle threads
-        if (prb_debuggerPresent(arena)) {
-            threadMode = prb_Background_No;
-        }
-        prb_assert(prb_launchJobs(compileJobs, arrlen(compileJobs), threadMode));
-        prb_assert(prb_waitForJobs(compileJobs, arrlen(compileJobs)));
-    }
+    // NOTE(khvorov) Compile single-threaded since we are not syncing access to the compile log.
+    // Multithreading this doesn't give us much anyway given that each library is already compiling its TUs in parallel.
+    compileStaticLib(arena, &fribidi);
+    compileStaticLib(arena, &icu);
+    compileStaticLib(arena, &freetype);
+    compileStaticLib(arena, &harfbuzz);
+    compileStaticLib(arena, &sdl);
 
     prb_assert(fribidi.compileStatus == prb_ProcessStatus_CompletedSuccess);
     prb_assert(icu.compileStatus == prb_ProcessStatus_CompletedSuccess);
