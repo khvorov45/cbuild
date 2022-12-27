@@ -1695,26 +1695,24 @@ prb_readEntireFile(prb_Arena* arena, prb_Str path) {
 
 prb_PUBLICDEF prb_Status
 prb_writeEntireFile(prb_Arena* arena, prb_Str path, const void* content, int32_t contentLen) {
-    // TODO(khvorov) Create required directories when they don't exist
-    prb_Status result = prb_Failure;
-
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Status     result = prb_Failure;
+    prb_Str        parent = prb_getParentDir(arena, path);
+    if (prb_createDirIfNotExists(arena, parent)) {
 #if prb_PLATFORM_WINDOWS
-
 #error unimplemented
-
 #elif prb_PLATFORM_LINUX
-
-    prb_linux_OpenResult handle = prb_linux_open(arena, path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
-    if (handle.success) {
-        ssize_t writeResult = write(handle.handle, content, contentLen);
-        result = writeResult == contentLen ? prb_Success : prb_Failure;
-        close(handle.handle);
-    }
-
+        prb_linux_OpenResult handle = prb_linux_open(arena, path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
+        if (handle.success) {
+            ssize_t writeResult = write(handle.handle, content, contentLen);
+            result = writeResult == contentLen ? prb_Success : prb_Failure;
+            close(handle.handle);
+        }
 #else
 #error unimplemented
 #endif
-
+    }
+    prb_endTempMemory(temp);
     return result;
 }
 

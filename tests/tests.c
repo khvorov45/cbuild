@@ -391,7 +391,6 @@ test_getAbsolutePath(prb_Arena* arena) {
 #else
 #error unimplemented
 #endif
-
 }
 
 function void
@@ -1031,9 +1030,10 @@ test_writeEntireFile(prb_Arena* arena) {
     prb_Str        dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_Str filepath = prb_pathJoin(arena, dir, prb_STR("filename.txt"));
-    prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Failure);
-    prb_assert(prb_createDirIfNotExists(arena, dir) == prb_Success);
-    prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len) == prb_Success);
+    prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len));
+    prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, filepath);
+    prb_assert(readRes.success);
+    prb_assert(prb_streq(prb_strFromBytes(readRes.content), filepath));
     prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
 }
@@ -1765,7 +1765,7 @@ test_parseUint(prb_Arena* arena) {
 function void
 test_parseNumber(prb_Arena* arena) {
     prb_unused(arena);
-    
+
     prb_ParsedNumber number = prb_parseNumber(prb_STR("0x123"));
     prb_assert(number.kind == prb_ParsedNumberKind_U64);
     prb_assert(number.parsedU64 == 0x123);
