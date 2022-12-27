@@ -3041,6 +3041,7 @@ prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_Background mode) {
                 if (job->status == prb_JobStatus_NotLaunched) {
                     job->status = prb_JobStatus_Launched;
                     prb_linux_pthreadProc(job);
+                    job->status = prb_JobStatus_Completed;
                 }
             }
         } break;
