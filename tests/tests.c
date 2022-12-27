@@ -536,6 +536,15 @@ test_createDirIfNotExists(prb_Arena* arena) {
     prb_assert(!prb_isDir(arena, dirNotNull));
     prb_assert(!prb_isDir(arena, dir));
 
+    prb_Str nestedDir = prb_pathJoin(arena, dir, prb_STR("nested"));
+    prb_assert(prb_createDirIfNotExists(arena, nestedDir));
+    prb_assert(prb_removePathIfExists(arena, nestedDir));
+
+    prb_Str nestedNestedDir = prb_pathJoin(arena, nestedDir, prb_STR("nested2"));
+    prb_assert(prb_createDirIfNotExists(arena, nestedNestedDir));
+    prb_assert(prb_removePathIfExists(arena, nestedNestedDir));
+
+    prb_assert(prb_removePathIfExists(arena, dir));
     prb_endTempMemory(temp);
 }
 

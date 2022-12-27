@@ -1286,26 +1286,23 @@ prb_dirIsEmpty(prb_Arena* arena, prb_Str path) {
 
 prb_PUBLICDEF prb_Status
 prb_createDirIfNotExists(prb_Arena* arena, prb_Str path) {
-    // TODO(khvorov) Make work when multiple levels are needed
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-    const char*    pathNull = prb_strGetNullTerminated(arena, path);
-    prb_Status     result = prb_Success;
-
+    prb_TempMemory    temp = prb_beginTempMemory(arena);
+    prb_Status        result = prb_Success;
+    prb_Str           pathAbs = prb_getAbsolutePath(arena, path);
+    prb_PathEntryIter iter = prb_createPathEntryIter(pathAbs);
+    while (prb_pathEntryIterNext(&iter) && result == prb_Success) {
+        if (!prb_isDir(arena, iter.curEntryPath)) {
 #if prb_PLATFORM_WINDOWS
-
-    // TODO(khvorov) Check error
-    CreateDirectory(path.ptr, 0);
-
+            // TODO(khvorov) Check error
+            CreateDirectory(path.ptr, 0);
 #elif prb_PLATFORM_LINUX
-
-    if (!prb_isDir(arena, path)) {
-        result = mkdir(pathNull, S_IRWXU | S_IRWXG | S_IRWXO) == 0 ? prb_Success : prb_Failure;
-    }
-
+            const char* pathNull = prb_strGetNullTerminated(arena, iter.curEntryPath);
+            result = mkdir(pathNull, S_IRWXU | S_IRWXG | S_IRWXO) == 0 ? prb_Success : prb_Failure;
 #else
 #error unimplemented
 #endif
-
+        }
+    }
     prb_endTempMemory(temp);
     return result;
 }
@@ -2353,7 +2350,7 @@ prb_parseNumber(prb_Str str) {
 
                     if (rightOfDot.success) {
                         isReal = true;
-                        int32_t digitsLeft = dotFind.afterMatch.len - 1;
+                        int32_t  digitsLeft = dotFind.afterMatch.len - 1;
                         uint64_t divisor = 10;
                         while (digitsLeft > 0) {
                             divisor *= 10;
