@@ -72,6 +72,7 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_addStrSegment"));
         arrput(*prbNames, prb_STR("prb_endStr"));
     } else if (prb_streq(testName, prb_STR("test_executionOnCores"))) {
+        arrput(*prbNames, prb_STR("prb_getCoreCount"));
         arrput(*prbNames, prb_STR("prb_getAllowExecutionCoreCount"));
         arrput(*prbNames, prb_STR("prb_allowExecutionOnCores"));
     } else {
@@ -2152,83 +2153,31 @@ test_getArgArrayFromStr(prb_Arena* arena) {
 }
 
 function void
-test_getCoreCount(prb_Arena* arena) {
-    prb_unused(arena);
-    prb_CoreCountResult cores = prb_getCoreCount(arena);
-    // prb_writeToStdout(prb_fmt(arena, "%d\n", cores.cores));
-    prb_assert(cores.success);
-    prb_assert(cores.cores > 0);
-}
-
-function void
-rngJob(prb_Arena* arena, void* data) {
-    prb_unused(arena);
-    prb_unused(data);
-    prb_Rng rng = prb_createRng(0);
-    for (i32 i = 0; i < 1000000; i++) {
-        prb_randomF3201(&rng);
-    }
-}
-
-function float
-doManyRngJobs(prb_Arena* arena) {
-    prb_Job* jobs = 0;
-    for (i32 jobIndex = 0; jobIndex < 10; jobIndex++) {
-        arrput(jobs, prb_createJob(rngJob, 0, arena, 0));
-    }
-    prb_TimeStart jobStart = prb_timeStart();
-    prb_assert(prb_launchJobs(jobs, arrlen(jobs), prb_Background_Yes));
-    prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
-    float jobsMs = prb_getMsFrom(jobStart);
-    arrfree(jobs);
-    return jobsMs;
-}
-
-function void
 test_executionOnCores(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_CoreCountResult cores = prb_getAllowExecutionCoreCount(arena);
-    prb_assert(cores.success);
 
-    if (cores.cores > 1) {
-        // prb_writeToStdout(prb_fmt(arena, "%d\n", cores.cores));
-        float jobsMsNoPrevent = doManyRngJobs(arena);
-        prb_assert(prb_allowExecutionOnCores(arena, 1));
-        prb_CoreCountResult coresAgain = prb_getAllowExecutionCoreCount(arena);
-        prb_assert(coresAgain.success);
-        prb_assert(coresAgain.cores == 1);
-        float jobsMsPrevent = doManyRngJobs(arena);
-        // prb_writeToStdout(prb_fmt(arena, "%.2f %.2f\n", jobsMsNoPrevent, jobsMsPrevent));
-        prb_assert(prb_allowExecutionOnCores(arena, cores.cores));
-        float jobsMsAllow = doManyRngJobs(arena);
-        prb_assert(prb_allowExecutionOnCores(arena, cores.cores));
-        prb_assert(prb_allowExecutionOnCores(arena, 0) == prb_Failure);
+    prb_CoreCountResult allowed = prb_getAllowExecutionCoreCount(arena);
+    prb_assert(allowed.success);
 
-        // NOTE(khvorov) These timings won't be what you'd expect when there is
-        // stuff like coverage going on
-        prb_Str cmdline = prb_getCmdline(arena);
-        if (prb_strEndsWith(cmdline, prb_STR("clang-1tu-c"))) {
-            prb_assert(jobsMsNoPrevent < jobsMsPrevent);
-            prb_assert(jobsMsAllow < jobsMsPrevent);
-        }
-        // prb_writeToStdout(prb_fmt(arena, "%.2f %.2f %.2f\n", jobsMsNoPrevent, jobsMsPrevent, jobsMsAllow));
-    }
+    prb_CoreCountResult all = prb_getCoreCount(arena);
+    prb_assert(all.success);
 
-    prb_CoreCountResult allCores = prb_getCoreCount(arena);
-    prb_assert(allCores.success);
-    if (allCores.cores > 2) {
-        prb_assert(prb_allowExecutionOnCores(arena, allCores.cores));
-        prb_CoreCountResult coresAgain = prb_getAllowExecutionCoreCount(arena);
-        prb_assert(coresAgain.success);
-        prb_assert(coresAgain.cores == allCores.cores);
-        prb_assert(prb_allowExecutionOnCores(arena, allCores.cores / 2));
+    prb_assert(prb_allowExecutionOnCores(arena, all.cores));
+    prb_CoreCountResult coresAgain = prb_getAllowExecutionCoreCount(arena);
+    prb_assert(coresAgain.success);
+    prb_assert(coresAgain.cores == all.cores);
+    prb_assert(prb_allowExecutionOnCores(arena, all.cores));
+
+    if (all.cores > 1) {
+        prb_assert(prb_allowExecutionOnCores(arena, all.cores / 2));
         coresAgain = prb_getAllowExecutionCoreCount(arena);
         prb_assert(coresAgain.success);
-        prb_assert(coresAgain.cores == allCores.cores / 2);
-        prb_assert(prb_allowExecutionOnCores(arena, allCores.cores));
-        prb_assert(prb_allowExecutionOnCores(arena, cores.cores));
+        prb_assert(coresAgain.cores == all.cores / 2);
     }
 
+    prb_assert(prb_allowExecutionOnCores(arena, 0) == prb_Failure);
+
+    prb_assert(prb_allowExecutionOnCores(arena, allowed.cores));
     prb_endTempMemory(temp);
 }
 
@@ -2837,7 +2786,6 @@ main() {
     test_getCmdline(arena);
     test_getCmdArgs(arena);
     test_getArgArrayFromStr(arena);
-    test_getCoreCount(arena);
     test_executionOnCores(arena);
     test_process(arena);
     test_sleep(arena);
