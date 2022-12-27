@@ -1798,6 +1798,18 @@ test_parseNumber(prb_Arena* arena) {
     prb_assert(number.kind == prb_ParsedNumberKind_F64);
     prb_assert(number.parsedF64 == 0);
 
+    number = prb_parseNumber(prb_STR("0."));
+    prb_assert(number.kind == prb_ParsedNumberKind_F64);
+    prb_assert(number.parsedF64 == 0);
+
+    number = prb_parseNumber(prb_STR(".0"));
+    prb_assert(number.kind == prb_ParsedNumberKind_F64);
+    prb_assert(number.parsedF64 == 0);
+
+    number = prb_parseNumber(prb_STR("0.0"));
+    prb_assert(number.kind == prb_ParsedNumberKind_F64);
+    prb_assert(number.parsedF64 == 0);
+
     number = prb_parseNumber(prb_STR("1."));
     prb_assert(number.kind == prb_ParsedNumberKind_F64);
     prb_assert(number.parsedF64 == 1.0);
