@@ -372,17 +372,26 @@ test_getAbsolutePath(prb_Arena* arena) {
     prb_Str fileWithCwd = prb_pathJoin(arena, cwd, filename);
     prb_assert(prb_streq(fileAbs, fileWithCwd));
 
-    // TODO(khvorov) Test trailing slash
-    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/home")), prb_STR("/home")));
-    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/nonexistant/file.txt")), prb_STR("/nonexistant/file.txt")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("dir/file.md")), prb_pathJoin(arena, cwd, prb_STR("dir/file.md"))));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("./file.md")), prb_pathJoin(arena, cwd, prb_STR("file.md"))));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("../file.md")), prb_pathJoin(arena, prb_getParentDir(arena, cwd), prb_STR("file.md"))));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("home///other")), prb_pathJoin(arena, cwd, prb_STR("home/other"))));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("home///other/")), prb_pathJoin(arena, cwd, prb_STR("home/other"))));
+
+#if prb_PLATFORM_WINDOWS
+#error unimplemented
+#elif prb_PLATFORM_LINUX
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/home")), prb_STR("/home")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/home/")), prb_STR("/home")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/nonexistant/file.txt")), prb_STR("/nonexistant/file.txt")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/path/./file.md")), prb_STR("/path/file.md")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/path/../file.md")), prb_STR("/file.md")));
-    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("../file.md")), prb_pathJoin(arena, prb_getParentDir(arena, cwd), prb_STR("file.md"))));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("////")), prb_STR("/")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("////home///other")), prb_STR("/home/other")));
-    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("home///other")), prb_pathJoin(arena, cwd, prb_STR("home/other"))));
+#else
+#error unimplemented
+#endif
+
 }
 
 function void
@@ -759,10 +768,6 @@ function void
 test_pathEntryIter(prb_Arena* arena) {
     prb_unused(arena);
 
-    // TODO(khvorov) Test trailing slash
-    // TODO(khvorov) Test multiple separators
-    // TODO(khvorov) Test empty path
-
     prb_PathEntryIter iter = prb_createPathEntryIter(prb_STR("path/../to/./file"));
     prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
     prb_assert(prb_streq(iter.curEntryName, prb_STR("path")));
@@ -779,6 +784,24 @@ test_pathEntryIter(prb_Arena* arena) {
     prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
     prb_assert(prb_streq(iter.curEntryName, prb_STR("file")));
     prb_assert(prb_streq(iter.curEntryPath, prb_STR("path/../to/./file")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Failure);
+
+    iter = prb_createPathEntryIter(prb_STR("dir/"));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("dir")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("dir")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Failure);
+
+    iter = prb_createPathEntryIter(prb_STR("dir///file"));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("dir")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("dir")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("file")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("dir///file")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Failure);
+
+    iter = prb_createPathEntryIter(prb_STR(""));
     prb_assert(prb_pathEntryIterNext(&iter) == prb_Failure);
 
 #if prb_PLATFORM_WINDOWS
