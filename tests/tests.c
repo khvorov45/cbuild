@@ -67,6 +67,13 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
     } else if (prb_streq(testName, prb_STR("test_getAllDirEntries"))) {
         arrput(*prbNames, prb_STR("prb_getAllDirEntriesCustomBuffer"));
         arrput(*prbNames, prb_STR("prb_getAllDirEntries"));
+    } else if (prb_streq(testName, prb_STR("test_growingStr"))) {
+        arrput(*prbNames, prb_STR("prb_beginStr"));
+        arrput(*prbNames, prb_STR("prb_addStrSegment"));
+        arrput(*prbNames, prb_STR("prb_endStr"));
+    } else if (prb_streq(testName, prb_STR("test_executionOnCores"))) {
+        arrput(*prbNames, prb_STR("prb_getAllowExecutionCoreCount"));
+        arrput(*prbNames, prb_STR("prb_allowExecutionOnCores"));
     } else {
         prb_assert(prb_strStartsWith(testName, prb_STR("test_")));
         prb_Str noPrefix = prb_strSlice(testName, 5, testName.len);
@@ -349,6 +356,7 @@ test_pathIsAbsolute(prb_Arena* arena) {
     prb_unused(arena);
 
     prb_assert(!prb_pathIsAbsolute(prb_getLastEntryInPath(prb_STR(__FILE__))));
+    prb_assert(!prb_pathIsAbsolute(prb_STR("")));
 
 #if prb_PLATFORM_WINDOWS
 
@@ -543,6 +551,10 @@ test_createDirIfNotExists(prb_Arena* arena) {
     prb_assert(prb_createDirIfNotExists(arena, nestedNestedDir));
     prb_assert(prb_removePathIfExists(arena, nestedNestedDir));
 
+    prb_assert(prb_removePathIfExists(arena, nestedDir));
+    prb_assert(prb_writeEntireFile(arena, nestedDir, nestedDir.ptr, nestedDir.len));
+    prb_assert(prb_createDirIfNotExists(arena, nestedNestedDir) == prb_Failure);
+
     prb_assert(prb_removePathIfExists(arena, dir));
     prb_endTempMemory(temp);
 }
@@ -729,6 +741,7 @@ test_getParentDir(prb_Arena* arena) {
 #elif prb_PLATFORM_LINUX
     prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("/test")), prb_STR("/")));
     prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("/test/")), prb_STR("/")));
+    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("/")), prb_STR("/")));
 #endif
 
     prb_endTempMemory(temp);
@@ -948,6 +961,12 @@ test_getAllDirEntries(prb_Arena* arena) {
         arrfree(entries);
     }
 
+    // NOTE(khvorov) Non-existant directories
+    {
+        prb_Str* entries = prb_getAllDirEntries(arena, prb_STR(""), prb_Recursive_No);
+        prb_assert(arrlen(entries) == 0);
+    }
+
     prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
 }
@@ -1034,6 +1053,12 @@ test_writeEntireFile(prb_Arena* arena) {
     prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, filepath);
     prb_assert(readRes.success);
     prb_assert(prb_streq(prb_strFromBytes(readRes.content), filepath));
+
+    prb_Str nestedDir = prb_pathJoin(arena, dir, prb_STR("nested"));
+    prb_assert(prb_writeEntireFile(arena, nestedDir, nestedDir.ptr, nestedDir.len));
+    prb_Str fileCantWrite = prb_pathJoin(arena, nestedDir, prb_STR("file"));
+    prb_assert(prb_writeEntireFile(arena, fileCantWrite, fileCantWrite.ptr, fileCantWrite.len) == prb_Failure);
+
     prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);
 }
@@ -1093,13 +1118,21 @@ test_strFromBytes(prb_Arena* arena) {
 function void
 test_strTrimSide(prb_Arena* arena) {
     prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_assert(prb_streq(prb_strTrimSide(prb_STR(" \n\r\t\v\ftest \n\r\t\v\f"), prb_StrDirection_FromStart), prb_STR("test \n\r\t\v\f")));
+    prb_assert(prb_streq(prb_strTrimSide(prb_STR(" \n\r\t\v\ftest \n\r\t\v\f"), prb_StrDirection_FromEnd), prb_STR(" \n\r\t\v\ftest")));
+    prb_assert(prb_streq(prb_strTrimSide(prb_STR("test"), prb_StrDirection_FromEnd), prb_STR("test")));
+    prb_assert(prb_streq(prb_strTrimSide(prb_STR(""), prb_StrDirection_FromEnd), prb_STR("")));
+    prb_assert(prb_streq(prb_strTrimSide(prb_STR(" \n\r\t\v\f"), prb_StrDirection_FromEnd), prb_STR("")));
+    prb_assert(prb_streq(prb_strTrimSide(prb_STR(" \n\r\t\v\f"), prb_StrDirection_FromStart), prb_STR("")));
 }
 
 function void
 test_strTrim(prb_Arena* arena) {
     prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_assert(prb_streq(prb_strTrim(prb_STR(" \n\r\t\v\ftest \n\r\t\v\f")), prb_STR("test")));
+    prb_assert(prb_streq(prb_strTrim(prb_STR("test")), prb_STR("test")));
+    prb_assert(prb_streq(prb_strTrim(prb_STR("")), prb_STR("")));
+    prb_assert(prb_streq(prb_strTrim(prb_STR(" \n\r\t\v\f")), prb_STR("")));
 }
 
 function void
@@ -1281,6 +1314,54 @@ test_strFind(prb_Arena* arena) {
         prb_assert(prb_streq(find.afterMatch, prb_STR("line1")));
     }
 
+    {
+        prb_Str         line = prb_STR("\nline1");
+        prb_StrFindSpec spec = {};
+        spec.mode = prb_StrFindMode_LineBreak;
+        prb_StrFindResult find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("")));
+        prb_assert(prb_streq(find.match, prb_STR("\n")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("line1")));
+
+        spec.direction = prb_StrDirection_FromEnd;
+        find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("")));
+        prb_assert(prb_streq(find.match, prb_STR("\n")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("line1")));
+    }
+
+    {
+        prb_Str         line = prb_STR("line");
+        prb_StrFindSpec spec = {};
+        spec.pattern = prb_STR("123");
+        spec.mode = prb_StrFindMode_AnyChar;
+        spec.alwaysMatchEnd = true;
+        spec.direction = prb_StrDirection_FromEnd;
+        prb_StrFindResult find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, prb_STR("")));
+        prb_assert(prb_streq(find.match, prb_STR("")));
+        prb_assert(prb_streq(find.afterMatch, prb_STR("line")));
+    }
+
+    {
+        prb_Str         line = prb_STR("lines");
+        prb_StrFindSpec spec = {};
+        spec.pattern = prb_STR("linxs");
+        prb_StrFindResult find = prb_strFind(line, spec);
+        prb_assert(!find.found);
+    }
+
+    {
+        prb_Str         line = prb_STR("lines");
+        prb_StrFindSpec spec = {};
+        spec.pattern = prb_STR("");
+        prb_StrFindResult find = prb_strFind(line, spec);
+        prb_assert(!find.found);
+    }
+
     prb_endTempMemory(temp);
 }
 
@@ -1289,6 +1370,7 @@ test_strStartsWith(prb_Arena* arena) {
     prb_unused(arena);
     prb_assert(prb_strStartsWith(prb_STR("123abc"), prb_STR("123")));
     prb_assert(!prb_strStartsWith(prb_STR("123abc"), prb_STR("abc")));
+    prb_assert(!prb_strStartsWith(prb_STR("12"), prb_STR("123")));
 }
 
 function void
@@ -1296,28 +1378,20 @@ test_strEndsWith(prb_Arena* arena) {
     prb_unused(arena);
     prb_assert(!prb_strEndsWith(prb_STR("123abc"), prb_STR("123")));
     prb_assert(prb_strEndsWith(prb_STR("123abc"), prb_STR("abc")));
+    prb_assert(!prb_strEndsWith(prb_STR("123"), prb_STR("1234")));
 }
 
 function void
 test_stringsJoin(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Str        strings[] = {prb_STR("1"), prb_STR("2")};
+    prb_assert(prb_streq(prb_stringsJoin(arena, strings, prb_arrayCount(strings), prb_STR("")), prb_STR("12")));
+    prb_assert(prb_streq(prb_stringsJoin(arena, strings, prb_arrayCount(strings), prb_STR(",")), prb_STR("1,2")));
+    prb_endTempMemory(temp);
 }
 
 function void
-test_beginStr(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
-}
-
-function void
-test_addStrSegment(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
-}
-
-function void
-test_endStr(prb_Arena* arena) {
+test_growingStr(prb_Arena* arena) {
     prb_unused(arena);
     // TODO(khvorov) Write
 }
@@ -1363,9 +1437,9 @@ test_utf8CharIter(prb_Arena* arena) {
     prb_unused(arena);
 
     {
-        prb_Str str = prb_STR("abcדזון是太متشاтипуκαι");
-        u32     charsUtf32[] = {97, 98, 99, 1491, 1494, 1493, 1503, 26159, 22826, 1605, 1578, 1588, 1575, 1090, 1080, 1087, 1091, 954, 945, 953};
-        i32     utf8Bytes[] = {1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
+        prb_Str str = prb_STR("abcדזון是太متشاтипуκαι😐");
+        u32     charsUtf32[] = {97, 98, 99, 1491, 1494, 1493, 1503, 26159, 22826, 1605, 1578, 1588, 1575, 1090, 1080, 1087, 1091, 954, 945, 953, 128528};
+        i32     utf8Bytes[] = {1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 4};
         prb_assert(prb_arrayCount(charsUtf32) == prb_arrayCount(utf8Bytes));
 
         prb_Utf8CharIter iter = prb_createUtf8CharIter(str, prb_StrDirection_FromStart);
@@ -1562,8 +1636,81 @@ test_utf8CharIter(prb_Arena* arena) {
     }
 
     {
+        u8 borkBytes[] = {0b11000000, 0b11111111};
+        for (i32 borkIndex = 0; borkIndex < prb_arrayCount(borkBytes); borkIndex++) {
+            prb_Str borked = prb_fmt(arena, "тип");
+            ((u8*)borked.ptr)[1] = borkBytes[borkIndex];
+
+            prb_Utf8CharIter iter = prb_createUtf8CharIter(borked, prb_StrDirection_FromStart);
+
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+            prb_assert(iter.curCharCount == 0);
+            prb_assert(iter.curIsValid == false);
+            prb_assert(iter.curUtf32Char == 0);
+            prb_assert(iter.curUtf8Bytes == 0);
+            prb_assert(iter.curByteOffset == 0);
+
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+            prb_assert(iter.curCharCount == 0);
+            prb_assert(iter.curIsValid == false);
+            prb_assert(iter.curUtf32Char == 0);
+            prb_assert(iter.curUtf8Bytes == 0);
+            prb_assert(iter.curByteOffset == 1);
+
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+            prb_assert(iter.curCharCount == 1);
+            prb_assert(iter.curIsValid == true);
+            prb_assert(iter.curUtf32Char == 1080);
+            prb_assert(iter.curUtf8Bytes == 2);
+            prb_assert(iter.curByteOffset == 2);
+
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+            prb_assert(iter.curCharCount == 2);
+            prb_assert(iter.curIsValid == true);
+            prb_assert(iter.curUtf32Char == 1087);
+            prb_assert(iter.curUtf8Bytes == 2);
+            prb_assert(iter.curByteOffset == 4);
+
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Failure);
+
+            prb_Utf8CharIter iterBackwards = prb_createUtf8CharIter(borked, prb_StrDirection_FromEnd);
+
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+            prb_assert(iterBackwards.curCharCount == 1);
+            prb_assert(iterBackwards.curIsValid == true);
+            prb_assert(iterBackwards.curUtf32Char == 1087);
+            prb_assert(iterBackwards.curUtf8Bytes == 2);
+            prb_assert(iterBackwards.curByteOffset == 4);
+
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+            prb_assert(iterBackwards.curCharCount == 2);
+            prb_assert(iterBackwards.curIsValid == true);
+            prb_assert(iterBackwards.curUtf32Char == 1080);
+            prb_assert(iterBackwards.curUtf8Bytes == 2);
+            prb_assert(iterBackwards.curByteOffset == 2);
+
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+            prb_assert(iterBackwards.curCharCount == 2);
+            prb_assert(iterBackwards.curIsValid == false);
+            prb_assert(iterBackwards.curUtf32Char == 0);
+            prb_assert(iterBackwards.curUtf8Bytes == 0);
+            prb_assert(iterBackwards.curByteOffset == 1);
+
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+            prb_assert(iterBackwards.curCharCount == 2);
+            prb_assert(iterBackwards.curIsValid == false);
+            prb_assert(iterBackwards.curUtf32Char == 0);
+            prb_assert(iterBackwards.curUtf8Bytes == 0);
+            prb_assert(iterBackwards.curByteOffset == 0);
+
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Failure);
+        }
+    }
+
+    {
         prb_Str borked = prb_fmt(arena, "тип");
-        ((u8*)borked.ptr)[1] = 0b11000000;
+        ((u8*)borked.ptr)[1] = 'a';
+
         prb_Utf8CharIter iter = prb_createUtf8CharIter(borked, prb_StrDirection_FromStart);
 
         prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
@@ -1574,21 +1721,21 @@ test_utf8CharIter(prb_Arena* arena) {
         prb_assert(iter.curByteOffset == 0);
 
         prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
-        prb_assert(iter.curCharCount == 0);
-        prb_assert(iter.curIsValid == false);
-        prb_assert(iter.curUtf32Char == 0);
-        prb_assert(iter.curUtf8Bytes == 0);
+        prb_assert(iter.curCharCount == 1);
+        prb_assert(iter.curIsValid == true);
+        prb_assert(iter.curUtf32Char == 'a');
+        prb_assert(iter.curUtf8Bytes == 1);
         prb_assert(iter.curByteOffset == 1);
 
         prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
-        prb_assert(iter.curCharCount == 1);
+        prb_assert(iter.curCharCount == 2);
         prb_assert(iter.curIsValid == true);
         prb_assert(iter.curUtf32Char == 1080);
         prb_assert(iter.curUtf8Bytes == 2);
         prb_assert(iter.curByteOffset == 2);
 
         prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
-        prb_assert(iter.curCharCount == 2);
+        prb_assert(iter.curCharCount == 3);
         prb_assert(iter.curIsValid == true);
         prb_assert(iter.curUtf32Char == 1087);
         prb_assert(iter.curUtf8Bytes == 2);
@@ -1613,20 +1760,92 @@ test_utf8CharIter(prb_Arena* arena) {
         prb_assert(iterBackwards.curByteOffset == 2);
 
         prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
-        prb_assert(iterBackwards.curCharCount == 2);
-        prb_assert(iterBackwards.curIsValid == false);
-        prb_assert(iterBackwards.curUtf32Char == 0);
-        prb_assert(iterBackwards.curUtf8Bytes == 0);
+        prb_assert(iterBackwards.curCharCount == 3);
+        prb_assert(iterBackwards.curIsValid == true);
+        prb_assert(iterBackwards.curUtf32Char == 'a');
+        prb_assert(iterBackwards.curUtf8Bytes == 1);
         prb_assert(iterBackwards.curByteOffset == 1);
 
         prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
-        prb_assert(iterBackwards.curCharCount == 2);
+        prb_assert(iterBackwards.curCharCount == 3);
         prb_assert(iterBackwards.curIsValid == false);
         prb_assert(iterBackwards.curUtf32Char == 0);
         prb_assert(iterBackwards.curUtf8Bytes == 0);
         prb_assert(iterBackwards.curByteOffset == 0);
 
         prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Failure);
+    }
+
+    {
+        u8 borkBytes[] = {0b11111111, 0b11100000};
+        for (i32 borkIndex = 0; borkIndex < prb_arrayCount(borkBytes); borkIndex++) {
+            prb_Str borked = prb_fmt(arena, "тип");
+            ((u8*)borked.ptr)[0] = borkBytes[borkIndex];
+
+            prb_Utf8CharIter iter = prb_createUtf8CharIter(borked, prb_StrDirection_FromStart);
+
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+            prb_assert(iter.curCharCount == 0);
+            prb_assert(iter.curIsValid == false);
+            prb_assert(iter.curUtf32Char == 0);
+            prb_assert(iter.curUtf8Bytes == 0);
+            prb_assert(iter.curByteOffset == 0);
+
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+            prb_assert(iter.curCharCount == 0);
+            prb_assert(iter.curIsValid == false);
+            prb_assert(iter.curUtf32Char == 0);
+            prb_assert(iter.curUtf8Bytes == 0);
+            prb_assert(iter.curByteOffset == 1);
+
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+            prb_assert(iter.curCharCount == 1);
+            prb_assert(iter.curIsValid == true);
+            prb_assert(iter.curUtf32Char == 1080);
+            prb_assert(iter.curUtf8Bytes == 2);
+            prb_assert(iter.curByteOffset == 2);
+
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Success);
+            prb_assert(iter.curCharCount == 2);
+            prb_assert(iter.curIsValid == true);
+            prb_assert(iter.curUtf32Char == 1087);
+            prb_assert(iter.curUtf8Bytes == 2);
+            prb_assert(iter.curByteOffset == 4);
+
+            prb_assert(prb_utf8CharIterNext(&iter) == prb_Failure);
+
+            prb_Utf8CharIter iterBackwards = prb_createUtf8CharIter(borked, prb_StrDirection_FromEnd);
+
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+            prb_assert(iterBackwards.curCharCount == 1);
+            prb_assert(iterBackwards.curIsValid == true);
+            prb_assert(iterBackwards.curUtf32Char == 1087);
+            prb_assert(iterBackwards.curUtf8Bytes == 2);
+            prb_assert(iterBackwards.curByteOffset == 4);
+
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+            prb_assert(iterBackwards.curCharCount == 2);
+            prb_assert(iterBackwards.curIsValid == true);
+            prb_assert(iterBackwards.curUtf32Char == 1080);
+            prb_assert(iterBackwards.curUtf8Bytes == 2);
+            prb_assert(iterBackwards.curByteOffset == 2);
+
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+            prb_assert(iterBackwards.curCharCount == 2);
+            prb_assert(iterBackwards.curIsValid == false);
+            prb_assert(iterBackwards.curUtf32Char == 0);
+            prb_assert(iterBackwards.curUtf8Bytes == 0);
+            prb_assert(iterBackwards.curByteOffset == 1);
+
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Success);
+            prb_assert(iterBackwards.curCharCount == 2);
+            prb_assert(iterBackwards.curIsValid == false);
+            prb_assert(iterBackwards.curUtf32Char == 0);
+            prb_assert(iterBackwards.curUtf8Bytes == 0);
+            prb_assert(iterBackwards.curByteOffset == 0);
+
+            prb_assert(prb_utf8CharIterNext(&iterBackwards) == prb_Failure);
+        }
     }
 }
 
@@ -1751,14 +1970,17 @@ test_parseUint(prb_Arena* arena) {
     prb_assert(parseResult.success);
     prb_assert(parseResult.number == 123);
 
-    parseResult = prb_parseUint(prb_STR("123"), 16);
+    parseResult = prb_parseUint(prb_STR("123aBc"), 16);
     prb_assert(parseResult.success);
-    prb_assert(parseResult.number == 0x123);
+    prb_assert(parseResult.number == 0x123abc);
 
     parseResult = prb_parseUint(prb_STR("-123"), 16);
     prb_assert(!parseResult.success);
 
     parseResult = prb_parseUint(prb_STR("0x123"), 16);
+    prb_assert(!parseResult.success);
+
+    parseResult = prb_parseUint(prb_STR(""), 16);
     prb_assert(!parseResult.success);
 }
 
@@ -1823,7 +2045,8 @@ test_parseNumber(prb_Arena* arena) {
     prb_assert(number.kind == prb_ParsedNumberKind_I64);
     prb_assert(number.parsedI64 == INT64_MIN + 1);
 
-    prb_Str uint64maxNegated = prb_fmt(arena, "-%ld", UINT64_MAX);
+    prb_Str uint64maxNegated = prb_fmt(arena, "-%lu", UINT64_MAX);
+    prb_assert(uint64maxNegated.len == 21);
     number = prb_parseNumber(uint64maxNegated);
     prb_assert(number.kind == prb_ParsedNumberKind_None);
 
@@ -1833,6 +2056,7 @@ test_parseNumber(prb_Arena* arena) {
     prb_assert(prb_parseNumber(prb_STR("123.a")).kind == prb_ParsedNumberKind_None);
     prb_assert(prb_parseNumber(prb_STR("a.1")).kind == prb_ParsedNumberKind_None);
     prb_assert(prb_parseNumber(prb_STR("1.1 ")).kind == prb_ParsedNumberKind_None);
+    prb_assert(prb_parseNumber(prb_STR("")).kind == prb_ParsedNumberKind_None);
 }
 
 function void
@@ -1855,8 +2079,43 @@ test_terminate(prb_Arena* arena) {
 
 function void
 test_getCmdline(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Str        tempDir = getTempPath(arena, __FUNCTION__);
+    prb_assert(prb_clearDir(arena, tempDir));
+
+    prb_Str programExe = prb_pathJoin(arena, tempDir, prb_STR("program.exe"));
+    prb_Str program = prb_fmt(
+        arena,
+        "#include \"../../cbuild.h\"\n"
+        "int main() {\n"
+        "prb_Arena arena = prb_createArenaFromVmem(1 * prb_MEGABYTE);\n"
+        "prb_Str cmdline = prb_getCmdline(&arena);\n"
+        "prb_Str expectedCmd = prb_STR(\"%.*s arg1 arg2\");\n"
+        // "prb_writeToStdout(prb_fmt(&arena, \"`%%.*s`\\n`%%.*s`\\n\", prb_LIT(cmdline), prb_LIT(expectedCmd)));\n"
+        "if (!prb_streq(cmdline, expectedCmd)) return 1;\n"
+        "}",
+        prb_LIT(programExe)
+    );
+    prb_Str programSrc = prb_pathJoin(arena, tempDir, prb_STR("program.c"));
+    prb_assert(prb_writeEntireFile(arena, programSrc, program.ptr, program.len));
+
+    prb_Str     cmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(programSrc), prb_LIT(programExe));
+    prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+    prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+
+    proc = prb_createProcess(programExe, (prb_ProcessSpec) {});
+    prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No) == prb_Failure);
+
+    cmd = prb_fmt(arena, "%.*s arg1 arg2", prb_LIT(programExe));
+    proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+    prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+
+    prb_assert(prb_removePathIfExists(arena, tempDir));
+
+    prb_Str ownCmd = prb_getCmdline(arena);
+    prb_assert(prb_strStartsWith(ownCmd, prb_getParentDir(arena, tempDir)));
+
+    prb_endTempMemory(temp);
 }
 
 function void
@@ -1893,9 +2152,84 @@ test_getArgArrayFromStr(prb_Arena* arena) {
 }
 
 function void
-test_preventExecutionOnCores(prb_Arena* arena) {
+test_getCoreCount(prb_Arena* arena) {
     prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_CoreCountResult cores = prb_getCoreCount(arena);
+    // prb_writeToStdout(prb_fmt(arena, "%d\n", cores.cores));
+    prb_assert(cores.success);
+    prb_assert(cores.cores > 0);
+}
+
+function void
+rngJob(prb_Arena* arena, void* data) {
+    prb_unused(arena);
+    prb_unused(data);
+    prb_Rng rng = prb_createRng(0);
+    for (i32 i = 0; i < 1000000; i++) {
+        prb_randomF3201(&rng);
+    }
+}
+
+function float
+doManyRngJobs(prb_Arena* arena) {
+    prb_Job* jobs = 0;
+    for (i32 jobIndex = 0; jobIndex < 10; jobIndex++) {
+        arrput(jobs, prb_createJob(rngJob, 0, arena, 0));
+    }
+    prb_TimeStart jobStart = prb_timeStart();
+    prb_assert(prb_launchJobs(jobs, arrlen(jobs), prb_Background_Yes));
+    prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
+    float jobsMs = prb_getMsFrom(jobStart);
+    arrfree(jobs);
+    return jobsMs;
+}
+
+function void
+test_executionOnCores(prb_Arena* arena) {
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_CoreCountResult cores = prb_getAllowExecutionCoreCount(arena);
+    prb_assert(cores.success);
+
+    if (cores.cores > 1) {
+        // prb_writeToStdout(prb_fmt(arena, "%d\n", cores.cores));
+        float jobsMsNoPrevent = doManyRngJobs(arena);
+        prb_assert(prb_allowExecutionOnCores(arena, 1));
+        prb_CoreCountResult coresAgain = prb_getAllowExecutionCoreCount(arena);
+        prb_assert(coresAgain.success);
+        prb_assert(coresAgain.cores == 1);
+        float jobsMsPrevent = doManyRngJobs(arena);
+        // prb_writeToStdout(prb_fmt(arena, "%.2f %.2f\n", jobsMsNoPrevent, jobsMsPrevent));
+        prb_assert(prb_allowExecutionOnCores(arena, cores.cores));
+        float jobsMsAllow = doManyRngJobs(arena);
+        prb_assert(prb_allowExecutionOnCores(arena, cores.cores));
+        prb_assert(prb_allowExecutionOnCores(arena, 0) == prb_Failure);
+
+        // NOTE(khvorov) These timings won't be what you'd expect when there is
+        // stuff like coverage going on
+        prb_Str cmdline = prb_getCmdline(arena);
+        if (prb_strEndsWith(cmdline, prb_STR("clang-1tu-c"))) {
+            prb_assert(jobsMsNoPrevent < jobsMsPrevent);
+            prb_assert(jobsMsAllow < jobsMsPrevent);
+        }
+        // prb_writeToStdout(prb_fmt(arena, "%.2f %.2f %.2f\n", jobsMsNoPrevent, jobsMsPrevent, jobsMsAllow));
+    }
+
+    prb_CoreCountResult allCores = prb_getCoreCount(arena);
+    prb_assert(allCores.success);
+    if (allCores.cores > 2) {
+        prb_assert(prb_allowExecutionOnCores(arena, allCores.cores));
+        prb_CoreCountResult coresAgain = prb_getAllowExecutionCoreCount(arena);
+        prb_assert(coresAgain.success);
+        prb_assert(coresAgain.cores == allCores.cores);
+        prb_assert(prb_allowExecutionOnCores(arena, allCores.cores / 2));
+        coresAgain = prb_getAllowExecutionCoreCount(arena);
+        prb_assert(coresAgain.success);
+        prb_assert(coresAgain.cores == allCores.cores / 2);
+        prb_assert(prb_allowExecutionOnCores(arena, allCores.cores));
+        prb_assert(prb_allowExecutionOnCores(arena, cores.cores));
+    }
+
+    prb_endTempMemory(temp);
 }
 
 function void
@@ -2488,9 +2822,7 @@ main() {
     test_strStartsWith(arena);
     test_strEndsWith(arena);
     test_stringsJoin(arena);
-    test_beginStr(arena);
-    test_addStrSegment(arena);
-    test_endStr(arena);
+    test_growingStr(arena);
     test_vfmtCustomBuffer(arena);
     test_fmt(arena);
     test_writeToStdout(arena);
@@ -2505,7 +2837,8 @@ main() {
     test_getCmdline(arena);
     test_getCmdArgs(arena);
     test_getArgArrayFromStr(arena);
-    test_preventExecutionOnCores(arena);
+    test_getCoreCount(arena);
+    test_executionOnCores(arena);
     test_process(arena);
     test_sleep(arena);
     test_debuggerPresent(arena);

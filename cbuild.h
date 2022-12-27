@@ -463,6 +463,11 @@ typedef struct prb_GetenvResult {
     prb_Str str;
 } prb_GetenvResult;
 
+typedef struct prb_CoreCountResult {
+    bool    success;
+    int32_t cores;
+} prb_CoreCountResult;
+
 // SECTION Memory
 prb_PUBLICDEC bool           prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
 prb_PUBLICDEC int32_t        prb_getOffsetForAlignment(void* ptr, int32_t align);
@@ -533,20 +538,22 @@ prb_PUBLICDEC prb_ParsedNumber    prb_parseNumber(prb_Str str);
 prb_PUBLICDEC prb_Str             prb_binaryToCArray(prb_Arena* arena, prb_Str arrayName, void* data, int32_t dataLen);
 
 // SECTION Processes
-prb_PUBLICDEC void             prb_terminate(int32_t code);
-prb_PUBLICDEC prb_Str          prb_getCmdline(prb_Arena* arena);
-prb_PUBLICDEC prb_Str*         prb_getCmdArgs(prb_Arena* arena);
-prb_PUBLICDEC const char**     prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str);
-prb_PUBLICDEC prb_Status       prb_preventExecutionOnCores(prb_Arena* arena, int32_t coreCount);
-prb_PUBLICDEC prb_Process      prb_createProcess(prb_Str cmd, prb_ProcessSpec spec);
-prb_PUBLICDEC prb_Status       prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb_Background mode);
-prb_PUBLICDEC prb_Status       prb_waitForProcesses(prb_Process* handles, int32_t handleCount);
-prb_PUBLICDEC prb_Status       prb_killProcesses(prb_Process* handles, int32_t handleCount);
-prb_PUBLICDEC void             prb_sleep(float ms);
-prb_PUBLICDEC bool             prb_debuggerPresent(prb_Arena* arena);
-prb_PUBLICDEC prb_Status       prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value);
-prb_PUBLICDEC prb_GetenvResult prb_getenv(prb_Arena* arena, prb_Str name);
-prb_PUBLICDEC prb_Status       prb_unsetenv(prb_Arena* arena, prb_Str name);
+prb_PUBLICDEC void                prb_terminate(int32_t code);
+prb_PUBLICDEC prb_Str             prb_getCmdline(prb_Arena* arena);
+prb_PUBLICDEC prb_Str*            prb_getCmdArgs(prb_Arena* arena);
+prb_PUBLICDEC const char**        prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str);
+prb_PUBLICDEC prb_CoreCountResult prb_getCoreCount(prb_Arena* arena);
+prb_PUBLICDEC prb_CoreCountResult prb_getAllowExecutionCoreCount(prb_Arena* arena);
+prb_PUBLICDEC prb_Status          prb_allowExecutionOnCores(prb_Arena* arena, int32_t coreCount);
+prb_PUBLICDEC prb_Process         prb_createProcess(prb_Str cmd, prb_ProcessSpec spec);
+prb_PUBLICDEC prb_Status          prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb_Background mode);
+prb_PUBLICDEC prb_Status          prb_waitForProcesses(prb_Process* handles, int32_t handleCount);
+prb_PUBLICDEC prb_Status          prb_killProcesses(prb_Process* handles, int32_t handleCount);
+prb_PUBLICDEC void                prb_sleep(float ms);
+prb_PUBLICDEC bool                prb_debuggerPresent(prb_Arena* arena);
+prb_PUBLICDEC prb_Status          prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value);
+prb_PUBLICDEC prb_GetenvResult    prb_getenv(prb_Arena* arena, prb_Str name);
+prb_PUBLICDEC prb_Status          prb_unsetenv(prb_Arena* arena, prb_Str name);
 
 // SECTION Timing
 prb_PUBLICDEC prb_TimeStart prb_timeStart(void);
@@ -1853,10 +1860,6 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
                 uint8_t patMiddleCh = pat[spec.pattern.len / 2];
                 uint8_t patLastCh = pat[spec.pattern.len - 1];
 
-                if (spec.direction == prb_StrDirection_FromEnd && str.len < 0) {
-                    str.len = prb_strlen(str.ptr);
-                }
-
                 int32_t off = 0;
                 if (spec.direction == prb_StrDirection_FromEnd) {
                     off = str.len - spec.pattern.len;
@@ -2417,8 +2420,8 @@ prb_binaryToCArray(prb_Arena* arena, prb_Str arrayName, void* data, int32_t data
 #if prb_PLATFORM_LINUX
 
 static prb_Bytes
-prb_linux_readFromProcSelf(prb_Arena* arena, prb_Str filename) {
-    prb_linux_OpenResult handle = prb_linux_open(arena, prb_fmt(arena, "/proc/self/%.*s", prb_LIT(filename)), O_RDONLY, 0);
+prb_linux_readFromProc(prb_Arena* arena, prb_Str filename) {
+    prb_linux_OpenResult handle = prb_linux_open(arena, prb_fmt(arena, "/proc/%.*s", prb_LIT(filename)), O_RDONLY, 0);
     prb_assert(handle.success);
     prb_GrowingStr gstr = prb_beginStr(arena);
     gstr.str.len = read(handle.handle, (void*)gstr.str.ptr, prb_arenaFreeSize(arena));
@@ -2437,6 +2440,38 @@ prb_linux_waitForProcess(prb_Process* handle) {
     if (waitResult == handle->pid && status == 0) {
         handle->status = prb_ProcessStatus_CompletedSuccess;
     }
+}
+
+typedef struct prb_linux_GetAffinityResult {
+    bool     success;
+    uint8_t* affinity;
+    int32_t  size;
+    int32_t  setBits;
+} prb_linux_GetAffinityResult;
+
+static prb_linux_GetAffinityResult
+prb_linux_getAffinity(prb_Arena* arena) {
+    // NOTE(khvorov) The syscall is picky about alignment and can't handle buffers that are too big.
+    // I don't know how big is too big but a megabyte is apparently not too big.
+    prb_linux_GetAffinityResult result = {};
+    int32_t                     reqAlign = alignof(unsigned long);
+    prb_arenaAlignFreePtr(arena, reqAlign);
+    result.affinity = (uint8_t*)prb_arenaFreePtr(arena);
+    int32_t arenaSize = prb_arenaFreeSize(arena);
+    int32_t arenaSizeAligned = arenaSize & (~(reqAlign - 1));
+    int32_t sizeReduced = prb_min(arenaSizeAligned, prb_MEGABYTE);
+    result.size = syscall(SYS_sched_getaffinity, 0, sizeReduced, result.affinity);
+    if (result.size > 0) {
+        result.success = true;
+        for (int32_t byteIndex = 0; byteIndex < result.size; byteIndex++) {
+            uint8_t byte = ((uint8_t*)result.affinity)[byteIndex];
+            for (int32_t bitIndex = 0; bitIndex < 8; bitIndex++) {
+                uint8_t mask = 1 << bitIndex;
+                result.setBits += (byte & mask) != 0;
+            }
+        }
+    }
+    return result;
 }
 
 #endif
@@ -2466,14 +2501,14 @@ prb_getCmdline(prb_Arena* arena) {
 
 #elif prb_PLATFORM_LINUX
 
-    prb_Bytes procSelfContent = prb_linux_readFromProcSelf(arena, prb_STR("cmdline"));
-    for (int32_t byteIndex = 0; byteIndex < procSelfContent.len; byteIndex++) {
+    prb_Bytes procSelfContent = prb_linux_readFromProc(arena, prb_STR("self/cmdline"));
+    for (int32_t byteIndex = 0; byteIndex < procSelfContent.len - 1; byteIndex++) {
         if (procSelfContent.data[byteIndex] == '\0') {
             procSelfContent.data[byteIndex] = ' ';
         }
     }
 
-    result = (prb_Str) {(const char*)procSelfContent.data, procSelfContent.len};
+    result = (prb_Str) {(const char*)procSelfContent.data, procSelfContent.len - 1};
 
 #elif
 #error unimplemented
@@ -2492,7 +2527,7 @@ prb_getCmdArgs(prb_Arena* arena) {
 
 #elif prb_PLATFORM_LINUX
 
-    prb_Bytes procSelfContent = prb_linux_readFromProcSelf(arena, prb_STR("cmdline"));
+    prb_Bytes procSelfContent = prb_linux_readFromProc(arena, prb_STR("self/cmdline"));
     prb_Str   procSelfContentLeft = {(const char*)procSelfContent.data, procSelfContent.len};
     for (int32_t byteIndex = 0; byteIndex < procSelfContent.len; byteIndex++) {
         if (procSelfContent.data[byteIndex] == '\0') {
@@ -2534,59 +2569,115 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
     return args;
 }
 
-prb_PUBLICDEF prb_Status
-prb_preventExecutionOnCores(prb_Arena* arena, int32_t coreCount) {
-    prb_Status     result = prb_Failure;
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_unused(coreCount);
+prb_PUBLICDEF prb_CoreCountResult
+prb_getCoreCount(prb_Arena* arena) {
+    prb_TempMemory      temp = prb_beginTempMemory(arena);
+    prb_CoreCountResult result = {};
+#if prb_PLATFORM_WINDOWS
+#error unimplemented
+#elif prb_PLATFORM_LINUX
+    prb_Str         cpuinfo = prb_strFromBytes(prb_linux_readFromProc(arena, prb_STR("cpuinfo")));
+    prb_StrScanner  scanner = prb_createStrScanner(cpuinfo);
+    prb_StrFindSpec spec = {};
+    spec.pattern = prb_STR("siblings");
+    if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
+        spec.pattern = prb_STR(":");
+        if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
+            spec.mode = prb_StrFindMode_LineBreak;
+            if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
+                prb_Str             coresStr = prb_strTrim(scanner.betweenLastMatches);
+                prb_ParseUintResult parse = prb_parseUint(coresStr, 10);
+                if (parse.success) {
+                    result.success = true;
+                    result.cores = parse.number;
+                }
+            }
+        }
+    }
+#else
+#error unimplemented
+#endif
+    prb_endTempMemory(temp);
+    return result;
+}
+
+prb_PUBLICDEF prb_CoreCountResult
+prb_getAllowExecutionCoreCount(prb_Arena* arena) {
+    prb_CoreCountResult result = {};
+    prb_TempMemory      temp = prb_beginTempMemory(arena);
 
 #if prb_PLATFORM_WINDOWS
 #error unimplemented
 #elif prb_PLATFORM_LINUX
 
-    // NOTE(khvorov) The syscall is picky about alignment and can't handle buffers that are too big.
-    // I don't know how big is too big but a megabyte is apparently not too big.
-    int32_t reqAlign = alignof(unsigned long);
-    prb_arenaAlignFreePtr(arena, reqAlign);
-    unsigned long* affinity = (unsigned long*)prb_arenaFreePtr(arena);
-    int32_t        arenaSize = prb_arenaFreeSize(arena);
-    int32_t        arenaSizeAligned = arenaSize & (~(reqAlign - 1));
-    int32_t        sizeReduced = prb_min(arenaSizeAligned, prb_MEGABYTE);
-    int            bytesWritten = syscall(SYS_sched_getaffinity, 0, sizeReduced, affinity);
-    if (bytesWritten > 0) {
-        int32_t setBits = 0;
-        for (int32_t byteIndex = 0; byteIndex < bytesWritten; byteIndex++) {
-            uint8_t byte = ((uint8_t*)affinity)[byteIndex];
-            for (int32_t bitIndex = 0; bitIndex < 8; bitIndex++) {
-                uint8_t mask = 1 << bitIndex;
-                setBits += (byte & mask) != 0;
-            }
-        }
-
-        int32_t coresToUnschedule = prb_min(coreCount, setBits - 1);
-        for (int32_t byteIndex = 0; byteIndex < bytesWritten && coresToUnschedule > 0; byteIndex++) {
-            uint8_t byte = ((uint8_t*)affinity)[byteIndex];
-            for (int32_t bitIndex = 0; bitIndex < 8 && coresToUnschedule > 0; bitIndex++) {
-                uint8_t mask = 1 << bitIndex;
-                bool    coreIsScheduled = (byte & mask) != 0;
-                if (coreIsScheduled) {
-                    byte = byte & (~mask);
-                    ((uint8_t*)affinity)[byteIndex] = byte;
-                    coresToUnschedule -= 1;
-                }
-            }
-        }
-
-        int setAffinityResult = syscall(SYS_sched_setaffinity, 0, bytesWritten, affinity);
-        if (setAffinityResult == 0) {
-            result = prb_Success;
-        }
+    prb_linux_GetAffinityResult affinityRes = prb_linux_getAffinity(arena);
+    if (affinityRes.success) {
+        result.success = true;
+        result.cores = affinityRes.setBits;
     }
 
 #else
 #error unimplemented
 #endif
 
+    prb_endTempMemory(temp);
+    return result;
+}
+
+prb_PUBLICDEF prb_Status
+prb_allowExecutionOnCores(prb_Arena* arena, int32_t coreCount) {
+    prb_Status     result = prb_Failure;
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    if (coreCount >= 1) {
+#if prb_PLATFORM_WINDOWS
+#error unimplemented
+#elif prb_PLATFORM_LINUX
+
+        prb_linux_GetAffinityResult affinityRes = prb_linux_getAffinity(arena);
+        if (affinityRes.success) {
+            if (coreCount > affinityRes.setBits) {
+                int32_t coresToSchedule = coreCount - affinityRes.setBits;
+                for (int32_t byteIndex = 0; byteIndex < affinityRes.size && coresToSchedule > 0; byteIndex++) {
+                    uint8_t byte = affinityRes.affinity[byteIndex];
+                    for (int32_t bitIndex = 0; bitIndex < 8 && coresToSchedule > 0; bitIndex++) {
+                        uint8_t mask = 1 << bitIndex;
+                        bool    coreIsScheduled = (byte & mask) != 0;
+                        if (!coreIsScheduled) {
+                            byte = byte | mask;
+                            affinityRes.affinity[byteIndex] = byte;
+                            coresToSchedule -= 1;
+                        }
+                    }
+                }
+            } else if (coreCount < affinityRes.setBits) {
+                int32_t coresToUnschedule = affinityRes.setBits - coreCount;
+                for (int32_t byteIndex = 0; byteIndex < affinityRes.size && coresToUnschedule > 0; byteIndex++) {
+                    uint8_t byte = affinityRes.affinity[byteIndex];
+                    for (int32_t bitIndex = 0; bitIndex < 8 && coresToUnschedule > 0; bitIndex++) {
+                        uint8_t mask = 1 << bitIndex;
+                        bool    coreIsScheduled = (byte & mask) != 0;
+                        if (coreIsScheduled) {
+                            byte = byte & (~mask);
+                            affinityRes.affinity[byteIndex] = byte;
+                            coresToUnschedule -= 1;
+                        }
+                    }
+                }
+            }
+
+            if (coreCount != affinityRes.setBits) {
+                int setAffinityResult = syscall(SYS_sched_setaffinity, 0, affinityRes.size, affinityRes.affinity);
+                if (setAffinityResult == 0) {
+                    result = prb_Success;
+                }
+            } else {
+                result = prb_Success;
+            }
+        }
+#else
+#error unimplemented
+#endif
+    }
     prb_endTempMemory(temp);
     return result;
 }
@@ -2867,7 +2958,7 @@ prb_debuggerPresent(prb_Arena* arena) {
 
 #elif prb_PLATFORM_LINUX
 
-    prb_Bytes       content = prb_linux_readFromProcSelf(arena, prb_STR("status"));
+    prb_Bytes       content = prb_linux_readFromProc(arena, prb_STR("self/status"));
     prb_Str         str = {(const char*)content.data, content.len};
     prb_StrScanner  iter = prb_createStrScanner(str);
     prb_StrFindSpec lineBreakSpec = {};

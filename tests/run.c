@@ -248,7 +248,9 @@ main() {
     prb_Str exampleDir = prb_pathJoin(arena, rootDir, prb_STR("example"));
 
     if (!runningOnCi) {
-        prb_assert(prb_preventExecutionOnCores(arena, 1));
+        prb_CoreCountResult cores = prb_getCoreCount(arena);
+        prb_assert(cores.success);
+        prb_assert(prb_allowExecutionOnCores(arena, cores.cores - 1));
     }
 
     // NOTE(khvorov) Remove artifacts
@@ -277,6 +279,23 @@ main() {
         TestJobSpec spec = {};
         spec.doNotRedirect = true;
         compileAndRunTests(arena, &spec);
+
+        // NOTE(khvorov) Look at coverage for a function
+        if (true) {
+            prb_Str coverageRaw = prb_pathJoin(arena, globalTestsDir, prb_STR("coverage.profraw"));
+            prb_assert(prb_setenv(arena, prb_STR("LLVM_PROFILE_FILE"), coverageRaw));
+            TestJobSpec spec = {};
+            spec.flags = prb_STR("-fprofile-instr-generate -fcoverage-mapping");
+            spec.addOutputSuffix = prb_STR("coverage");
+            compileAndRunTests(arena, &spec);
+            prb_Str coverageIndexed = prb_replaceExt(arena, coverageRaw, prb_STR("profdata"));
+            prb_assert(execCmd(arena, prb_fmt(arena, "llvm-profdata merge -sparse %.*s -o %.*s", prb_LIT(coverageRaw), prb_LIT(coverageIndexed))));
+            prb_Str cmd = prb_fmt(arena, "llvm-cov show %.*s -instr-profile=%.*s -name=prb_allowExecutionOnCores -show-branches=percent", prb_LIT(spec.generatedCompileSpec.output), prb_LIT(coverageIndexed));
+            prb_writelnToStdout(arena, cmd);
+            prb_Process covShowProc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &covShowProc, 1, prb_Background_No));
+        }
+
     } else {
         // NOTE(khvorov) The full suite
 
