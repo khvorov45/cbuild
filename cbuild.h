@@ -2368,9 +2368,10 @@ prb_parseNumber(prb_Str str) {
     if (intParse.success) {
         if (leadingMinus) {
             // NOTE(khvorov) Won't be supporting parsing INT64_MIN for fear of undefined behaviour
-            prb_assert(intParse.number <= (((uint64_t)INT64_MAX)));
-            number.kind = prb_ParsedNumberKind_I64;
-            number.parsedI64 = -((int64_t)intParse.number);
+            if (intParse.number <= (((uint64_t)INT64_MAX))) {
+                number.kind = prb_ParsedNumberKind_I64;
+                number.parsedI64 = -((int64_t)intParse.number);
+            }
         } else {
             number.kind = prb_ParsedNumberKind_U64;
             number.parsedU64 = intParse.number;

@@ -1811,6 +1811,10 @@ test_parseNumber(prb_Arena* arena) {
     prb_assert(number.kind == prb_ParsedNumberKind_I64);
     prb_assert(number.parsedI64 == INT64_MIN + 1);
 
+    prb_Str uint64maxNegated = prb_fmt(arena, "-%ld", UINT64_MAX);
+    number = prb_parseNumber(uint64maxNegated);
+    prb_assert(number.kind == prb_ParsedNumberKind_None);
+
     prb_assert(prb_parseNumber(prb_STR(" 123")).kind == prb_ParsedNumberKind_None);
     prb_assert(prb_parseNumber(prb_STR(" 123")).kind == prb_ParsedNumberKind_None);
     prb_assert(prb_parseNumber(prb_STR("123a")).kind == prb_ParsedNumberKind_None);
