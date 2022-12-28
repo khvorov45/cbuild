@@ -1,5 +1,7 @@
 #include "../cbuild.h"
 
+// TODO(khvorov) Make sure long paths work on windows
+
 #define function static
 #define global_variable static
 

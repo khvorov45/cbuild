@@ -1,5 +1,7 @@
 #include "../cbuild.h"
 
+// TODO(khvorov) Generate precompile.c instead of it just sitting there
+
 #define function static
 #define global_variable static
 

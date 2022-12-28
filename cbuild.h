@@ -76,6 +76,7 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #include <stdalign.h>
 
 #include <string.h>
+#include <stdlib.h>
 
 #if defined(WIN32) || defined(_WIN32)
 #define prb_PLATFORM_WINDOWS 1
@@ -100,7 +101,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <stdlib.h>
 #include <spawn.h>
 #include <dirent.h>
 #include <glob.h>
@@ -308,7 +308,7 @@ typedef struct prb_Process {
     prb_ProcessStatus status;
 
 #if prb_PLATFORM_WINDOWS
-#error unimplemented
+
 #elif prb_PLATFORM_LINUX
     pid_t     pid;
 #else
@@ -413,7 +413,7 @@ typedef struct prb_Job {
     prb_JobStatus status;
 
 #if prb_PLATFORM_WINDOWS
-#error unimplemented
+
 #elif prb_PLATFORM_LINUX
     pthread_t threadid;
 #else
@@ -1106,7 +1106,69 @@ prb_endTempMemory(prb_TempMemory temp) {
 // SECTION Filesystem (implementation)
 //
 
-#if prb_PLATFORM_LINUX
+#if prb_PLATFORM_WINDOWS
+
+typedef struct prb_windows_WidePath {
+    uint16_t* ptr;
+    int32_t len;
+} prb_windows_WidePath;
+
+static prb_windows_WidePath
+prb_windows_getWidePath(prb_Arena* arena, prb_Str path) {
+    prb_windows_WidePath result = {};
+
+    // NOTE(khvorov) Long path prefix
+    result.ptr = prb_arenaAllocArray(arena, uint16_t, 4);
+    result.len = 4;
+    result.ptr[0] = '\\';
+    result.ptr[1] = '\\';
+    result.ptr[2] = '?';
+    result.ptr[3] = '\\';
+
+    // TODO(khvorov) Do we need to always convert to absolute to make this work?
+
+    int multiByteResult = MultiByteToWideChar(CP_UTF8, 0, path.ptr, path.len, prb_arenaFreePtr(arena), prb_arenaFreeSize(arena) / sizeof(uint16_t));
+    if (multiByteResult > 0) {
+        result.len += multiByteResult;
+        prb_arenaChangeUsed(arena, multiByteResult * sizeof(uint16_t));
+        prb_arenaAllocAndZero(arena, 2, 1); // NOTE(khvorov) Null terminator just in case
+    }
+
+    return result;
+}
+
+static prb_Str
+prb_windows_strFromWidePath(prb_Arena* arena, prb_windows_WidePath path) {
+    prb_Str result = {};
+    char* ptr = prb_arenaFreePtr(arena);
+    int bytesWritten = WideCharToMultiByte(CP_UTF8, 0, path.ptr, path.len, ptr, prb_arenaFreeSize(arena), 0, 0);
+    if (bytesWritten > 0) {
+        result.ptr = ptr;
+        result.len = bytesWritten;
+        prb_arenaChangeUsed(arena, bytesWritten);
+        prb_arenaAllocAndZero(arena, 1, 1); // NOTE(khvorov) Null terminator
+    }
+    return result;
+}
+
+typedef struct prb_windows_GetFileStatResult {
+    bool success;
+    WIN32_FILE_ATTRIBUTE_DATA stat;
+} prb_windows_GetFileStatResult;
+
+static prb_windows_GetFileStatResult
+prb_windows_getFileStat(prb_Arena* arena, prb_Str path) {
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_windows_GetFileStatResult result = {};
+    prb_windows_WidePath pathWide = prb_windows_getWidePath(arena, path);
+    if (GetFileAttributesExW(pathWide.ptr, GetFileExInfoStandard, &result.stat) != 0) {
+        result.success = true;
+    }
+    prb_endTempMemory(temp);
+    return result;
+}
+
+#elif prb_PLATFORM_LINUX
 
 typedef struct prb_linux_GetFileStatResult {
     bool        success;
@@ -1155,20 +1217,15 @@ typedef struct prb_linux_Dirent64 {
 prb_PUBLICDEF bool
 prb_pathExists(prb_Arena* arena, prb_Str path) {
     bool result = false;
-
 #if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
+    prb_windows_GetFileStatResult stat = prb_windows_getFileStat(arena, path);
+    result = stat.success;
 #elif prb_PLATFORM_LINUX
-
     prb_linux_GetFileStatResult stat = prb_linux_getFileStat(arena, path);
     result = stat.success;
-
 #else
 #error unimplemented
 #endif
-
     return result;
 }
 
@@ -1177,7 +1234,10 @@ prb_pathIsAbsolute(prb_Str path) {
     bool result = false;
 #if prb_PLATFORM_WINDOWS
 
-#error unimplemented
+    // TODO(khvorov) Are \\?\ paths always absolute?
+    bool firstback = path.len >= 1 && path.ptr[0] == '\\';
+    bool disk = path.len >= 3 && path.ptr[1] == ':' && path.ptr[2] == '\\';
+    result = firstback || disk;
 
 #elif prb_PLATFORM_LINUX
 
@@ -1229,54 +1289,38 @@ prb_getAbsolutePath(prb_Arena* arena, prb_Str path) {
 prb_PUBLICDEF bool
 prb_isDir(prb_Arena* arena, prb_Str path) {
     bool result = false;
-
 #if prb_PLATFORM_WINDOWS
-
-    prb_Str pathNoTrailingSlash = path;
-    char    lastChar = path.ptr[path.len - 1];
-    if (prb_charIsSep(lastChar)) {
-        pathNoTrailingSlash = prb_stringCopy(path, 0, path.len - 2);
+    prb_windows_GetFileStatResult stat = prb_windows_getFileStat(arena, path);
+    if (stat.success) {
+        result = (stat.stat.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY;
     }
-    bool             result = false;
-    WIN32_FIND_DATAA findData;
-    HANDLE           findHandle = FindFirstFileA(pathNoTrailingSlash.ptr, &findData);
-    if (findHandle != INVALID_HANDLE_VALUE) {
-        result = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-    }
-
 #elif prb_PLATFORM_LINUX
-
     prb_linux_GetFileStatResult stat = prb_linux_getFileStat(arena, path);
     if (stat.success) {
         result = S_ISDIR(stat.stat.st_mode);
     }
-
 #else
 #error unimplemented
 #endif
-
     return result;
 }
 
 prb_PUBLICDEF bool
 prb_isFile(prb_Arena* arena, prb_Str path) {
     bool result = false;
-
 #if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
+    prb_windows_GetFileStatResult stat = prb_windows_getFileStat(arena, path);
+    if (stat.success) {
+        result = (stat.stat.dwFileAttributes & FILE_ATTRIBUTE_NORMAL) == FILE_ATTRIBUTE_NORMAL;
+    }
 #elif prb_PLATFORM_LINUX
-
     prb_linux_GetFileStatResult stat = prb_linux_getFileStat(arena, path);
     if (stat.success) {
         result = S_ISREG(stat.stat.st_mode);
     }
-
 #else
 #error unimplemented
 #endif
-
     return result;
 }
 
@@ -1320,14 +1364,13 @@ prb_removePathIfExists(prb_Arena* arena, prb_Str path) {
 
 #if prb_PLATFORM_WINDOWS
 
-    const char*       pathNull = prb_strGetNullTerminated(arena, path);
-    prb_StringBuilder doubleNullBuilder = prb_createStringBuilder(path.len + 2);
-    prb_stringBuilderWrite(&doubleNullBuilder, path);
-    SHFileOperationA(&(SHFILEOPSTRUCTA) {
-        .wFunc = FO_DELETE,
-        .pFrom = doubleNullBuilder.string.ptr,
-        .fFlags = FOF_NO_UI,
-    });
+    prb_windows_WidePath pathWide = prb_windows_getWidePath(arena, path);
+    prb_arenaAllocAndZero(arena, 2, 1); // NOTE(khvorov) Double-null
+    SHFILEOPSTRUCTW spec = {}; 
+    spec.wFunc = FO_DELETE;
+    spec.pFrom = pathWide.ptr;
+    spec.fFlags = FOF_NO_UI;
+    SHFileOperationW(&spec);
 
 #elif prb_PLATFORM_LINUX
 
@@ -1378,27 +1421,29 @@ prb_clearDir(prb_Arena* arena, prb_Str path) {
 
 prb_PUBLICDEF prb_Str
 prb_getWorkingDir(prb_Arena* arena) {
+    prb_Str result = {};
+
 #if prb_PLATFORM_WINDOWS
 
-    // TODO(khvorov) Make sure long paths work
-    // TODO(khvorov) Check error
-    int32_t maxLen = MAX_PATH + 1;
-    char*   ptr = (char*)prb_allocAndZero(maxLen, 1);
-    GetCurrentDirectoryA(maxLen, ptr);
-    return ptr;
+    prb_arenaAlignFreePtr(arena, alignof(uint16_t));
+    uint16_t* ptrWide = (uint16_t*)prb_arenaFreePtr(arena);
+    DWORD lenWide = GetCurrentDirectoryW(prb_arenaFreeSize(arena) / sizeof(uint16_t), ptrWide);
+    prb_assert(lenWide > 0);
+    result = prb_windows_strFromWidePath(arena, (prb_windows_WidePath) {ptrWide, lenWide});
 
 #elif prb_PLATFORM_LINUX
 
     char* ptr = (char*)prb_arenaFreePtr(arena);
     prb_assert(getcwd(ptr, prb_arenaFreeSize(arena)));
-    prb_Str result = prb_STR(ptr);
+    result = prb_STR(ptr);
     prb_arenaChangeUsed(arena, result.len);
     prb_arenaAllocAndZero(arena, 1, 1);  // NOTE(khvorov) Null terminator
-    return result;
 
 #else
 #error unimplemented
 #endif
+
+    return result;
 }
 
 prb_PUBLICDEF prb_Status
