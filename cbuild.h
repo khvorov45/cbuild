@@ -3099,7 +3099,6 @@ prb_getMsFrom(prb_TimeStart timeStart) {
 static void*
 prb_linux_pthreadProc(void* data) {
     prb_Job* job = (prb_Job*)data;
-    prb_assert(job->status == prb_JobStatus_Launched);
     job->proc(&job->arena, job->data);
     return 0;
 }
@@ -3198,7 +3197,7 @@ prb_killJobs(prb_Job* jobs, int32_t jobsCount) {
 
 #elif prb_PLATFORM_LINUX
 
-            if (pthread_kill(job->threadid, SIGKILL) == 0) {
+            if (pthread_cancel(job->threadid) == 0) {
                 job->status = prb_JobStatus_Completed;
             } else {
                 result = prb_Failure;

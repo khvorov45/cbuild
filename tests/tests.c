@@ -75,6 +75,12 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_getCoreCount"));
         arrput(*prbNames, prb_STR("prb_getAllowExecutionCoreCount"));
         arrput(*prbNames, prb_STR("prb_allowExecutionOnCores"));
+    } else if (prb_streq(testName, prb_STR("test_fmt"))) {
+        arrput(*prbNames, prb_STR("prb_vfmtCustomBuffer"));
+        arrput(*prbNames, prb_STR("prb_fmt"));
+    } else if (prb_streq(testName, prb_STR("test_timer"))) {
+        arrput(*prbNames, prb_STR("prb_timeStart"));
+        arrput(*prbNames, prb_STR("prb_getMsFrom"));
     } else {
         prb_assert(prb_strStartsWith(testName, prb_STR("test_")));
         prb_Str noPrefix = prb_strSlice(testName, 5, testName.len);
@@ -1095,25 +1101,32 @@ test_getFileHash(prb_Arena* arena) {
 function void
 test_streq(prb_Arena* arena) {
     prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_assert(prb_streq(prb_STR(""), prb_STR("")));
+    prb_assert(prb_streq(prb_STR("as"), prb_STR("as")));
+    prb_assert(!prb_streq(prb_STR("as"), prb_STR("af")));
+    prb_assert(!prb_streq(prb_STR("asa"), prb_STR("aa")));
 }
 
 function void
 test_strSlice(prb_Arena* arena) {
     prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_assert(prb_streq(prb_strSlice(prb_STR("12345"), 2, 5), prb_STR("345")));
 }
 
 function void
 test_strGetNullTerminated(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_Str str = prb_STR("1234");
+    str.len = 2;
+    const char* strNull = prb_strGetNullTerminated(arena, str);
+    prb_assert(prb_streq(prb_STR(strNull), prb_STR("12")));
 }
 
 function void
 test_strFromBytes(prb_Arena* arena) {
     prb_unused(arena);
-    // TODO(khvorov) Write
+    u8 data[] = {'1', '2'};
+    prb_Bytes bytes = {data, prb_arrayCount(data)};
+    prb_assert(prb_streq(prb_strFromBytes(bytes), prb_STR("12")));
 }
 
 function void
@@ -1393,20 +1406,16 @@ test_stringsJoin(prb_Arena* arena) {
 
 function void
 test_growingStr(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
-}
-
-function void
-test_vfmtCustomBuffer(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_GrowingStr gstr = prb_beginStr(arena);
+    prb_addStrSegment(&gstr, "test");
+    prb_addStrSegment(&gstr, "123");
+    prb_Str str = prb_endStr(&gstr);
+    prb_assert(prb_streq(str, prb_STR("test123")));
 }
 
 function void
 test_fmt(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_assert(prb_streq(prb_fmt(arena, "%d", 123), prb_STR("123")));
 }
 
 function void
@@ -2074,8 +2083,34 @@ test_binaryToCArray(prb_Arena* arena) {
 
 function void
 test_terminate(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Str dir = getTempPath(arena, __FUNCTION__);
+    prb_assert(prb_clearDir(arena, dir));
+
+    prb_Str progPaths[] = {prb_pathJoin(arena, dir, prb_STR("success.c")), prb_pathJoin(arena, dir, prb_STR("fail.c"))};
+    prb_Str progs[] = {prb_STR("#include \"../../cbuild.h\"\nint main() {prb_terminate(0);}"), prb_STR("#include \"../../cbuild.h\"\nint main() {prb_terminate(1);}")};
+    prb_Status statuses[] = {prb_Success, prb_Failure};
+    for (i32 progIndex = 0; progIndex < prb_arrayCount(progPaths); progIndex++) {
+        prb_Str progPath = progPaths[progIndex];
+        prb_Str prog = progs[progIndex];
+        prb_assert(prb_writeEntireFile(arena, progPath, prog.ptr, prog.len));
+
+        prb_Str progExe = prb_replaceExt(arena, progPath, prb_STR("exe"));
+        prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
+
+        {
+            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+        }
+
+        {
+            prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No) == statuses[progIndex]);
+        }
+    }
+
+    prb_removePathIfExists(arena, dir);
+    prb_endTempMemory(temp);
 }
 
 function void
@@ -2121,8 +2156,45 @@ test_getCmdline(prb_Arena* arena) {
 
 function void
 test_getCmdArgs(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Str        tempDir = getTempPath(arena, __FUNCTION__);
+    prb_assert(prb_clearDir(arena, tempDir));
+
+    prb_Str programExe = prb_pathJoin(arena, tempDir, prb_STR("program.exe"));
+    prb_Str program = prb_fmt(
+        arena,
+        "#include \"../../cbuild.h\"\n"
+        "int main() {\n"
+        "prb_Arena arena = prb_createArenaFromVmem(1 * prb_MEGABYTE);\n"
+        "prb_Str* cmdargs = prb_getCmdArgs(&arena);\n"
+        "if (arrlen(cmdargs) != 3) return 1;\n"
+        "if (!prb_streq(cmdargs[0], prb_STR(\"%.*s\"))) return 1;\n"
+        "if (!prb_streq(cmdargs[1], prb_STR(\"arg1\"))) return 1;\n"
+        "if (!prb_streq(cmdargs[2], prb_STR(\"arg2\"))) return 1;\n"
+        "}",
+        prb_LIT(programExe)
+    );
+    prb_Str programSrc = prb_pathJoin(arena, tempDir, prb_STR("program.c"));
+    prb_assert(prb_writeEntireFile(arena, programSrc, program.ptr, program.len));
+
+    prb_Str     cmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(programSrc), prb_LIT(programExe));
+    prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+    prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+
+    proc = prb_createProcess(programExe, (prb_ProcessSpec) {});
+    prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No) == prb_Failure);
+
+    cmd = prb_fmt(arena, "%.*s arg1 arg2", prb_LIT(programExe));
+    proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+    prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+
+    prb_assert(prb_removePathIfExists(arena, tempDir));
+
+    prb_Str* ownCmd = prb_getCmdArgs(arena);
+    prb_assert(arrlen(ownCmd) >= 1);
+    prb_assert(prb_strStartsWith(ownCmd[0], prb_getParentDir(arena, tempDir)));
+
+    prb_endTempMemory(temp);
 }
 
 function void
@@ -2349,6 +2421,54 @@ test_process(prb_Arena* arena) {
         }
     }
 
+    // NOTE(khvorov) Kill
+    {
+        prb_Str progPath = prb_pathJoin(arena, dir, prb_STR("forever.c"));
+        prb_Str prog = prb_STR("int main() {for (;;) {}}");
+        prb_assert(prb_writeEntireFile(arena, progPath, prog.ptr, prog.len));
+
+        prb_Str progExe = prb_replaceExt(arena, progPath, exeExt);
+        prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
+
+        {
+            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+        }
+
+        {
+            prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_Yes));
+            prb_assert(prb_killProcesses(&proc, 1));
+        }
+    }
+
+    // NOTE(khvorov) Fail
+    {
+        prb_Str progPaths[] = {prb_pathJoin(arena, dir, prb_STR("success.c")), prb_pathJoin(arena, dir, prb_STR("fail.c"))};
+        prb_Str progs[] = {prb_STR("int main() {return 0;}"), prb_STR("int main() {return 1;}")};
+        prb_Process procs[2] = {};
+        for (i32 progIndex = 0; progIndex < prb_arrayCount(progPaths); progIndex++) {
+            prb_Str progPath = progPaths[progIndex];
+            prb_Str prog = progs[progIndex];
+            prb_assert(prb_writeEntireFile(arena, progPath, prog.ptr, prog.len));
+
+            prb_Str progExe = prb_replaceExt(arena, progPath, exeExt);
+            prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
+
+            {
+                prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+                prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+            }
+
+            {
+                prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+                prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_Yes));
+                procs[progIndex] = proc;
+            }
+        }
+        prb_assert(prb_waitForProcesses(procs, prb_arrayCount(procs)) == prb_Failure);
+    }
+
     prb_removePathIfExists(arena, dir);
     prb_endTempMemory(temp);
 }
@@ -2356,13 +2476,17 @@ test_process(prb_Arena* arena) {
 function void
 test_sleep(prb_Arena* arena) {
     prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_TimeStart timeStart = prb_timeStart();
+    float sleepMs = 10.0f;
+    prb_sleep(sleepMs);
+    float ms = prb_getMsFrom(timeStart);
+    prb_assert(ms >= sleepMs);
 }
 
 function void
 test_debuggerPresent(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
+    // NOTE(khvorov) Just make sure the code executes somewhere, I don't know how to actually test it automatically
+    prb_debuggerPresent(arena);
 }
 
 function void
@@ -2394,15 +2518,13 @@ test_env(prb_Arena* arena) {
 //
 
 function void
-test_timeStart(prb_Arena* arena) {
+test_timer(prb_Arena* arena) {
     prb_unused(arena);
-    // TODO(khvorov) Write
-}
-
-function void
-test_getMsFrom(prb_Arena* arena) {
-    prb_unused(arena);
-    // TODO(khvorov) Write
+    prb_TimeStart timeStart = prb_timeStart();
+    float sleepMs = 10.0f;
+    prb_sleep(sleepMs);
+    float ms = prb_getMsFrom(timeStart);
+    prb_assert(ms >= sleepMs);
 }
 
 //
@@ -2423,8 +2545,15 @@ randomJob(prb_Arena* arena, void* data) {
 }
 
 function void
-test_jobs(prb_Arena* arena) {
+foreverJob(prb_Arena* arena, void* data) {
     prb_unused(arena);
+    prb_unused(data);
+    for (;;) {}
+}
+
+function void
+test_jobs(prb_Arena* arena) {
+    prb_TempMemory temp = prb_beginTempMemory(arena);
 
     {
         prb_Job* jobs = 0;
@@ -2437,6 +2566,27 @@ test_jobs(prb_Arena* arena) {
         prb_assert(prb_waitForJobs(jobs, jobCount));
         arrfree(jobs);
     }
+
+
+    {
+        prb_Job* jobs = 0;
+        i32      jobCount = 100;
+        for (i32 jobIndex = 0; jobIndex < jobCount; jobIndex++) {
+            arrput(jobs, prb_createJob(randomJob, 0, arena, 0));
+        }
+
+        prb_assert(prb_launchJobs(jobs, jobCount, prb_Background_No));
+        prb_assert(prb_waitForJobs(jobs, jobCount));
+        arrfree(jobs);
+    }
+
+    {
+        prb_Job job = prb_createJob(foreverJob, 0, arena, 0);
+        prb_assert(prb_launchJobs(&job, 1, prb_Background_Yes));
+        prb_assert(prb_killJobs(&job, 1));
+    }
+
+    prb_endTempMemory(temp);
 }
 
 // SECTION Random numbers
@@ -2772,7 +2922,6 @@ main() {
     test_strEndsWith(arena);
     test_stringsJoin(arena);
     test_growingStr(arena);
-    test_vfmtCustomBuffer(arena);
     test_fmt(arena);
     test_writeToStdout(arena);
     test_utf8CharIter(arena);
@@ -2793,8 +2942,7 @@ main() {
     test_env(arena);
 
     // SECTION Timing
-    test_timeStart(arena);
-    test_getMsFrom(arena);
+    test_timer(arena);
 
     // SECTION Multithreading
     test_jobs(arena);
