@@ -63,7 +63,6 @@ testNameToPrbName(prb_Arena* arena, prb_Str testName, prb_Str** prbNames) {
         arrput(*prbNames, prb_STR("prb_createJob"));
         arrput(*prbNames, prb_STR("prb_launchJobs"));
         arrput(*prbNames, prb_STR("prb_waitForJobs"));
-        arrput(*prbNames, prb_STR("prb_killJobs"));
     } else if (prb_streq(testName, prb_STR("test_getAllDirEntries"))) {
         arrput(*prbNames, prb_STR("prb_getAllDirEntriesCustomBuffer"));
         arrput(*prbNames, prb_STR("prb_getAllDirEntries"));
@@ -2193,6 +2192,7 @@ test_getCmdArgs(prb_Arena* arena) {
     prb_Str* ownCmd = prb_getCmdArgs(arena);
     prb_assert(arrlen(ownCmd) >= 1);
     prb_assert(prb_strStartsWith(ownCmd[0], prb_getParentDir(arena, tempDir)));
+    arrfree(ownCmd);
 
     prb_endTempMemory(temp);
 }
@@ -2545,13 +2545,6 @@ randomJob(prb_Arena* arena, void* data) {
 }
 
 function void
-foreverJob(prb_Arena* arena, void* data) {
-    prb_unused(arena);
-    prb_unused(data);
-    for (;;) {}
-}
-
-function void
 test_jobs(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
@@ -2578,12 +2571,6 @@ test_jobs(prb_Arena* arena) {
         prb_assert(prb_launchJobs(jobs, jobCount, prb_Background_No));
         prb_assert(prb_waitForJobs(jobs, jobCount));
         arrfree(jobs);
-    }
-
-    {
-        prb_Job job = prb_createJob(foreverJob, 0, arena, 0);
-        prb_assert(prb_launchJobs(&job, 1, prb_Background_Yes));
-        prb_assert(prb_killJobs(&job, 1));
     }
 
     prb_endTempMemory(temp);

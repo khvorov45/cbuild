@@ -563,7 +563,6 @@ prb_PUBLICDEC float         prb_getMsFrom(prb_TimeStart timeStart);
 prb_PUBLICDEC prb_Job    prb_createJob(prb_JobProc proc, void* data, prb_Arena* arena, int32_t arenaBytes);
 prb_PUBLICDEC prb_Status prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_Background mode);
 prb_PUBLICDEC prb_Status prb_waitForJobs(prb_Job* jobs, int32_t jobsCount);
-prb_PUBLICDEC prb_Status prb_killJobs(prb_Job* jobs, int32_t jobsCount);
 
 // SECTION Random numbers
 prb_PUBLICDEC prb_Rng  prb_createRng(uint32_t seed);
@@ -3170,34 +3169,6 @@ prb_waitForJobs(prb_Job* jobs, int32_t jobsCount) {
 #elif prb_PLATFORM_LINUX
 
             if (pthread_join(job->threadid, 0) == 0) {
-                job->status = prb_JobStatus_Completed;
-            } else {
-                result = prb_Failure;
-            }
-
-#else
-#error unimplemented
-#endif
-        }
-    }
-
-    return result;
-}
-
-prb_PUBLICDEF prb_Status
-prb_killJobs(prb_Job* jobs, int32_t jobsCount) {
-    prb_Status result = prb_Success;
-    for (int32_t jobIndex = 0; jobIndex < jobsCount; jobIndex++) {
-        prb_Job* job = jobs + jobIndex;
-        prb_assert(job->status != prb_JobStatus_NotLaunched);
-        if (job->status == prb_JobStatus_Launched) {
-#if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
-#elif prb_PLATFORM_LINUX
-
-            if (pthread_cancel(job->threadid) == 0) {
                 job->status = prb_JobStatus_Completed;
             } else {
                 result = prb_Failure;
