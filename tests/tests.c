@@ -1062,6 +1062,13 @@ test_writeEntireFile(prb_Arena* arena) {
     prb_assert(readRes.success);
     prb_assert(prb_streq(prb_strFromBytes(readRes.content), filepath));
 
+    // NOTE(khvorov) Test we are not appending
+    prb_assert(prb_writeEntireFile(arena, filepath, filepath.ptr, filepath.len));
+    readRes = prb_readEntireFile(arena, filepath);
+    prb_assert(readRes.success);
+    prb_assert(prb_streq(prb_strFromBytes(readRes.content), filepath));
+
+
     prb_Str nestedDir = prb_pathJoin(arena, dir, prb_STR("nested"));
     prb_assert(prb_writeEntireFile(arena, nestedDir, nestedDir.ptr, nestedDir.len));
     prb_Str fileCantWrite = prb_pathJoin(arena, nestedDir, prb_STR("file"));

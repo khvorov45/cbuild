@@ -1168,6 +1168,27 @@ prb_windows_getFileStat(prb_Arena* arena, prb_Str path) {
     return result;
 }
 
+typedef struct prb_windows_OpenResult {
+    bool success;
+    HANDLE handle;
+} prb_windows_OpenResult;
+
+static prb_windows_OpenResult
+prb_windows_open(prb_Arena* arena, prb_Str path, DWORD access, DWORD share, DWORD create) {
+    prb_windows_OpenResult result = {};
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_windows_WidePath pathWide = prb_windows_getWidePath(arena, path);
+
+    HANDLE handle = CreateFileW(pathWide.ptr, access, share, 0, create, FILE_ATTRIBUTE_NORMAL, 0);
+    if (handle != INVALID_HANDLE_VALUE) {
+        result.success = true;
+        result.handle = handle;
+    }
+    
+    prb_endTempMemory(temp);
+    return result;
+}
+
 #elif prb_PLATFORM_LINUX
 
 typedef struct prb_linux_GetFileStatResult {
@@ -1343,8 +1364,8 @@ prb_createDirIfNotExists(prb_Arena* arena, prb_Str path) {
     while (prb_pathEntryIterNext(&iter) && result == prb_Success) {
         if (!prb_isDir(arena, iter.curEntryPath)) {
 #if prb_PLATFORM_WINDOWS
-            // TODO(khvorov) Check error
-            CreateDirectory(path.ptr, 0);
+            prb_windows_WidePath pathWide = prb_windows_getWidePath(arena, iter.curEntryPath);
+            result = CreateDirectoryW(pathWide.ptr, 0) != 0 ? prb_Success : prb_Failure;
 #elif prb_PLATFORM_LINUX
             const char* pathNull = prb_strGetNullTerminated(arena, iter.curEntryPath);
             result = mkdir(pathNull, S_IRWXU | S_IRWXG | S_IRWXO) == 0 ? prb_Success : prb_Failure;
@@ -1448,16 +1469,18 @@ prb_getWorkingDir(prb_Arena* arena) {
 
 prb_PUBLICDEF prb_Status
 prb_setWorkingDir(prb_Arena* arena, prb_Str dir) {
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-    const char*    dirNull = prb_strGetNullTerminated(arena, dir);
+    prb_TempMemory temp = prb_beginTempMemory(arena);    
     prb_Status     result = prb_Failure;
 
 #if prb_PLATFORM_WINDOWS
 
-#error unimplemented
+    // TODO(khvorov) Make sure this works when there is no trailing slash
+    prb_windows_WidePath pathWide = prb_windows_getWidePath(arena, dir);
+    result = SetCurrentDirectoryW(pathWide.ptr) != 0 ? prb_Success : prb_Failure;
 
 #elif prb_PLATFORM_LINUX
 
+    const char* dirNull = prb_strGetNullTerminated(arena, dir);
     result = chdir(dirNull) == 0 ? prb_Success : prb_Failure;
 
 #else
@@ -1605,7 +1628,35 @@ prb_PUBLICDEF void
 prb_getAllDirEntriesCustomBuffer(prb_Arena* arena, prb_Str dir, prb_Recursive mode, prb_Str** storage) {
 #if prb_PLATFORM_WINDOWS
 
-#error unimplemented
+    prb_Str* dirs = 0;
+    prb_stbds_arrput(dirs, dir);
+
+    while (prb_stbds_arrlen(dirs) > 0) {
+        prb_Str thisDir = prb_stbds_arrpop(dirs);
+        WIN32_FIND_DATAW findData = {};
+        prb_windows_WidePath pathWide = prb_windows_getWidePath(arena, thisDir);
+        HANDLE handle = FindFirstFileExW(pathWide.ptr, FindExInfoStandard, &findData, FindExSearchNameMatch, 0, 0);
+        if (handle != INVALID_HANDLE_VALUE) {
+            for (;;) {
+                prb_windows_WidePath fileNameWide = {findData.cFileName, prb_arrayCount(findData.cFileName)};
+                prb_Str filename = prb_windows_strFromWidePath(arena, fileNameWide);
+                prb_Str filepath = prb_pathJoin(arena, thisDir, filename);
+                prb_stbds_arrput(*storage, filepath);
+                if (mode == prb_Recursive_Yes) {
+                    bool isDir = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY;
+                    if (isDir) {
+                        prb_stbds_arrput(dirs, filepath);
+                    }
+                }
+                if (FindNextFileW(handle, &findData) == 0) {
+                    FindClose(handle);
+                    break;
+                }
+            }
+        }
+    }
+
+    prb_stbds_arrfree(dirs);
 
 #elif prb_PLATFORM_LINUX
 
@@ -1664,18 +1715,10 @@ prb_getLastModified(prb_Arena* arena, prb_Str path) {
 
 #if prb_PLATFORM_WINDOWS
 
-    WIN32_FIND_DATAA findData = {};
-    HANDLE           firstHandle = FindFirstFileA(pattern, &findData);
-    if (firstHandle != INVALID_HANDLE_VALUE) {
-        uint64_t thisLastMod =
-            ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
-        result = prb_max(result, thisLastMod);
-        while (FindNextFileA(firstHandle, &findData)) {
-            thisLastMod =
-                ((uint64_t)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
-            result = prb_max(result, thisLastMod);
-        }
-        FindClose(firstHandle);
+    prb_windows_GetFileStatResult stat = prb_windows_getFileStat(arena, path);
+    if (stat.success) {
+        result.valid = true;
+        result.timestamp = ((uint64_t)stat.stat.ftLastWriteTime.dwHighDateTime << 32) | stat.stat.ftLastWriteTime.dwLowDateTime;
     }
 
 #elif prb_PLATFORM_LINUX
@@ -1719,7 +1762,24 @@ prb_readEntireFile(prb_Arena* arena, prb_Str path) {
 
 #if prb_PLATFORM_WINDOWS
 
-#error unimplemented
+    prb_windows_OpenResult handle = prb_windows_open(arena, path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
+    if (handle.success) {
+        LARGE_INTEGER size = {};
+        if (GetFileSizeEx(handle.handle, &size)) {
+            prb_assert(size.QuadPart <= INT32_MAX);
+            int32_t bytesToRead = size.QuadPart;
+            uint8_t* buf = prb_arenaAllocAndZero(arena, bytesToRead, 1);
+            DWORD bytesRead = 0;
+            if (ReadFile(handle.handle, buf, bytesToRead, &bytesRead, 0)) {
+                prb_assert(bytesRead <= INT32_MAX);
+                if ((int32_t)bytesRead == bytesToRead) {
+                    result.success = true;
+                    result.content.data = buf;
+                    result.content.len = bytesRead;
+                }
+            }
+        }
+    }
 
 #elif prb_PLATFORM_LINUX
 
@@ -1751,7 +1811,14 @@ prb_writeEntireFile(prb_Arena* arena, prb_Str path, const void* content, int32_t
     prb_Str        parent = prb_getParentDir(arena, path);
     if (prb_createDirIfNotExists(arena, parent)) {
 #if prb_PLATFORM_WINDOWS
-#error unimplemented
+        prb_windows_OpenResult handle = prb_windows_open(arena, path, GENERIC_WRITE, FILE_SHARE_WRITE, CREATE_ALWAYS);
+        if (handle.success) {
+            DWORD bytesWritten = 0;
+            if (WriteFile(handle.handle, content, contentLen, &bytesWritten, 0)) {
+                prb_assert(bytesWritten <= INT32_MAX);
+                result = (int32_t)bytesWritten == contentLen ? prb_Success : prb_Failure;
+            }
+        }
 #elif prb_PLATFORM_LINUX
         prb_linux_OpenResult handle = prb_linux_open(arena, path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR);
         if (handle.success) {
@@ -2523,13 +2590,9 @@ prb_linux_getAffinity(prb_Arena* arena) {
 prb_PUBLICDEF void
 prb_terminate(int32_t code) {
 #if prb_PLATFORM_WINDOWS
-
-#error unimplemented
-
+    ExitProcess(code);
 #elif prb_PLATFORM_LINUX
-
     exit(code);
-
 #else
 #error unimplemented
 #endif
@@ -2541,7 +2604,10 @@ prb_getCmdline(prb_Arena* arena) {
 
 #if prb_PLATFORM_WINDOWS
 
-#error unimplemented
+    LPWSTR wstr = GetCommandLineW();
+    int32_t len = 0;
+    while (wstr[len++]) {}
+    result = prb_windows_strFromWidePath(arena, (prb_windows_WidePath) {wstr, len});
 
 #elif prb_PLATFORM_LINUX
 
@@ -2567,7 +2633,16 @@ prb_getCmdArgs(prb_Arena* arena) {
 
 #if prb_PLATFORM_WINDOWS
 
-#error unimplemented
+    prb_Str str = prb_getCmdline(arena);
+    prb_StrFindSpec spec = {};
+    spec.pattern = prb_STR(" ");
+    spec.alwaysMatchEnd = true;
+    prb_StrScanner scanner = prb_createStrScanner(str);
+    while (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
+        if (scanner.betweenLastMatches.len > 0) {
+            prb_stbds_arrput(result, scanner.betweenLastMatches);
+        }
+    }
 
 #elif prb_PLATFORM_LINUX
 
