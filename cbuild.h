@@ -2975,16 +2975,15 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb
 
                 // NOTE(khvorov) Just replace spaces with null terminators and stick that to the start of the
                 // existing environment and call it a day. 
-                // Note that nobody wants to deal with UTF16 in the environment probably, so stick to non-W functions here.
-                LPCH env = 0;
+                LPWCH env = 0;
                 if (spec.addEnv.ptr && spec.addEnv.len > 0) {
-                    prb_Str envCopy = prb_fmt(arena, "%.*s", prb_LIT(spec.addEnv));
+                    prb_windows_WideStr envCopy = prb_windows_getWideStr(arena, spec.addEnv);
                     for (int32_t envIndex = 0; envIndex < envCopy.len; envIndex++) {
                         if (envCopy.ptr[envIndex] == ' ') {
-                            ((char*)envCopy.ptr)[envIndex] = '\0';
+                            envCopy.ptr[envIndex] = '\0';
                         }
                     }
-                    LPCH existingEnv = GetEnvironmentStrings();
+                    LPWCH existingEnv = GetEnvironmentStringsW();
                     int32_t existingEnvLen = 0;
                     for (;;) {
                         if (existingEnv[existingEnvLen] == '\0' && existingEnv[existingEnvLen + 1] == '\0') {
@@ -2993,14 +2992,14 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb
                             existingEnvLen += 1;
                         }
                     }
-                    env = prb_arenaAllocArray(arena, char, envCopy.len + 1 + existingEnvLen + 2);
+                    env = prb_arenaAllocArray(arena, uint16_t, envCopy.len + 1 + existingEnvLen + 2);
                     prb_memcpy(env, envCopy.ptr, envCopy.len * sizeof(*envCopy.ptr));
                     prb_memcpy(env + envCopy.len + 1, existingEnv, existingEnvLen * sizeof(*existingEnv));
-                    FreeEnvironmentStrings(existingEnv);
+                    FreeEnvironmentStringsW(existingEnv);
                 }
 
                 prb_windows_WideStr wcmd = prb_windows_getWideStr(arena, proc->cmd);
-                if (CreateProcessW(0, wcmd.ptr, 0, 0, inheritHandles, 0, env, 0, &startupInfo, &proc->processInfo)) {
+                if (CreateProcessW(0, wcmd.ptr, 0, 0, inheritHandles, CREATE_UNICODE_ENVIRONMENT, env, 0, &startupInfo, &proc->processInfo)) {
                     proc->status = prb_ProcessStatus_Launched;
                     if (mode == prb_Background_No) {
                         prb_windows_waitForProcess(proc);
