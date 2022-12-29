@@ -419,13 +419,7 @@ function void
 compileAndRunBidiGenTab(prb_Arena* arena, ProjectInfo* project, prb_Str src, prb_Str flags, prb_Str runArgs, prb_Str outpath) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
     if (!prb_isFile(arena, outpath)) {
-#if prb_PLATFORM_WINDOWS
-        prb_Str exeFilename = prb_replaceExt(arena, stc, prb_STR("exe"));
-#elif prb_PLATFORM_LINUX
-        prb_Str exeFilename = prb_replaceExt(arena, src, prb_STR("bin"));
-#else
-#error unimplemented
-#endif
+        prb_Str exeFilename = prb_replaceExt(arena, src, prb_STR("exe"));
         prb_Str packtabPath = prb_pathJoin(arena, prb_getParentDir(arena, src), prb_STR("packtab.c"));
         prb_Str cmd = constructCompileCmd(arena, project, flags, prb_fmt(arena, "%.*s %.*s", prb_LIT(packtabPath), prb_LIT(src)), exeFilename, prb_STR(""));
         prb_assert(execCmd(arena, cmd));
@@ -1136,11 +1130,11 @@ main() {
     prb_Str mainObjs[] = {mainObjPath, freetype.libFile, sdl.libFile, harfbuzz.libFile, icu.libFile, fribidi.libFile};
     prb_Str mainObjsStr = prb_stringsJoin(arena, mainObjs, prb_arrayCount(mainObjs), prb_STR(" "));
 
+    prb_Str mainOutPath = prb_replaceExt(arena, mainPreprocessedPath, prb_STR("exe"));
+
 #if prb_PLATFORM_WINDOWS
-    prb_Str mainOutPath = prb_replaceExt(mainPreprocessedPath, prb_STR("exe"));
     prb_Str mainLinkFlags = prb_STR("-subsystem:windows User32.lib");
 #elif prb_PLATFORM_LINUX
-    prb_Str mainOutPath = prb_replaceExt(arena, mainPreprocessedPath, prb_STR("bin"));
     prb_Str mainLinkFlags = prb_STR("-lX11 -lm -lstdc++ -ldl -lfontconfig");
 #endif
 
