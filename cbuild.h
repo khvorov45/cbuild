@@ -3386,7 +3386,8 @@ prb_getMsFrom(prb_TimeStart timeStart) {
         LARGE_INTEGER ticksPerSecond = {};
         if (QueryPerformanceFrequency(&ticksPerSecond)) {
             LONGLONG ticksDiff = now.ticks - timeStart.ticks;
-            result = (float)ticksDiff / (float)ticksPerSecond.QuadPart;
+            float secs = (float)ticksDiff / (float)ticksPerSecond.QuadPart;
+            result = secs * 1000.0f;
         }
 #elif prb_PLATFORM_LINUX
         uint64_t nsec = now.nsec - timeStart.nsec;
