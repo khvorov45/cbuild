@@ -758,8 +758,8 @@ test_getParentDir(prb_Arena* arena) {
     prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("test")), cwd));
 
 #if prb_PLATFORM_WINDOWS
-    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("C:\\\\test")), prb_STR("C:\\\\")));
-    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("C:\\\\test/")), prb_STR("C:\\\\")));
+    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("C:\\\\test")), prb_STR("C:")));
+    prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("C:\\\\test/")), prb_STR("C:")));
 #elif prb_PLATFORM_LINUX
     prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("/test")), prb_STR("/")));
     prb_assert(prb_streq(prb_getParentDir(arena, prb_STR("/test/")), prb_STR("/")));
@@ -783,8 +783,8 @@ test_getLastEntryInPath(prb_Arena* arena) {
     prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test")), prb_STR("test")));
 
 #if prb_PLATFORM_WINDOWS
-    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("C:\\\\test")), prb_STR("C:\\\\")));
-    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("C:\\\\test/")), prb_STR("C:\\\\")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("test")), prb_STR("test")));
+    prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("C:\\\\test/")), prb_STR("test")));
 #elif prb_PLATFORM_LINUX
     prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/test")), prb_STR("test")));
     prb_assert(prb_streq(prb_getLastEntryInPath(prb_STR("/test/")), prb_STR("test")));
@@ -2184,7 +2184,11 @@ test_getCmdline(prb_Arena* arena) {
     prb_assert(prb_removePathIfExists(arena, tempDir));
 
     prb_Str ownCmd = prb_getCmdline(arena);
-    prb_assert(prb_strStartsWith(ownCmd, prb_getParentDir(arena, tempDir)));
+    {
+        prb_StrFindSpec spec = {};
+        spec.pattern = globalSuffix;
+        prb_assert(prb_strFind(ownCmd, spec).found);
+    }
 
     prb_endTempMemory(temp);
 }
@@ -2227,7 +2231,7 @@ test_getCmdArgs(prb_Arena* arena) {
 
     prb_Str* ownCmd = prb_getCmdArgs(arena);
     prb_assert(arrlen(ownCmd) >= 1);
-    prb_assert(prb_strStartsWith(ownCmd[0], prb_getParentDir(arena, tempDir)));
+    prb_assert(prb_streq(ownCmd[1], globalSuffix));
     arrfree(ownCmd);
 
     prb_endTempMemory(temp);
@@ -2273,7 +2277,11 @@ test_executionOnCores(prb_Arena* arena) {
     prb_assert(prb_allowExecutionOnCores(arena, all.cores));
     prb_CoreCountResult coresAgain = prb_getAllowExecutionCoreCount(arena);
     prb_assert(coresAgain.success);
+#if prb_PLATFORM_WINDOWS
+    prb_assert(coresAgain.cores == allowed.cores);
+#elif prb_PLATFORM_LINUX
     prb_assert(coresAgain.cores == all.cores);
+#endif
     prb_assert(prb_allowExecutionOnCores(arena, all.cores));
 
     if (all.cores > 1) {
@@ -2296,9 +2304,25 @@ test_process(prb_Arena* arena) {
     prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_clearDir(arena, dir));
 
+#if prb_PLATFORM_WINDOWS
+    prb_Str lineBreak = prb_STR("\r\n");
+#elif prb_PLATFORM_LINUX
+    prb_Str lineBreak = prb_STR("\n");
+#else
+#error unimplemented
+#endif
+
     {
         prb_Str helloWorldPath = prb_pathJoin(arena, dir, prb_STR("helloworld.c"));
-        prb_Str helloWorld = prb_STR("#include <stdio.h>\nint main() {printf(\"hello world\\n\"); fflush(stdout); fprintf(stderr, \"stderrout\\n\"); return 0;}");
+        prb_Str helloWorld = prb_STR(
+            "#include <stdio.h>\n"
+            "int main() {\n"
+            "printf(\"hello world\\n\");\n"
+            "fflush(stdout);\n"
+            "fprintf(stderr, \"stderrout\\n\");\n"
+            "return 0;\n"
+            "}"
+        );
         prb_assert(prb_writeEntireFile(arena, helloWorldPath, helloWorld.ptr, helloWorld.len));
 
         prb_Str helloExe = prb_replaceExt(arena, helloWorldPath, prb_STR("exe"));
@@ -2318,7 +2342,7 @@ test_process(prb_Arena* arena) {
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
             prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
             prb_assert(readRes.success);
-            prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\n")));
+            prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_fmt(arena, "hello world%.*s", prb_LIT(lineBreak))));
         }
 
         {
@@ -2330,7 +2354,7 @@ test_process(prb_Arena* arena) {
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
             prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stderrFilepath);
             prb_assert(readRes.success);
-            prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("stderrout\n")));
+            prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_fmt(arena, "stderrout%.*s", prb_LIT(lineBreak))));
         }
 
         {
@@ -2344,12 +2368,12 @@ test_process(prb_Arena* arena) {
             {
                 prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
                 prb_assert(readRes.success);
-                prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\n")));
+                prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_fmt(arena, "hello world%.*s", prb_LIT(lineBreak))));
             }
             {
                 prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stderrFilepath);
                 prb_assert(readRes.success);
-                prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("stderrout\n")));
+                prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_fmt(arena, "stderrout%.*s", prb_LIT(lineBreak))));
             }
         }
 
@@ -2363,7 +2387,7 @@ test_process(prb_Arena* arena) {
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
             prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, spec.stdoutFilepath);
             prb_assert(readRes.success);
-            prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_STR("hello world\nstderrout\n")));
+            prb_assert(prb_streq(prb_strFromBytes(readRes.content), prb_fmt(arena, "hello world%.*sstderrout%.*s", prb_LIT(lineBreak), prb_LIT(lineBreak))));
         }
     }
 

@@ -315,7 +315,7 @@ typedef struct prb_Process {
     prb_ProcessStatus status;
 
 #if prb_PLATFORM_WINDOWS
-    HANDLE handle;
+    PROCESS_INFORMATION processInfo;
 #elif prb_PLATFORM_LINUX
     pid_t     pid;
 #endif
@@ -1169,12 +1169,12 @@ typedef struct prb_windows_OpenResult {
 } prb_windows_OpenResult;
 
 static prb_windows_OpenResult
-prb_windows_open(prb_Arena* arena, prb_Str path, DWORD access, DWORD share, DWORD create) {
+prb_windows_open(prb_Arena* arena, prb_Str path, DWORD access, DWORD share, DWORD create, SECURITY_ATTRIBUTES* securityAttr) {
     prb_windows_OpenResult result = {};
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_windows_WideStr pathWide = prb_windows_getWideStr(arena, path);
 
-    HANDLE handle = CreateFileW(pathWide.ptr, access, share, 0, create, FILE_ATTRIBUTE_NORMAL, 0);
+    HANDLE handle = CreateFileW(pathWide.ptr, access, share, securityAttr, create, FILE_ATTRIBUTE_NORMAL, 0);
     if (handle != INVALID_HANDLE_VALUE) {
         result.success = true;
         result.handle = handle;
@@ -1594,124 +1594,131 @@ prb_pathEntryIterNext(prb_PathEntryIter* iter) {
         result = prb_Success;
         int32_t oldOffset = iter->curOffset;
 
-        for (int32_t pathIndex = iter->curOffset; pathIndex < iter->ogstr.len; pathIndex++) {
-            char curCh = iter->ogstr.ptr[pathIndex];
-            if (prb_charIsSep(curCh)) {
-                iter->curOffset = pathIndex + 1;
-                break;
+        bool sepFound = false;
+        int32_t firstFoundSepIndex = 0;
+        while (iter->curOffset < iter->ogstr.len && !sepFound) {
+            if (prb_charIsSep(iter->ogstr.ptr[iter->curOffset])) {
+                firstFoundSepIndex = iter->curOffset;
+                sepFound = true;
+
+#if prb_PLATFORM_WINDOWS
+                // NOTE(khvorov) Windows's //network type path
+                sepFound = !(iter->curOffset == 0 && iter->ogstr.len >= 2 && prb_charIsSep(iter->ogstr.ptr[1]));
+                if (!sepFound) {
+                    iter->curOffset = 2;
+                }
+#endif
+
+                // NOTE(khvorov) Ignore multiple separators in a row
+                while (iter->curOffset < iter->ogstr.len && prb_charIsSep(iter->ogstr.ptr[iter->curOffset])) {
+                    iter->curOffset += 1;
+                }
+            } else {
+                iter->curOffset += 1;
             }
         }
 
-        int32_t firstFoundSepIndex = iter->curOffset - 1;
-
         // NOTE(khvorov) Did not find a separator
-        if (iter->curOffset == oldOffset) {
+        if (firstFoundSepIndex == 0) {
             firstFoundSepIndex = iter->ogstr.len;
-            iter->curOffset = iter->ogstr.len;
         }
 
-// NOTE(khvorov) Linux's root `/` path
-#if prb_PLATFORM_LINUX
+        // NOTE(khvorov) Linux's root `/` path. Also valid on windows (means relative to the root of the current volume)
         if (oldOffset == 0 && firstFoundSepIndex == 0) {
             firstFoundSepIndex = 1;
         }
-#endif
-
-        // TODO(khvorov) Handle windows's \path and \\network type paths
 
         prb_assert(firstFoundSepIndex > oldOffset);
         iter->curEntryName = prb_strSlice(iter->ogstr, oldOffset, firstFoundSepIndex);
-        iter->curEntryPath = prb_strSlice(iter->ogstr, 0, firstFoundSepIndex);
-
-        // NOTE(khvorov) Ignore multiple separators in a row
-        while (iter->curOffset < iter->ogstr.len && prb_charIsSep(iter->ogstr.ptr[iter->curOffset])) {
-            iter->curOffset += 1;
-        }
+        iter->curEntryPath = prb_strSlice(iter->ogstr, 0, firstFoundSepIndex);        
     }
     return result;
 }
 
 prb_PUBLICDEF void
 prb_getAllDirEntriesCustomBuffer(prb_Arena* arena, prb_Str dir, prb_Recursive mode, prb_Str** storage) {
+    if (dir.ptr && dir.len > 0) {
+
 #if prb_PLATFORM_WINDOWS
 
-    prb_Str* dirs = 0;
-    prb_stbds_arrput(dirs, dir);
+        prb_Str* dirs = 0;
+        prb_stbds_arrput(dirs, dir);
 
-    while (prb_stbds_arrlen(dirs) > 0) {
-        prb_Str thisDir = prb_stbds_arrpop(dirs);
-        WIN32_FIND_DATAW findData = {};
-        prb_Str pattern = prb_pathJoin(arena, thisDir, prb_STR("*"));
-        prb_windows_WideStr pathWide = prb_windows_getWideStr(arena, pattern);
-        HANDLE handle = FindFirstFileExW(pathWide.ptr, FindExInfoStandard, &findData, FindExSearchNameMatch, 0, 0);
-        if (handle != INVALID_HANDLE_VALUE) {
-            for (;;) {
-                prb_windows_WideStr fileNameWide = {findData.cFileName, prb_arrayCount(findData.cFileName)};
-                bool isDot = fileNameWide.ptr[0] == '.' && fileNameWide.ptr[1] == '\0';
-                bool isDoubleDot = fileNameWide.ptr[0] == '.' && fileNameWide.ptr[1] == '.' && fileNameWide.ptr[2] == '\0';
-                if (!isDot && !isDoubleDot) {
-                    prb_Str filename = prb_windows_strFromWideStr(arena, fileNameWide);
-                    prb_Str filepath = prb_pathJoin(arena, thisDir, filename);
-                    prb_stbds_arrput(*storage, filepath);
-                    if (mode == prb_Recursive_Yes) {
-                        bool isDir = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY;
-                        if (isDir) {
-                            prb_stbds_arrput(dirs, filepath);
+        while (prb_stbds_arrlen(dirs) > 0) {
+            prb_Str thisDir = prb_stbds_arrpop(dirs);
+            WIN32_FIND_DATAW findData = {};
+            prb_Str pattern = prb_pathJoin(arena, thisDir, prb_STR("*"));
+            prb_windows_WideStr pathWide = prb_windows_getWideStr(arena, pattern);
+            HANDLE handle = FindFirstFileExW(pathWide.ptr, FindExInfoStandard, &findData, FindExSearchNameMatch, 0, 0);
+            if (handle != INVALID_HANDLE_VALUE) {
+                for (;;) {
+                    prb_windows_WideStr fileNameWide = {findData.cFileName, prb_arrayCount(findData.cFileName)};
+                    bool isDot = fileNameWide.ptr[0] == '.' && fileNameWide.ptr[1] == '\0';
+                    bool isDoubleDot = fileNameWide.ptr[0] == '.' && fileNameWide.ptr[1] == '.' && fileNameWide.ptr[2] == '\0';
+                    if (!isDot && !isDoubleDot) {
+                        prb_Str filename = prb_windows_strFromWideStr(arena, fileNameWide);
+                        prb_Str filepath = prb_pathJoin(arena, thisDir, filename);
+                        prb_stbds_arrput(*storage, filepath);
+                        if (mode == prb_Recursive_Yes) {
+                            bool isDir = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY;
+                            if (isDir) {
+                                prb_stbds_arrput(dirs, filepath);
+                            }
                         }
                     }
-                }
-                if (FindNextFileW(handle, &findData) == 0) {
-                    FindClose(handle);
-                    break;
+                    if (FindNextFileW(handle, &findData) == 0) {
+                        FindClose(handle);
+                        break;
+                    }
                 }
             }
         }
-    }
 
-    prb_stbds_arrfree(dirs);
+        prb_stbds_arrfree(dirs);
 
 #elif prb_PLATFORM_LINUX
 
-    prb_Str* dirs = 0;
-    prb_stbds_arrput(dirs, dir);
+        prb_Str* dirs = 0;
+        prb_stbds_arrput(dirs, dir);
 
-    while (prb_stbds_arrlen(dirs) > 0) {
-        prb_Str              thisDir = prb_stbds_arrpop(dirs);
-        prb_linux_OpenResult openRes = prb_linux_open(arena, thisDir, O_RDONLY | O_DIRECTORY, 0);
-        if (openRes.success) {
-            prb_arenaAlignFreePtr(arena, alignof(prb_linux_Dirent64));
-            prb_linux_Dirent64* buf = (prb_linux_Dirent64*)(prb_arenaFreePtr(arena));
-            long                syscallReturn = syscall(SYS_getdents64, openRes.handle, buf, prb_arenaFreeSize(arena));
-            if (syscallReturn > 0) {
-                prb_arenaChangeUsed(arena, syscallReturn);
-                for (long offset = 0; offset < syscallReturn;) {
-                    prb_linux_Dirent64* ent = (prb_linux_Dirent64*)((uint8_t*)buf + offset);
-                    bool                isDot = ent->d_name[0] == '.' && ent->d_name[1] == '\0';
-                    bool                isDoubleDot = ent->d_name[0] == '.' && ent->d_name[1] == '.' && ent->d_name[2] == '\0';
-                    if (!isDot && !isDoubleDot) {
-                        prb_Str fullpath = prb_pathJoin(arena, thisDir, prb_STR(ent->d_name));
-                        if (mode == prb_Recursive_Yes) {
-                            bool isDir = ent->d_type == DT_DIR;
-                            if (!isDir && ent->d_type == DT_UNKNOWN) {
-                                isDir = prb_isDir(arena, fullpath);
+        while (prb_stbds_arrlen(dirs) > 0) {
+            prb_Str              thisDir = prb_stbds_arrpop(dirs);
+            prb_linux_OpenResult openRes = prb_linux_open(arena, thisDir, O_RDONLY | O_DIRECTORY, 0);
+            if (openRes.success) {
+                prb_arenaAlignFreePtr(arena, alignof(prb_linux_Dirent64));
+                prb_linux_Dirent64* buf = (prb_linux_Dirent64*)(prb_arenaFreePtr(arena));
+                long                syscallReturn = syscall(SYS_getdents64, openRes.handle, buf, prb_arenaFreeSize(arena));
+                if (syscallReturn > 0) {
+                    prb_arenaChangeUsed(arena, syscallReturn);
+                    for (long offset = 0; offset < syscallReturn;) {
+                        prb_linux_Dirent64* ent = (prb_linux_Dirent64*)((uint8_t*)buf + offset);
+                        bool                isDot = ent->d_name[0] == '.' && ent->d_name[1] == '\0';
+                        bool                isDoubleDot = ent->d_name[0] == '.' && ent->d_name[1] == '.' && ent->d_name[2] == '\0';
+                        if (!isDot && !isDoubleDot) {
+                            prb_Str fullpath = prb_pathJoin(arena, thisDir, prb_STR(ent->d_name));
+                            if (mode == prb_Recursive_Yes) {
+                                bool isDir = ent->d_type == DT_DIR;
+                                if (!isDir && ent->d_type == DT_UNKNOWN) {
+                                    isDir = prb_isDir(arena, fullpath);
+                                }
+                                if (isDir) {
+                                    prb_stbds_arrput(dirs, fullpath);
+                                }
                             }
-                            if (isDir) {
-                                prb_stbds_arrput(dirs, fullpath);
-                            }
+                            prb_stbds_arrput(*storage, fullpath);
                         }
-                        prb_stbds_arrput(*storage, fullpath);
+                        offset += ent->d_reclen;
                     }
-                    offset += ent->d_reclen;
                 }
             }
         }
-    }
 
-    prb_stbds_arrfree(dirs);
+        prb_stbds_arrfree(dirs);
 
 #else
 #error unimplemented
 #endif
+    }
 }
 
 prb_PUBLICDEF prb_Str*
@@ -1774,7 +1781,7 @@ prb_readEntireFile(prb_Arena* arena, prb_Str path) {
 
 #if prb_PLATFORM_WINDOWS
 
-    prb_windows_OpenResult handle = prb_windows_open(arena, path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
+    prb_windows_OpenResult handle = prb_windows_open(arena, path, GENERIC_READ, 0, OPEN_EXISTING, 0);
     if (handle.success) {
         LARGE_INTEGER size = {};
         if (GetFileSizeEx(handle.handle, &size)) {
@@ -1824,7 +1831,7 @@ prb_writeEntireFile(prb_Arena* arena, prb_Str path, const void* content, int32_t
     prb_Str        parent = prb_getParentDir(arena, path);
     if (prb_createDirIfNotExists(arena, parent)) {
 #if prb_PLATFORM_WINDOWS
-        prb_windows_OpenResult handle = prb_windows_open(arena, path, GENERIC_WRITE, FILE_SHARE_WRITE, CREATE_ALWAYS);
+        prb_windows_OpenResult handle = prb_windows_open(arena, path, GENERIC_WRITE, 0, CREATE_ALWAYS, 0);
         if (handle.success) {
             DWORD bytesWritten = 0;
             if (WriteFile(handle.handle, content, contentLen, &bytesWritten, 0)) {
@@ -2546,14 +2553,16 @@ prb_binaryToCArray(prb_Arena* arena, prb_Str arrayName, void* data, int32_t data
 
 static void
 prb_windows_waitForProcess(prb_Process* handle) {
-    WaitForSingleObject(handle->handle, INFINITE);
+    WaitForSingleObject(handle->processInfo.hProcess, INFINITE);
     handle->status = prb_ProcessStatus_CompletedFailed;
     DWORD exitCode = 0;
-    if (GetExitCodeProcess(handle->handle, &exitCode)) {
+    if (GetExitCodeProcess(handle->processInfo.hProcess, &exitCode)) {
         if (exitCode == 0) {
             handle->status = prb_ProcessStatus_CompletedSuccess;
         }
     }
+    CloseHandle(handle->processInfo.hProcess);
+    CloseHandle(handle->processInfo.hThread);
 }
 
 typedef struct prb_windows_GetAffinityResult {
@@ -2782,16 +2791,17 @@ prb_getAllowExecutionCoreCount(prb_Arena* arena) {
     prb_TempMemory      temp = prb_beginTempMemory(arena);
 
 #if prb_PLATFORM_WINDOWS
-    // TODO(khvorov) Implement
-    prb_assert(!"unimplemented");
+    prb_windows_GetAffinityResult affinityRes = prb_windows_getAffinity();
+    if (affinityRes.success) {
+        result.success = true;
+        result.cores = affinityRes.setBits;
+    }
 #elif prb_PLATFORM_LINUX
-
     prb_linux_GetAffinityResult affinityRes = prb_linux_getAffinity(arena);
     if (affinityRes.success) {
         result.success = true;
         result.cores = affinityRes.setBits;
     }
-
 #else
 #error unimplemented
 #endif
@@ -2904,26 +2914,82 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb
 
 #if prb_PLATFORM_WINDOWS
 
-            if (spec.redirectStdout || spec.redirectStderr) {
-                // TODO(khvorov) Implement
-                prb_assert(!"unimplemented");
-            }
-
-            if (spec.addEnv.len > 0) {
-                // TODO(khvorov) Implement
-                prb_assert(!"unimplemented");
-            }
-
             STARTUPINFOW startupInfo = {};
             startupInfo.cb = sizeof(STARTUPINFOW);
-            PROCESS_INFORMATION processInfo = {};
-            prb_windows_WideStr wcmd = prb_windows_getWideStr(arena, proc->cmd);
-            if (CreateProcessW(0, wcmd.ptr, 0, 0, 0, 0, 0, 0, &startupInfo, &processInfo)) {
-                proc->handle = processInfo.hProcess;
-                proc->status = prb_ProcessStatus_Launched;
-                if (mode == prb_Background_No) {
-                    prb_windows_waitForProcess(proc);
+
+            bool redirectSuccessful = true;
+            BOOL inheritHandles = spec.redirectStdout || spec.redirectStderr;
+            HANDLE handlesToClose[2] = {};
+            int32_t handlesToCloseCount = 0;
+
+            if (inheritHandles) {
+                startupInfo.dwFlags = STARTF_USESTDHANDLES;
+
+                SECURITY_ATTRIBUTES securityAttr = {};
+                securityAttr.nLength = sizeof(securityAttr);
+                securityAttr.lpSecurityDescriptor = NULL;
+                securityAttr.bInheritHandle = TRUE;
+
+                prb_Str stdoutPath = spec.stdoutFilepath;
+                if (stdoutPath.ptr == 0 || stdoutPath.len == 0) {
+                    stdoutPath = prb_STR("NUL");
                 }
+
+                prb_Str stderrPath = spec.stderrFilepath;
+                if (stderrPath.ptr == 0 || stderrPath.len == 0) {
+                    stderrPath = prb_STR("NUL");
+                }
+
+                if (spec.redirectStdout && spec.redirectStderr && prb_streq(stdoutPath, stderrPath)) {
+                    prb_windows_OpenResult openRes = prb_windows_open(arena, stdoutPath, GENERIC_WRITE, FILE_SHARE_WRITE, CREATE_ALWAYS, &securityAttr);
+                    if (openRes.success) {
+                        startupInfo.hStdOutput = openRes.handle;
+                        startupInfo.hStdError = openRes.handle;
+                        handlesToClose[handlesToCloseCount++] = openRes.handle;
+                    } else {
+                        redirectSuccessful = false;
+                    }
+                } else {
+                    if (spec.redirectStdout) {
+                        prb_windows_OpenResult openRes = prb_windows_open(arena, stdoutPath, GENERIC_WRITE, 0, CREATE_ALWAYS, &securityAttr);
+                        if (openRes.success) {
+                            startupInfo.hStdOutput = openRes.handle;
+                            handlesToClose[handlesToCloseCount++] = openRes.handle;
+                        } else {
+                            redirectSuccessful = false;
+                        }
+                    }
+
+                    if (spec.redirectStderr) {                    
+                        prb_windows_OpenResult openRes = prb_windows_open(arena, stderrPath, GENERIC_WRITE, 0, CREATE_ALWAYS, &securityAttr);
+                        if (openRes.success) {
+                            startupInfo.hStdError = openRes.handle;
+                            handlesToClose[handlesToCloseCount++] = openRes.handle;
+                        } else {
+                            redirectSuccessful = false;
+                        }
+                    }
+                }
+            }
+
+            if (redirectSuccessful) {
+
+                if (spec.addEnv.len > 0) {
+                    // TODO(khvorov) Implement
+                    prb_assert(!"unimplemented");
+                }
+
+                prb_windows_WideStr wcmd = prb_windows_getWideStr(arena, proc->cmd);
+                if (CreateProcessW(0, wcmd.ptr, 0, 0, inheritHandles, 0, 0, 0, &startupInfo, &proc->processInfo)) {
+                    proc->status = prb_ProcessStatus_Launched;
+                    if (mode == prb_Background_No) {
+                        prb_windows_waitForProcess(proc);
+                    }
+                }
+            }
+
+            for (int32_t handleIndex = 0; handleIndex < handlesToCloseCount; handleIndex++) {
+                CloseHandle(handlesToClose[handleIndex]);
             }
 
 #elif prb_PLATFORM_LINUX
@@ -3116,8 +3182,10 @@ prb_killProcesses(prb_Process* handles, int32_t handleCount) {
         prb_assert(handle->status != prb_ProcessStatus_NotLaunched);
         if (handle->status == prb_ProcessStatus_Launched) {
 #if prb_PLATFORM_WINDOWS
-            if (TerminateProcess(handle->handle, 9)) {
+            if (TerminateProcess(handle->processInfo.hProcess, 9)) {
                 handle->status = prb_ProcessStatus_CompletedFailed;
+                CloseHandle(handle->processInfo.hProcess);
+                CloseHandle(handle->processInfo.hThread);
             }
 #elif prb_PLATFORM_LINUX
             if (kill(handle->pid, SIGKILL) == 0) {
