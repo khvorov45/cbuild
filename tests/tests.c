@@ -368,7 +368,13 @@ test_pathIsAbsolute(prb_Arena* arena) {
 
 #if prb_PLATFORM_WINDOWS
 
-#error unimplemented
+    prb_assert(prb_pathIsAbsolute(prb_STR("//network")));
+    prb_assert(prb_pathIsAbsolute(prb_STR("\\\\network")));
+    prb_assert(prb_pathIsAbsolute(prb_STR("C:\\path")));
+
+    // TODO(khvorov) What do we do about these paths?
+    prb_assert(prb_pathIsAbsolute(prb_STR("\\path")));
+    prb_assert(prb_pathIsAbsolute(prb_STR("/path")));
 
 #elif prb_PLATFORM_LINUX
 
@@ -395,8 +401,15 @@ test_getAbsolutePath(prb_Arena* arena) {
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("home///other/")), prb_pathJoin(arena, cwd, prb_STR("home/other"))));
 
 #if prb_PLATFORM_WINDOWS
-#error unimplemented
+    
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("C:/progs")), prb_STR("C:/progs")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("C:\\progs")), prb_STR("C:/progs")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("C:\\\\progs")), prb_STR("C:/progs")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("//network/./path")), prb_STR("//network/path")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("//network/./path/../file")), prb_STR("//network/file")));
+
 #elif prb_PLATFORM_LINUX
+    
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/home")), prb_STR("/home")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/home/")), prb_STR("/home")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/nonexistant/file.txt")), prb_STR("/nonexistant/file.txt")));
@@ -404,6 +417,7 @@ test_getAbsolutePath(prb_Arena* arena) {
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/path/../file.md")), prb_STR("/file.md")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("////")), prb_STR("/")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("////home///other")), prb_STR("/home/other")));
+
 #else
 #error unimplemented
 #endif
@@ -835,7 +849,20 @@ test_pathEntryIter(prb_Arena* arena) {
 
 #if prb_PLATFORM_WINDOWS
 
-#error unimplemented
+    iter = prb_createPathEntryIter(prb_STR("C:/path/to/file"));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("C:")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("C:")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("path")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("C:/path")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("to")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("C:/path/to")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Success);
+    prb_assert(prb_streq(iter.curEntryName, prb_STR("file")));
+    prb_assert(prb_streq(iter.curEntryPath, prb_STR("C:/path/to/file")));
+    prb_assert(prb_pathEntryIterNext(&iter) == prb_Failure);
 
 #elif prb_PLATFORM_LINUX
 
@@ -2058,12 +2085,12 @@ test_parseNumber(prb_Arena* arena) {
     prb_assert(number.kind == prb_ParsedNumberKind_F64);
     prb_assert(number.parsedF64 == 0.1);
 
-    prb_Str int64min = prb_fmt(arena, "%ld", INT64_MIN + 1);
+    prb_Str int64min = prb_fmt(arena, "%lld", INT64_MIN + 1);
     number = prb_parseNumber(int64min);
     prb_assert(number.kind == prb_ParsedNumberKind_I64);
     prb_assert(number.parsedI64 == INT64_MIN + 1);
 
-    prb_Str uint64maxNegated = prb_fmt(arena, "-%lu", UINT64_MAX);
+    prb_Str uint64maxNegated = prb_fmt(arena, "-%llu", UINT64_MAX);
     prb_assert(uint64maxNegated.len == 21);
     number = prb_parseNumber(uint64maxNegated);
     prb_assert(number.kind == prb_ParsedNumberKind_None);
@@ -2269,20 +2296,12 @@ test_process(prb_Arena* arena) {
     prb_Str dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_clearDir(arena, dir));
 
-#if prb_PLATFORM_WINDOWS
-    prb_Str exeExt = prb_STR("exe");
-#elif prb_PLATFORM_LINUX
-    prb_Str exeExt = prb_STR("bin");
-#else
-#error unimplemented
-#endif
-
     {
         prb_Str helloWorldPath = prb_pathJoin(arena, dir, prb_STR("helloworld.c"));
         prb_Str helloWorld = prb_STR("#include <stdio.h>\nint main() {printf(\"hello world\\n\"); fflush(stdout); fprintf(stderr, \"stderrout\\n\"); return 0;}");
         prb_assert(prb_writeEntireFile(arena, helloWorldPath, helloWorld.ptr, helloWorld.len));
 
-        prb_Str helloExe = prb_replaceExt(arena, helloWorldPath, exeExt);
+        prb_Str helloExe = prb_replaceExt(arena, helloWorldPath, prb_STR("exe"));
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(helloWorldPath), prb_LIT(helloExe));
 
         {
@@ -2369,7 +2388,7 @@ test_process(prb_Arena* arena) {
         prb_Str progStr = prb_STR(prog);
         prb_assert(prb_writeEntireFile(arena, progPath, progStr.ptr, progStr.len));
 
-        prb_Str progExe = prb_replaceExt(arena, progPath, exeExt);
+        prb_Str progExe = prb_replaceExt(arena, progPath, prb_STR("exe"));
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
 
         {
@@ -2409,7 +2428,7 @@ test_process(prb_Arena* arena) {
         prb_Str progStr = prb_STR(prog);
         prb_assert(prb_writeEntireFile(arena, progPath, progStr.ptr, progStr.len));
 
-        prb_Str progExe = prb_replaceExt(arena, progPath, exeExt);
+        prb_Str progExe = prb_replaceExt(arena, progPath, prb_STR("exe"));
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
 
         {
@@ -2436,7 +2455,7 @@ test_process(prb_Arena* arena) {
         prb_Str prog = prb_STR("int main() {for (;;) {}}");
         prb_assert(prb_writeEntireFile(arena, progPath, prog.ptr, prog.len));
 
-        prb_Str progExe = prb_replaceExt(arena, progPath, exeExt);
+        prb_Str progExe = prb_replaceExt(arena, progPath, prb_STR("exe"));
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
 
         {
@@ -2461,7 +2480,7 @@ test_process(prb_Arena* arena) {
             prb_Str prog = progs[progIndex];
             prb_assert(prb_writeEntireFile(arena, progPath, prog.ptr, prog.len));
 
-            prb_Str progExe = prb_replaceExt(arena, progPath, exeExt);
+            prb_Str progExe = prb_replaceExt(arena, progPath, prb_STR("exe"));
             prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
 
             {
@@ -2500,6 +2519,7 @@ test_debuggerPresent(prb_Arena* arena) {
 
 function void
 test_env(prb_Arena* arena) {
+    // TODO(khvorov) Test utf8?
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_Str        name = prb_STR(__FUNCTION__);
     prb_Str        value = prb_STR("test");

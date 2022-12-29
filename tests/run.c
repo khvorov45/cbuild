@@ -105,9 +105,15 @@ constructCompileCmd(prb_Arena* arena, CompileSpec spec) {
 
     if (!outIsObj) {
         switch (spec.compiler) {
+#if prb_PLATFORM_WINDOWS
+            case Compiler_Gcc:
+            case Compiler_Clang: prb_addStrSegment(&cmd, " -Xlinker /incremental:no"); break;
+            case Compiler_Msvc: break;
+#elif prb_PLATFORM_LINUX
             case Compiler_Gcc:
             case Compiler_Clang: prb_addStrSegment(&cmd, " -lpthread"); break;
             case Compiler_Msvc: break;
+#endif
         }
     }
 
@@ -174,20 +180,12 @@ compileAndRunTests(prb_Arena* arena, void* data) {
         outputSuffix = prb_endStr(&gstr);
     }
 
-#if prb_PLATFORM_WINDOWS
-    prb_Str outputExt = prb_STR("exe");
-#elif prb_PLATFORM_LINUX
-    prb_Str outputExt = prb_STR("bin");
-#else
-#error unimplemented
-#endif
-
     CompileSpec compileSpec = {};
     compileSpec.compiler = spec->compiler;
     compileSpec.lang = spec->lang;
     compileSpec.flags = spec->flags;
     compileSpec.input = prb_pathJoin(arena, globalTestsDir, prb_STR("tests.c"));
-    compileSpec.output = prb_fmt(arena, "%.*s-%.*s.%*s", compileSpec.input.len - 2, compileSpec.input.ptr, prb_LIT(outputSuffix), prb_LIT(outputExt));
+    compileSpec.output = prb_fmt(arena, "%.*s-%.*s.exe", compileSpec.input.len - 2, compileSpec.input.ptr, prb_LIT(outputSuffix));
 
     if (spec->twotu) {
         CompileSpec preSpec = compileSpec;
@@ -261,10 +259,11 @@ main() {
         for (i32 entryIndex = 0; entryIndex < arrlen(entries); entryIndex++) {
             prb_Str entry = entries[entryIndex];
             prb_Str entryName = prb_getLastEntryInPath(entry);
-            if (!prb_strEndsWith(entry, prb_STR("run.bin"))) {
+            if (!prb_strEndsWith(entry, prb_STR("run.exe")) && !prb_strEndsWith(entry, prb_STR("run.pdb"))) {
                 bool remove = prb_strEndsWith(entry, prb_STR(".gcda"))
                     || prb_strEndsWith(entry, prb_STR(".gcno"))
-                    || prb_strEndsWith(entry, prb_STR(".bin"))
+                    || prb_strEndsWith(entry, prb_STR(".exe"))
+                    || prb_strEndsWith(entry, prb_STR(".pdb"))
                     || prb_strEndsWith(entry, prb_STR(".obj"))
                     || prb_strEndsWith(entry, prb_STR(".log"))
                     || prb_strEndsWith(entry, prb_STR(".supp"))
@@ -305,7 +304,7 @@ main() {
         if (runningOnCi) {
             prb_assert(execCmd(arena, prb_STR("clang --version")));
 #if prb_PLATFORM_WINDOWS
-#error unimplemented
+            prb_assert(execCmd(arena, prb_STR("cl")));
 #elif prb_PLATFORM_LINUX
             prb_assert(execCmd(arena, prb_STR("gcc --version")));
 #else
@@ -446,7 +445,7 @@ main() {
             CompileSpec spec = {};
             {
                 spec.input = prb_pathJoin(arena, exampleDir, prb_STR("build.c"));
-                spec.output = prb_pathJoin(arena, exampleDir, prb_STR("build.bin"));
+                spec.output = prb_pathJoin(arena, exampleDir, prb_STR("build.exe"));
                 prb_assert(execCmd(arena, constructCompileCmd(arena, spec)));
             }
 
@@ -488,7 +487,7 @@ main() {
                 prb_Str buildScriptPath = prb_pathJoin(arena, exampleDir, buildScriptName);
 
 #if prb_PLATFORM_WINDOWS
-                prb_Str buildScriptName = prb_STR("build.bat");
+                prb_Str buildScriptCmd = buildScriptPath;
 #elif prb_PLATFORM_LINUX
                 prb_Str buildScriptCmd = prb_fmt(arena, "sh %.*s", prb_LIT(buildScriptPath));
 #else
@@ -538,7 +537,7 @@ main() {
             for (i32 exampleEntryIndex = 0; exampleEntryIndex < arrlen(allInExample); exampleEntryIndex++) {
                 prb_Str exampleEntry = allInExample[exampleEntryIndex];
                 if (prb_strStartsWith(prb_getLastEntryInPath(exampleEntry), prb_STR("build-"))) {
-                    prb_Str     buildExe = prb_pathJoin(arena, exampleEntry, prb_STR("example.bin"));
+                    prb_Str     buildExe = prb_pathJoin(arena, exampleEntry, prb_STR("example.exe"));
                     prb_Process proc = prb_createProcess(buildExe, (prb_ProcessSpec) {});
                     prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_Yes));
                     prb_sleep(3000);
