@@ -401,7 +401,7 @@ test_getAbsolutePath(prb_Arena* arena) {
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("home///other/")), prb_pathJoin(arena, cwd, prb_STR("home/other"))));
 
 #if prb_PLATFORM_WINDOWS
-    
+
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("C:/progs")), prb_STR("C:/progs")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("C:\\progs")), prb_STR("C:/progs")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("C:\\\\progs")), prb_STR("C:/progs")));
@@ -409,7 +409,7 @@ test_getAbsolutePath(prb_Arena* arena) {
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("//network/./path/../file")), prb_STR("//network/file")));
 
 #elif prb_PLATFORM_LINUX
-    
+
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/home")), prb_STR("/home")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/home/")), prb_STR("/home")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("/nonexistant/file.txt")), prb_STR("/nonexistant/file.txt")));
@@ -1095,7 +1095,6 @@ test_writeEntireFile(prb_Arena* arena) {
     prb_assert(readRes.success);
     prb_assert(prb_streq(prb_strFromBytes(readRes.content), filepath));
 
-
     prb_Str nestedDir = prb_pathJoin(arena, dir, prb_STR("nested"));
     prb_assert(prb_writeEntireFile(arena, nestedDir, nestedDir.ptr, nestedDir.len));
     prb_Str fileCantWrite = prb_pathJoin(arena, nestedDir, prb_STR("file"));
@@ -1159,7 +1158,7 @@ test_strGetNullTerminated(prb_Arena* arena) {
 function void
 test_strFromBytes(prb_Arena* arena) {
     prb_unused(arena);
-    u8 data[] = {'1', '2'};
+    u8        data[] = {'1', '2'};
     prb_Bytes bytes = {data, prb_arrayCount(data)};
     prb_assert(prb_streq(prb_strFromBytes(bytes), prb_STR("12")));
 }
@@ -2119,11 +2118,11 @@ test_binaryToCArray(prb_Arena* arena) {
 function void
 test_terminate(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_Str dir = getTempPath(arena, __FUNCTION__);
+    prb_Str        dir = getTempPath(arena, __FUNCTION__);
     prb_assert(prb_clearDir(arena, dir));
 
-    prb_Str progPaths[] = {prb_pathJoin(arena, dir, prb_STR("success.c")), prb_pathJoin(arena, dir, prb_STR("fail.c"))};
-    prb_Str progs[] = {prb_STR("#include \"../../cbuild.h\"\nint main() {prb_terminate(0);}"), prb_STR("#include \"../../cbuild.h\"\nint main() {prb_terminate(1);}")};
+    prb_Str    progPaths[] = {prb_pathJoin(arena, dir, prb_STR("success.c")), prb_pathJoin(arena, dir, prb_STR("fail.c"))};
+    prb_Str    progs[] = {prb_STR("#include \"../../cbuild.h\"\nint main() {prb_terminate(0);}"), prb_STR("#include \"../../cbuild.h\"\nint main() {prb_terminate(1);}")};
     prb_Status statuses[] = {prb_Success, prb_Failure};
     for (i32 progIndex = 0; progIndex < prb_arrayCount(progPaths); progIndex++) {
         prb_Str progPath = progPaths[progIndex];
@@ -2496,8 +2495,8 @@ test_process(prb_Arena* arena) {
 
     // NOTE(khvorov) Fail
     {
-        prb_Str progPaths[] = {prb_pathJoin(arena, dir, prb_STR("success.c")), prb_pathJoin(arena, dir, prb_STR("fail.c"))};
-        prb_Str progs[] = {prb_STR("int main() {return 0;}"), prb_STR("int main() {return 1;}")};
+        prb_Str     progPaths[] = {prb_pathJoin(arena, dir, prb_STR("success.c")), prb_pathJoin(arena, dir, prb_STR("fail.c"))};
+        prb_Str     progs[] = {prb_STR("int main() {return 0;}"), prb_STR("int main() {return 1;}")};
         prb_Process procs[2] = {};
         for (i32 progIndex = 0; progIndex < prb_arrayCount(progPaths); progIndex++) {
             prb_Str progPath = progPaths[progIndex];
@@ -2529,7 +2528,7 @@ function void
 test_sleep(prb_Arena* arena) {
     prb_unused(arena);
     prb_TimeStart timeStart = prb_timeStart();
-    float sleepMs = 10.0f;
+    float         sleepMs = 10.0f;
     prb_sleep(sleepMs);
     float ms = prb_getMsFrom(timeStart);
     prb_assert(ms >= sleepMs);
@@ -2574,7 +2573,7 @@ function void
 test_timer(prb_Arena* arena) {
     prb_unused(arena);
     prb_TimeStart timeStart = prb_timeStart();
-    float sleepMs = 10.0f;
+    float         sleepMs = 10.0f;
     prb_sleep(sleepMs);
     float ms = prb_getMsFrom(timeStart);
     prb_assert(ms >= sleepMs);
@@ -2612,7 +2611,6 @@ test_jobs(prb_Arena* arena) {
         prb_assert(prb_waitForJobs(jobs, jobCount));
         arrfree(jobs);
     }
-
 
     {
         prb_Job* jobs = 0;
