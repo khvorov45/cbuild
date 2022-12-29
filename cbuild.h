@@ -1618,8 +1618,7 @@ prb_pathEntryIterNext(prb_PathEntryIter* iter) {
             }
         }
 
-        // NOTE(khvorov) Did not find a separator
-        if (firstFoundSepIndex == 0) {
+        if (!sepFound) {
             firstFoundSepIndex = iter->ogstr.len;
         }
 
