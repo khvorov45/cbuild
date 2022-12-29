@@ -2085,12 +2085,12 @@ test_parseNumber(prb_Arena* arena) {
     prb_assert(number.kind == prb_ParsedNumberKind_F64);
     prb_assert(number.parsedF64 == 0.1);
 
-    prb_Str int64min = prb_fmt(arena, "%lld", INT64_MIN + 1);
+    prb_Str int64min = prb_fmt(arena, "%lld", (long long)(INT64_MIN + 1));
     number = prb_parseNumber(int64min);
     prb_assert(number.kind == prb_ParsedNumberKind_I64);
     prb_assert(number.parsedI64 == INT64_MIN + 1);
 
-    prb_Str uint64maxNegated = prb_fmt(arena, "-%llu", UINT64_MAX);
+    prb_Str uint64maxNegated = prb_fmt(arena, "-%llu", (unsigned long long)UINT64_MAX);
     prb_assert(uint64maxNegated.len == 21);
     number = prb_parseNumber(uint64maxNegated);
     prb_assert(number.kind == prb_ParsedNumberKind_None);
