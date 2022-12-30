@@ -109,6 +109,22 @@ strIn(prb_Str str, prb_Str* arr, i32 arrc) {
     return result;
 }
 
+function prb_Str
+escapeBackslashes(prb_Arena* arena, prb_Str str) {
+    prb_GrowingStr gstr = prb_beginStr(arena);
+
+    prb_StrScanner scanner = prb_createStrScanner(str);
+    prb_StrFindSpec backslash = {};
+    backslash.pattern = prb_STR("\\");
+    while (prb_strScannerMove(&scanner, backslash, prb_StrScannerSide_AfterMatch)) {
+        prb_addStrSegment(&gstr, "%.*s\\\\", prb_LIT(scanner.betweenLastMatches));
+    }
+    prb_addStrSegment(&gstr, "%.*s", prb_LIT(scanner.afterMatch));
+
+    prb_Str result = prb_endStr(&gstr);
+    return result;
+}
+
 function void
 testMacros(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
@@ -2478,6 +2494,7 @@ test_process(prb_Arena* arena) {
         prb_Str progPath = prb_pathJoin(arena, dir, prb_STR("envinherit.c"));
         prb_GetenvResult parentPath = prb_getenv(arena, prb_STR("PATH"));
         prb_assert(parentPath.found);
+        prb_Str parentPathEscapedBackslashes = escapeBackslashes(arena, parentPath.str);
 
         prb_Str prog = prb_fmt(
             arena,
@@ -2488,7 +2505,7 @@ test_process(prb_Arena* arena) {
             "if (strcmp(path, \"%.*s\") != 0) return 1;\n"
             "return 0;\n"
             "}",
-            prb_LIT(parentPath.str)
+            prb_LIT(parentPathEscapedBackslashes)
         );
         prb_assert(prb_writeEntireFile(arena, progPath, prog.ptr, prog.len));
 
@@ -2586,11 +2603,10 @@ test_debuggerPresent(prb_Arena* arena) {
 
 function void
 test_env(prb_Arena* arena) {
-    // TODO(khvorov) Test utf8?
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_Str        name = prb_STR(__FUNCTION__);
     prb_Str        value = prb_STR("test");
-    prb_Str        value2 = prb_STR("test2");
+    prb_Str        value2 = prb_STR("test太阳😐2");
     prb_unsetenv(arena, name);
     prb_assert(!prb_getenv(arena, name).found);
 

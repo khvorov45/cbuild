@@ -3281,10 +3281,13 @@ prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value) {
     prb_Status     result = prb_Failure;
 
 #if prb_PLATFORM_WINDOWS
-    // TODO(khvorov) Implement
-    prb_unused(name);
-    prb_unused(value);
-    prb_assert(!"unimplemented");
+    
+    prb_windows_WideStr wname = prb_windows_getWideStr(arena, name);
+    prb_windows_WideStr wvalue = prb_windows_getWideStr(arena, value);
+    if (SetEnvironmentVariableW(wname.ptr, wvalue.ptr)) {
+        result = prb_Success;
+    }
+
 #elif prb_PLATFORM_LINUX
     const char* nameNull = prb_strGetNullTerminated(arena, name);
     const char* valueNull = prb_strGetNullTerminated(arena, value);
@@ -3299,28 +3302,36 @@ prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value) {
 
 prb_PUBLICDEF prb_GetenvResult
 prb_getenv(prb_Arena* arena, prb_Str name) {
-    prb_TempMemory   temp = prb_beginTempMemory(arena);
+    
     prb_GetenvResult result = {};
 
 #if prb_PLATFORM_WINDOWS
 
-    // TODO(khvorov) Implement
-    prb_unused(name);
-    prb_assert(!"unimplemented");
+    prb_arenaAlignFreePtr(arena, alignof(uint16_t));
+    prb_windows_WideStr wname = prb_windows_getWideStr(arena, name);
+    LPWSTR wptr = (LPWSTR)prb_arenaFreePtr(arena);
+    DWORD getEnvResult = GetEnvironmentVariableW(wname.ptr, wptr, prb_arenaFreeSize(arena));
+    if (getEnvResult > 0) {
+        prb_arenaChangeUsed(arena, getEnvResult * sizeof(*wptr));
+        prb_arenaAllocAndZero(arena, 2, 1); // NOTE(khvorov) Null terminator
+        result.str = prb_windows_strFromWideStr(arena, (prb_windows_WideStr) {wptr, getEnvResult});
+        result.found = true;
+    }
 
 #elif prb_PLATFORM_LINUX
+    prb_TempMemory   temp = prb_beginTempMemory(arena);
     const char* nameNull = prb_strGetNullTerminated(arena, name);
     char* str = getenv(nameNull);
     if (str) {
         result.found = true;
         result.str = prb_STR(str);
     }
+    prb_endTempMemory(temp);
 
 #else
 #error unimplemented
 #endif
 
-    prb_endTempMemory(temp);
     return result;
 }
 
@@ -3331,9 +3342,10 @@ prb_unsetenv(prb_Arena* arena, prb_Str name) {
 
 #if prb_PLATFORM_WINDOWS
 
-    // TODO(khvorov) Implement
-    prb_unused(name);
-    prb_assert(!"unimplemented");
+    prb_windows_WideStr wname = prb_windows_getWideStr(arena, name);
+    if (SetEnvironmentVariableW(wname.ptr, NULL)) {
+        result = prb_Success;
+    }
 
 #elif prb_PLATFORM_LINUX
 
