@@ -420,7 +420,7 @@ typedef struct prb_Job {
 
 #if prb_PLATFORM_WINDOWS
     HANDLE threadhandle;
-    DWORD threadid;
+    DWORD  threadid;
 #elif prb_PLATFORM_LINUX
     pthread_t threadid;
 #else
@@ -1189,16 +1189,16 @@ prb_windows_open(prb_Arena* arena, prb_Str path, DWORD access, DWORD share, DWOR
 #elif prb_PLATFORM_LINUX
 
 typedef struct prb_linux_GetFileStatResult {
-    bool success;
+    bool        success;
     struct stat stat;
 } prb_linux_GetFileStatResult;
 
 static prb_linux_GetFileStatResult
 prb_linux_getFileStat(prb_Arena* arena, prb_Str path) {
-    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_TempMemory              temp = prb_beginTempMemory(arena);
     prb_linux_GetFileStatResult result = {};
-    const char* pathNull = prb_strGetNullTerminated(arena, path);
-    struct stat statBuf = {};
+    const char*                 pathNull = prb_strGetNullTerminated(arena, path);
+    struct stat                 statBuf = {};
     if (stat(pathNull, &statBuf) == 0) {
         result = (prb_linux_GetFileStatResult) {.success = true, .stat = statBuf};
     }
@@ -1208,13 +1208,13 @@ prb_linux_getFileStat(prb_Arena* arena, prb_Str path) {
 
 typedef struct prb_linux_OpenResult {
     bool success;
-    int handle;
+    int  handle;
 } prb_linux_OpenResult;
 
 static prb_linux_OpenResult
 prb_linux_open(prb_Arena* arena, prb_Str path, int oflags, mode_t mode) {
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-    const char* pathNull = prb_strGetNullTerminated(arena, path);
+    prb_TempMemory       temp = prb_beginTempMemory(arena);
+    const char*          pathNull = prb_strGetNullTerminated(arena, path);
     prb_linux_OpenResult result = {};
     result.handle = open(pathNull, oflags, mode);
     result.success = result.handle != -1;
@@ -1223,11 +1223,11 @@ prb_linux_open(prb_Arena* arena, prb_Str path, int oflags, mode_t mode) {
 }
 
 typedef struct prb_linux_Dirent64 {
-    uint64_t d_ino;
-    int64_t d_off;
+    uint64_t       d_ino;
+    int64_t        d_off;
     unsigned short d_reclen;
-    unsigned char d_type;
-    char d_name[];
+    unsigned char  d_type;
+    char           d_name[];
 } prb_linux_Dirent64;
 
 #endif
@@ -1682,18 +1682,18 @@ prb_getAllDirEntriesCustomBuffer(prb_Arena* arena, prb_Str dir, prb_Recursive mo
         prb_stbds_arrput(dirs, dir);
 
         while (prb_stbds_arrlen(dirs) > 0) {
-            prb_Str thisDir = prb_stbds_arrpop(dirs);
+            prb_Str              thisDir = prb_stbds_arrpop(dirs);
             prb_linux_OpenResult openRes = prb_linux_open(arena, thisDir, O_RDONLY | O_DIRECTORY, 0);
             if (openRes.success) {
                 prb_arenaAlignFreePtr(arena, alignof(prb_linux_Dirent64));
                 prb_linux_Dirent64* buf = (prb_linux_Dirent64*)(prb_arenaFreePtr(arena));
-                long syscallReturn = syscall(SYS_getdents64, openRes.handle, buf, prb_arenaFreeSize(arena));
+                long                syscallReturn = syscall(SYS_getdents64, openRes.handle, buf, prb_arenaFreeSize(arena));
                 if (syscallReturn > 0) {
                     prb_arenaChangeUsed(arena, syscallReturn);
                     for (long offset = 0; offset < syscallReturn;) {
                         prb_linux_Dirent64* ent = (prb_linux_Dirent64*)((uint8_t*)buf + offset);
-                        bool isDot = ent->d_name[0] == '.' && ent->d_name[1] == '\0';
-                        bool isDoubleDot = ent->d_name[0] == '.' && ent->d_name[1] == '.' && ent->d_name[2] == '\0';
+                        bool                isDot = ent->d_name[0] == '.' && ent->d_name[1] == '\0';
+                        bool                isDoubleDot = ent->d_name[0] == '.' && ent->d_name[1] == '.' && ent->d_name[2] == '\0';
                         if (!isDot && !isDoubleDot) {
                             prb_Str fullpath = prb_pathJoin(arena, thisDir, prb_STR(ent->d_name));
                             if (mode == prb_Recursive_Yes) {
@@ -1808,7 +1808,7 @@ prb_readEntireFile(prb_Arena* arena, prb_Str path) {
         struct stat statBuf = {};
         if (fstat(handle.handle, &statBuf) == 0) {
             uint8_t* buf = (uint8_t*)prb_arenaAllocAndZero(arena, statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
-            int32_t readResult = read(handle.handle, buf, statBuf.st_size);
+            int32_t  readResult = read(handle.handle, buf, statBuf.st_size);
             if (readResult == statBuf.st_size) {
                 result.success = true;
                 result.content = (prb_Bytes) {buf, readResult};
@@ -2598,7 +2598,7 @@ prb_linux_readFromProc(prb_Arena* arena, prb_Str filename) {
     gstr.str.len = read(handle.handle, (void*)gstr.str.ptr, prb_arenaFreeSize(arena));
     prb_assert(gstr.str.len > 0);
     prb_arenaChangeUsed(arena, gstr.str.len);
-    prb_Str str = prb_endStr(&gstr);
+    prb_Str   str = prb_endStr(&gstr);
     prb_Bytes result = {(uint8_t*)str.ptr, str.len};
     return result;
 }
@@ -2606,7 +2606,7 @@ prb_linux_readFromProc(prb_Arena* arena, prb_Str filename) {
 static void
 prb_linux_waitForProcess(prb_Process* handle) {
     int32_t status = 0;
-    pid_t waitResult = waitpid(handle->pid, &status, 0);
+    pid_t   waitResult = waitpid(handle->pid, &status, 0);
     handle->status = prb_ProcessStatus_CompletedFailed;
     if (waitResult == handle->pid && status == 0) {
         handle->status = prb_ProcessStatus_CompletedSuccess;
@@ -2614,10 +2614,10 @@ prb_linux_waitForProcess(prb_Process* handle) {
 }
 
 typedef struct prb_linux_GetAffinityResult {
-    bool success;
+    bool     success;
     uint8_t* affinity;
-    int32_t size;
-    int32_t setBits;
+    int32_t  size;
+    int32_t  setBits;
 } prb_linux_GetAffinityResult;
 
 static prb_linux_GetAffinityResult
@@ -2625,7 +2625,7 @@ prb_linux_getAffinity(prb_Arena* arena) {
     // NOTE(khvorov) The syscall is picky about alignment and can't handle buffers that are too big.
     // I don't know how big is too big but a megabyte is apparently not too big.
     prb_linux_GetAffinityResult result = {};
-    int32_t reqAlign = alignof(unsigned long);
+    int32_t                     reqAlign = alignof(unsigned long);
     prb_arenaAlignFreePtr(arena, reqAlign);
     result.affinity = (uint8_t*)prb_arenaFreePtr(arena);
     int32_t arenaSize = prb_arenaFreeSize(arena);
@@ -2709,7 +2709,7 @@ prb_getCmdArgs(prb_Arena* arena) {
 #elif prb_PLATFORM_LINUX
 
     prb_Bytes procSelfContent = prb_linux_readFromProc(arena, prb_STR("self/cmdline"));
-    prb_Str procSelfContentLeft = {(const char*)procSelfContent.data, procSelfContent.len};
+    prb_Str   procSelfContentLeft = {(const char*)procSelfContent.data, procSelfContent.len};
     for (int32_t byteIndex = 0; byteIndex < procSelfContent.len; byteIndex++) {
         if (procSelfContent.data[byteIndex] == '\0') {
             int32_t processed = procSelfContent.len - procSelfContentLeft.len;
@@ -2760,8 +2760,8 @@ prb_getCoreCount(prb_Arena* arena) {
     result.success = true;
     result.cores = (int32_t)sysinfo.dwNumberOfProcessors;
 #elif prb_PLATFORM_LINUX
-    prb_Str cpuinfo = prb_strFromBytes(prb_linux_readFromProc(arena, prb_STR("cpuinfo")));
-    prb_StrScanner scanner = prb_createStrScanner(cpuinfo);
+    prb_Str         cpuinfo = prb_strFromBytes(prb_linux_readFromProc(arena, prb_STR("cpuinfo")));
+    prb_StrScanner  scanner = prb_createStrScanner(cpuinfo);
     prb_StrFindSpec spec = {};
     spec.pattern = prb_STR("siblings");
     if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
@@ -2769,7 +2769,7 @@ prb_getCoreCount(prb_Arena* arena) {
         if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
             spec.mode = prb_StrFindMode_LineBreak;
             if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
-                prb_Str coresStr = prb_strTrim(scanner.betweenLastMatches);
+                prb_Str             coresStr = prb_strTrim(scanner.betweenLastMatches);
                 prb_ParseUintResult parse = prb_parseUint(coresStr, 10);
                 if (parse.success) {
                     result.success = true;
@@ -2853,7 +2853,7 @@ prb_allowExecutionOnCores(prb_Arena* arena, int32_t coreCount) {
                     uint8_t byte = affinityRes.affinity[byteIndex];
                     for (int32_t bitIndex = 0; bitIndex < 8 && coresToSchedule > 0; bitIndex++) {
                         uint8_t mask = 1 << bitIndex;
-                        bool coreIsScheduled = (byte & mask) != 0;
+                        bool    coreIsScheduled = (byte & mask) != 0;
                         if (!coreIsScheduled) {
                             byte = byte | mask;
                             affinityRes.affinity[byteIndex] = byte;
@@ -2867,7 +2867,7 @@ prb_allowExecutionOnCores(prb_Arena* arena, int32_t coreCount) {
                     uint8_t byte = affinityRes.affinity[byteIndex];
                     for (int32_t bitIndex = 0; bitIndex < 8 && coresToUnschedule > 0; bitIndex++) {
                         uint8_t mask = 1 << bitIndex;
-                        bool coreIsScheduled = (byte & mask) != 0;
+                        bool    coreIsScheduled = (byte & mask) != 0;
                         if (coreIsScheduled) {
                             byte = byte & (~mask);
                             affinityRes.affinity[byteIndex] = byte;
@@ -3031,10 +3031,10 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb
                 }
             }
 
-            bool fileActionsSucceeded = true;
-            bool fileActionsInited = false;
+            bool                        fileActionsSucceeded = true;
+            bool                        fileActionsInited = false;
             posix_spawn_file_actions_t* fileActionsPtr = 0;
-            posix_spawn_file_actions_t fileActions = {};
+            posix_spawn_file_actions_t  fileActions = {};
             if (spec.redirectStdout || spec.redirectStderr) {
                 fileActionsPtr = &fileActions;
                 int initResult = posix_spawn_file_actions_init(&fileActions);
@@ -3071,9 +3071,9 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb
             }
 
             if (fileActionsSucceeded) {
-                bool envSucceeded = true;
+                bool   envSucceeded = true;
                 char** env = __environ;
-                bool envAllocated = false;
+                bool   envAllocated = false;
                 if (proc->spec.addEnv.ptr && proc->spec.addEnv.len > 0) {
                     envAllocated = true;
                     env = 0;
@@ -3084,7 +3084,7 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb
                     prb_StrFindSpec equals = {};
                     equals.pattern = prb_STR("=");
                     prb_StrScanner scanner = prb_createStrScanner(proc->spec.addEnv);
-                    prb_Str* newVarNames = 0;
+                    prb_Str*       newVarNames = 0;
                     while (envSucceeded && prb_strScannerMove(&scanner, space, prb_StrScannerSide_AfterMatch)) {
                         if (scanner.betweenLastMatches.len > 0) {
                             envSucceeded = false;
@@ -3108,7 +3108,7 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb
                                 prb_assert(prb_strScannerMove(&nameScanner, equals, prb_StrScannerSide_AfterMatch));
                                 prb_assert(nameScanner.betweenLastMatches.len > 0);
                                 prb_Str existingName = nameScanner.betweenLastMatches;
-                                bool existingInNew = false;
+                                bool    existingInNew = false;
                                 for (int32_t newVarIndex = 0; newVarIndex < prb_stbds_arrlen(newVarNames) && !existingInNew; newVarIndex++) {
                                     prb_Str newVarName = newVarNames[newVarIndex];
                                     existingInNew = prb_streq(newVarName, existingName);
@@ -3130,7 +3130,7 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb
 
                 if (envSucceeded) {
                     const char** args = prb_getArgArrayFromStr(arena, proc->cmd);
-                    int spawnResult = posix_spawnp(&proc->pid, args[0], fileActionsPtr, 0, (char**)args, env);
+                    int          spawnResult = posix_spawnp(&proc->pid, args[0], fileActionsPtr, 0, (char**)args, env);
                     if (spawnResult == 0) {
                         proc->status = prb_ProcessStatus_Launched;
                         if (mode == prb_Background_No) {
@@ -3233,9 +3233,9 @@ prb_sleep(float ms) {
 
 #elif prb_PLATFORM_LINUX
 
-    float secf = ms * 0.001f;
-    long int sec = (long int)(secf);
-    long int nsec = (long int)((secf - (float)sec) * 1000.0f * 1000.0f * 1000.0f);
+    float           secf = ms * 0.001f;
+    long int        sec = (long int)(secf);
+    long int        nsec = (long int)((secf - (float)sec) * 1000.0f * 1000.0f * 1000.0f);
     struct timespec ts = {.tv_sec = sec, .tv_nsec = nsec};
     nanosleep(&ts, 0);
 
@@ -3255,9 +3255,9 @@ prb_debuggerPresent(prb_Arena* arena) {
 
 #elif prb_PLATFORM_LINUX
 
-    prb_Bytes content = prb_linux_readFromProc(arena, prb_STR("self/status"));
-    prb_Str str = {(const char*)content.data, content.len};
-    prb_StrScanner iter = prb_createStrScanner(str);
+    prb_Bytes       content = prb_linux_readFromProc(arena, prb_STR("self/status"));
+    prb_Str         str = {(const char*)content.data, content.len};
+    prb_StrScanner  iter = prb_createStrScanner(str);
     prb_StrFindSpec lineBreakSpec = {};
     lineBreakSpec.mode = prb_StrFindMode_LineBreak;
     while (prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch)) {
@@ -3283,7 +3283,7 @@ prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value) {
     prb_Status     result = prb_Failure;
 
 #if prb_PLATFORM_WINDOWS
-    
+
     prb_windows_WideStr wname = prb_windows_getWideStr(arena, name);
     prb_windows_WideStr wvalue = prb_windows_getWideStr(arena, value);
     if (SetEnvironmentVariableW(wname.ptr, wvalue.ptr)) {
@@ -3304,26 +3304,25 @@ prb_setenv(prb_Arena* arena, prb_Str name, prb_Str value) {
 
 prb_PUBLICDEF prb_GetenvResult
 prb_getenv(prb_Arena* arena, prb_Str name) {
-    
     prb_GetenvResult result = {};
 
 #if prb_PLATFORM_WINDOWS
 
     prb_arenaAlignFreePtr(arena, alignof(uint16_t));
     prb_windows_WideStr wname = prb_windows_getWideStr(arena, name);
-    LPWSTR wptr = (LPWSTR)prb_arenaFreePtr(arena);
-    DWORD getEnvResult = GetEnvironmentVariableW(wname.ptr, wptr, prb_arenaFreeSize(arena));
+    LPWSTR              wptr = (LPWSTR)prb_arenaFreePtr(arena);
+    DWORD               getEnvResult = GetEnvironmentVariableW(wname.ptr, wptr, prb_arenaFreeSize(arena));
     if (getEnvResult > 0) {
         prb_arenaChangeUsed(arena, getEnvResult * sizeof(*wptr));
-        prb_arenaAllocAndZero(arena, 2, 1); // NOTE(khvorov) Null terminator
+        prb_arenaAllocAndZero(arena, 2, 1);  // NOTE(khvorov) Null terminator
         result.str = prb_windows_strFromWideStr(arena, (prb_windows_WideStr) {wptr, getEnvResult});
         result.found = true;
     }
 
 #elif prb_PLATFORM_LINUX
-    prb_TempMemory   temp = prb_beginTempMemory(arena);
-    const char* nameNull = prb_strGetNullTerminated(arena, name);
-    char* str = getenv(nameNull);
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    const char*    nameNull = prb_strGetNullTerminated(arena, name);
+    char*          str = getenv(nameNull);
     if (str) {
         result.found = true;
         result.str = prb_STR(str);
@@ -3496,7 +3495,7 @@ prb_waitForJobs(prb_Job* jobs, int32_t jobsCount) {
             if (WaitForSingleObject(jobs->threadhandle, INFINITE) == WAIT_OBJECT_0) {
                 job->status = prb_JobStatus_Completed;
             } else {
-                result = prb_Failure;                
+                result = prb_Failure;
             }
 
 #elif prb_PLATFORM_LINUX
