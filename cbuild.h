@@ -92,7 +92,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #endif
 
 #if prb_PLATFORM_WINDOWS
-// TODO(khvorov) Look into preferring nt apis
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -109,6 +108,8 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #include <glob.h>
 #include <time.h>
 #include <fcntl.h>
+
+// TODO(khvorov) Drop pthread?
 #include <pthread.h>
 
 #endif
@@ -418,7 +419,8 @@ typedef struct prb_Job {
     prb_JobStatus status;
 
 #if prb_PLATFORM_WINDOWS
-
+    HANDLE threadhandle;
+    DWORD threadid;
 #elif prb_PLATFORM_LINUX
     pthread_t threadid;
 #else
@@ -3412,10 +3414,19 @@ prb_getMsFrom(prb_TimeStart timeStart) {
 // SECTION Multithreading (implementation)
 //
 
-#if prb_PLATFORM_LINUX
+#if prb_PLATFORM_WINDOWS
+
+static DWORD WINAPI
+prb_windows_threadProc(void* data) {
+    prb_Job* job = (prb_Job*)data;
+    job->proc(&job->arena, job->data);
+    return 0;
+}
+
+#elif prb_PLATFORM_LINUX
 
 static void*
-prb_linux_pthreadProc(void* data) {
+prb_linux_threadProc(void* data) {
     prb_Job* job = (prb_Job*)data;
     job->proc(&job->arena, job->data);
     return 0;
@@ -3436,23 +3447,13 @@ prb_PUBLICDEF prb_Status
 prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_Background mode) {
     prb_Status result = prb_Success;
 
-#if prb_PLATFORM_WINDOWS
-
-    // TODO(khvorov) Implement
-    prb_unused(jobs);
-    prb_unused(jobsCount);
-    prb_unused(mode);
-    prb_assert(!"unimplemented");
-
-#elif prb_PLATFORM_LINUX
-
     switch (mode) {
         case prb_Background_No: {
             for (int32_t jobIndex = 0; jobIndex < jobsCount && result == prb_Success; jobIndex++) {
                 prb_Job* job = jobs + jobIndex;
                 if (job->status == prb_JobStatus_NotLaunched) {
                     job->status = prb_JobStatus_Launched;
-                    prb_linux_pthreadProc(job);
+                    job->proc(&job->arena, job->data);
                     job->status = prb_JobStatus_Completed;
                 }
             }
@@ -3463,17 +3464,22 @@ prb_launchJobs(prb_Job* jobs, int32_t jobsCount, prb_Background mode) {
                 prb_Job* job = jobs + jobIndex;
                 if (job->status == prb_JobStatus_NotLaunched) {
                     job->status = prb_JobStatus_Launched;
-                    if (pthread_create(&job->threadid, 0, prb_linux_pthreadProc, job) != 0) {
+#if prb_PLATFORM_WINDOWS
+                    job->threadhandle = CreateThread(0, 0, prb_windows_threadProc, job, 0, &job->threadid);
+                    if (job->threadhandle == NULL) {
                         result = prb_Failure;
                     }
+#elif prb_PLATFORM_LINUX
+                    if (pthread_create(&job->threadid, 0, prb_linux_threadProc, job) != 0) {
+                        result = prb_Failure;
+                    }
+#else
+#error unimplemented
+#endif
                 }
             }
         } break;
     }
-
-#else
-#error unimplemented
-#endif
 
     return result;
 }
@@ -3487,10 +3493,11 @@ prb_waitForJobs(prb_Job* jobs, int32_t jobsCount) {
         if (job->status == prb_JobStatus_Launched) {
 #if prb_PLATFORM_WINDOWS
 
-            // TODO(khvorov) Implement
-            prb_unused(jobs);
-            prb_unused(jobsCount);
-            prb_assert(!"unimplemented");
+            if (WaitForSingleObject(jobs->threadhandle, INFINITE) == WAIT_OBJECT_0) {
+                job->status = prb_JobStatus_Completed;
+            } else {
+                result = prb_Failure;                
+            }
 
 #elif prb_PLATFORM_LINUX
 

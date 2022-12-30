@@ -113,7 +113,7 @@ function prb_Str
 escapeBackslashes(prb_Arena* arena, prb_Str str) {
     prb_GrowingStr gstr = prb_beginStr(arena);
 
-    prb_StrScanner scanner = prb_createStrScanner(str);
+    prb_StrScanner  scanner = prb_createStrScanner(str);
     prb_StrFindSpec backslash = {};
     backslash.pattern = prb_STR("\\");
     while (prb_strScannerMove(&scanner, backslash, prb_StrScannerSide_AfterMatch)) {
@@ -2488,10 +2488,9 @@ test_process(prb_Arena* arena) {
         }
     }
 
-
     // NOTE(khvorov) Make sure env vars are inherited
     {
-        prb_Str progPath = prb_pathJoin(arena, dir, prb_STR("envinherit.c"));
+        prb_Str          progPath = prb_pathJoin(arena, dir, prb_STR("envinherit.c"));
         prb_GetenvResult parentPath = prb_getenv(arena, prb_STR("PATH"));
         prb_assert(parentPath.found);
         prb_Str parentPathEscapedBackslashes = escapeBackslashes(arena, parentPath.str);
@@ -2531,7 +2530,6 @@ test_process(prb_Arena* arena) {
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
     }
-
 
     // NOTE(khvorov) Kill
     {
