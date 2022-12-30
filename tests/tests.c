@@ -2472,6 +2472,50 @@ test_process(prb_Arena* arena) {
         }
     }
 
+
+    // NOTE(khvorov) Make sure env vars are inherited
+    {
+        prb_Str progPath = prb_pathJoin(arena, dir, prb_STR("envinherit.c"));
+        prb_GetenvResult parentPath = prb_getenv(arena, prb_STR("PATH"));
+        prb_assert(parentPath.found);
+
+        prb_Str prog = prb_fmt(
+            arena,
+            "char *getenv(const char *name);\n"
+            "int strcmp(const char *s1, const char *s2);\n"
+            "int main() {\n"
+            "char* path = getenv(\"PATH\");\n"
+            "if (strcmp(path, \"%.*s\") != 0) return 1;\n"
+            "return 0;\n"
+            "}",
+            prb_LIT(parentPath.str)
+        );
+        prb_assert(prb_writeEntireFile(arena, progPath, prog.ptr, prog.len));
+
+        prb_Str progExe = prb_replaceExt(arena, progPath, prb_STR("exe"));
+        prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
+
+        {
+            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+        }
+
+        {
+            prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+        }
+
+        prb_Str addEnv = prb_STR("test_env_var=1");
+
+        {
+            prb_ProcessSpec spec = {};
+            spec.addEnv = addEnv;
+            prb_Process proc = prb_createProcess(progExe, spec);
+            prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
+        }
+    }
+
+
     // NOTE(khvorov) Kill
     {
         prb_Str progPath = prb_pathJoin(arena, dir, prb_STR("forever.c"));
