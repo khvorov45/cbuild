@@ -22,13 +22,18 @@ typedef struct CompileLogEntry {
 } CompileLogEntry;
 
 typedef struct ProjectInfo {
-    CompileLogEntry* prevCompileLog;
-    CompileLogEntry* thisCompileLog;
-    prb_Str          rootDir;
-    prb_Str          compileOutDir;
-    Compiler         compiler;
-    bool             release;
+    prb_Str  rootDir;
+    prb_Str  compileOutDir;
+    Compiler compiler;
+    bool     release;
 } ProjectInfo;
+
+typedef enum LogColumn {
+    LogColumn_ObjPath,
+    LogColumn_CompileCmd,
+    LogColumn_PreprocessedHash,
+    LogColumn_Count,
+} LogColumn;
 
 typedef struct StaticLibInfo {
     ProjectInfo*      project;
@@ -44,12 +49,94 @@ typedef struct StaticLibInfo {
     bool              notDownloaded;
     bool              cpp;
     prb_ProcessStatus compileStatus;
+    CompileLogEntry*  prevCompileLog;
+    CompileLogEntry*  thisCompileLog;
+    prb_Str           logPath;
+    prb_Str           logColumnNames[LogColumn_Count];
 } StaticLibInfo;
 
 typedef enum Lang {
     Lang_C,
     Lang_Cpp,
 } Lang;
+
+typedef struct GetStrInQuotesResult {
+    bool    success;
+    prb_Str inquotes;
+    prb_Str past;
+} GetStrInQuotesResult;
+
+function GetStrInQuotesResult
+getStrInQuotes(prb_Str str) {
+    GetStrInQuotesResult result = {};
+    prb_StrFindSpec      quoteFindSpec = {.pattern = prb_STR("\"")};
+    prb_StrScanner       scanner = prb_createStrScanner(str);
+    if (prb_strScannerMove(&scanner, quoteFindSpec, prb_StrScannerSide_AfterMatch)) {
+        if (prb_strScannerMove(&scanner, quoteFindSpec, prb_StrScannerSide_AfterMatch)) {
+            result.success = true;
+            result.inquotes = scanner.betweenLastMatches;
+            result.past = scanner.afterMatch;
+        }
+    }
+    return result;
+}
+
+typedef struct String3 {
+    bool    success;
+    prb_Str strings[3];
+} String3;
+
+function String3
+get3StrInQuotes(prb_Str str) {
+    String3 result = {.success = true};
+    for (i32 index = 0; index < prb_arrayCount(result.strings) && result.success; index++) {
+        GetStrInQuotesResult get1 = getStrInQuotes(str);
+        if (get1.success) {
+            result.strings[index] = get1.inquotes;
+            str = get1.past;
+        } else {
+            result.success = false;
+        }
+    }
+    return result;
+}
+
+typedef struct ParseLogResult {
+    CompileLogEntry* log;
+    bool             success;
+} ParseLogResult;
+
+function ParseLogResult
+parseLog(prb_Arena* arena, prb_Str str, prb_Str* columnNames) {
+    prb_unused(str);
+    ParseLogResult  result = {};
+    prb_StrScanner  lineIter = prb_createStrScanner(str);
+    prb_StrFindSpec lineBreakSpec = {.mode = prb_StrFindMode_LineBreak};
+    if (prb_strScannerMove(&lineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success) {
+        String3 headers = get3StrInQuotes(lineIter.betweenLastMatches);
+        if (headers.success) {
+            bool expectedHeaders = prb_streq(headers.strings[LogColumn_ObjPath], columnNames[LogColumn_ObjPath])
+                && prb_streq(headers.strings[LogColumn_CompileCmd], columnNames[LogColumn_CompileCmd])
+                && prb_streq(headers.strings[LogColumn_PreprocessedHash], columnNames[LogColumn_PreprocessedHash]);
+            if (expectedHeaders) {
+                result.success = true;
+                while (prb_strScannerMove(&lineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch) && result.success) {
+                    String3 row = get3StrInQuotes(lineIter.betweenLastMatches);
+                    if (row.success) {
+                        prb_ParsedNumber hashResult = prb_parseNumber(row.strings[LogColumn_PreprocessedHash]);
+                        if (hashResult.kind == prb_ParsedNumberKind_U64) {
+                            ObjInfo info = {row.strings[LogColumn_CompileCmd], hashResult.parsedU64};
+                            shput(result.log, prb_strGetNullTerminated(arena, row.strings[LogColumn_ObjPath]), info);
+                        }
+                    } else {
+                        result.success = false;
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
 
 function StaticLibInfo
 getStaticLibInfo(
@@ -85,6 +172,23 @@ getStaticLibInfo(
 
     result.libFile = prb_pathJoin(arena, project->compileOutDir, libFilename);
     result.notDownloaded = !prb_isDir(arena, result.downloadDir) || prb_dirIsEmpty(arena, result.downloadDir);
+
+    // NOTE(khvorov) Log file from previous compilation
+    result.logColumnNames[LogColumn_ObjPath] = prb_STR("objPath");
+    result.logColumnNames[LogColumn_CompileCmd] = prb_STR("compileCmd");
+    result.logColumnNames[LogColumn_PreprocessedHash] = prb_STR("preprocessedHash");
+    result.logPath = prb_pathJoin(arena, project->compileOutDir, prb_fmt(arena, "%.*s-log.csv", prb_LIT(name)));
+    {
+        prb_ReadEntireFileResult prevLogRead = prb_readEntireFile(arena, result.logPath);
+        if (prevLogRead.success) {
+            prb_Str        prevLog = (prb_Str) {(const char*)prevLogRead.content.data, prevLogRead.content.len};
+            ParseLogResult prevLogParsed = parseLog(arena, prevLog, result.logColumnNames);
+            if (prevLogParsed.success) {
+                result.prevCompileLog = prevLogParsed.log;
+            }
+        }
+    }
+
     return result;
 }
 
@@ -253,6 +357,41 @@ strMallocCopy(prb_Str str) {
 }
 
 function void
+addLogRow(prb_GrowingStr* gstr, prb_Str* strings) {
+    for (i32 colIndex = 0; colIndex < LogColumn_Count; colIndex++) {
+        prb_addStrSegment(gstr, "\"%.*s\"", prb_LIT(strings[colIndex]));
+        if (colIndex == LogColumn_Count - 1) {
+            prb_addStrSegment(gstr, "\n");
+        } else {
+            prb_addStrSegment(gstr, ",");
+        }
+    }
+}
+
+function void
+writeLog(prb_Arena* arena, CompileLogEntry* log, prb_Str path, prb_Str* columnNames) {
+    prb_TempMemory temp = prb_beginTempMemory(arena);
+    prb_Arena      numberFmtArena = prb_createArenaFromArena(arena, 100);
+    prb_GrowingStr gstr = prb_beginStr(arena);
+    addLogRow(&gstr, columnNames);
+    for (i32 entryIndex = 0; entryIndex < shlen(log); entryIndex++) {
+        CompileLogEntry entry = log[entryIndex];
+        prb_TempMemory  tempNumber = prb_beginTempMemory(&numberFmtArena);
+
+        prb_Str strings[] = {
+            [LogColumn_ObjPath] = prb_STR(entry.key),
+            [LogColumn_CompileCmd] = entry.value.compileCmd,
+            [LogColumn_PreprocessedHash] = prb_fmt(&numberFmtArena, "0x%llX", (unsigned long long)entry.value.preprocessedHash),
+        };
+        addLogRow(&gstr, strings);
+        prb_endTempMemory(tempNumber);
+    }
+    prb_Str str = prb_endStr(&gstr);
+    prb_assert(prb_writeEntireFile(arena, path, str.ptr, str.len) == prb_Success);
+    prb_endTempMemory(temp);
+}
+
+function void
 compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
     prb_TimeStart  compileStart = prb_timeStart();
     StaticLibInfo* lib = (StaticLibInfo*)staticLibInfo;
@@ -349,10 +488,10 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             bool         shouldRecompile = true;
             prb_FileHash preprocessedHash = prb_getFileHash(arena, outputPreprocess[inputPathIndex]);
             prb_assert(preprocessedHash.valid);
-            if (lib->project->prevCompileLog != 0 && prb_isFile(arena, outputObjFilepath)) {
-                int32_t logEntryIndex = shgeti(lib->project->prevCompileLog, outputObjFilepath.ptr);
+            if (lib->prevCompileLog != 0 && prb_isFile(arena, outputObjFilepath)) {
+                int32_t logEntryIndex = shgeti(lib->prevCompileLog, outputObjFilepath.ptr);
                 if (logEntryIndex != -1) {
-                    ObjInfo info = lib->project->prevCompileLog[logEntryIndex].value;
+                    ObjInfo info = lib->prevCompileLog[logEntryIndex].value;
                     if (preprocessedHash.hash == info.preprocessedHash) {
                         if (prb_streq(compileCmd, info.compileCmd)) {
                             shouldRecompile = false;
@@ -372,7 +511,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
                 prb_Str outputObjFilepathCopy = strMallocCopy(outputObjFilepath);
                 prb_Str compileCmdCopy = strMallocCopy(compileCmd);
                 ObjInfo thisObjInfo = {compileCmdCopy, preprocessedHash.hash};
-                shput(lib->project->thisCompileLog, outputObjFilepathCopy.ptr, thisObjInfo);
+                shput(lib->thisCompileLog, outputObjFilepathCopy.ptr, thisObjInfo);
             }
         }
 
@@ -421,6 +560,8 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
 
     if (lib->compileStatus != prb_ProcessStatus_CompletedSuccess) {
         lib->compileStatus = prb_ProcessStatus_CompletedFailed;
+    } else {
+        writeLog(arena, lib->thisCompileLog, lib->logPath, lib->logColumnNames);
     }
     arrfree(inputPaths);
     shfree(existingObjs);
@@ -460,126 +601,6 @@ textfileReplace(prb_Arena* arena, prb_Str path, prb_Str pattern, prb_Str replace
     prb_assert(prb_writeEntireFile(arena, path, newContent.ptr, newContent.len) == prb_Success);
 }
 
-typedef struct GetStrInQuotesResult {
-    bool    success;
-    prb_Str inquotes;
-    prb_Str past;
-} GetStrInQuotesResult;
-
-function GetStrInQuotesResult
-getStrInQuotes(prb_Str str) {
-    GetStrInQuotesResult result = {};
-    prb_StrFindSpec      quoteFindSpec = {.pattern = prb_STR("\"")};
-    prb_StrScanner       scanner = prb_createStrScanner(str);
-    if (prb_strScannerMove(&scanner, quoteFindSpec, prb_StrScannerSide_AfterMatch)) {
-        if (prb_strScannerMove(&scanner, quoteFindSpec, prb_StrScannerSide_AfterMatch)) {
-            result.success = true;
-            result.inquotes = scanner.betweenLastMatches;
-            result.past = scanner.afterMatch;
-        }
-    }
-    return result;
-}
-
-typedef struct String3 {
-    bool    success;
-    prb_Str strings[3];
-} String3;
-
-function String3
-get3StrInQuotes(prb_Str str) {
-    String3 result = {.success = true};
-    for (i32 index = 0; index < prb_arrayCount(result.strings) && result.success; index++) {
-        GetStrInQuotesResult get1 = getStrInQuotes(str);
-        if (get1.success) {
-            result.strings[index] = get1.inquotes;
-            str = get1.past;
-        } else {
-            result.success = false;
-        }
-    }
-    return result;
-}
-
-typedef enum LogColumn {
-    LogColumn_ObjPath,
-    LogColumn_CompileCmd,
-    LogColumn_PreprocessedHash,
-    LogColumn_Count,
-} LogColumn;
-
-typedef struct ParseLogResult {
-    CompileLogEntry* log;
-    bool             success;
-} ParseLogResult;
-
-function ParseLogResult
-parseLog(prb_Arena* arena, prb_Str str, prb_Str* columnNames) {
-    prb_unused(str);
-    ParseLogResult  result = {};
-    prb_StrScanner  lineIter = prb_createStrScanner(str);
-    prb_StrFindSpec lineBreakSpec = {.mode = prb_StrFindMode_LineBreak};
-    if (prb_strScannerMove(&lineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success) {
-        String3 headers = get3StrInQuotes(lineIter.betweenLastMatches);
-        if (headers.success) {
-            bool expectedHeaders = prb_streq(headers.strings[LogColumn_ObjPath], columnNames[LogColumn_ObjPath])
-                && prb_streq(headers.strings[LogColumn_CompileCmd], columnNames[LogColumn_CompileCmd])
-                && prb_streq(headers.strings[LogColumn_PreprocessedHash], columnNames[LogColumn_PreprocessedHash]);
-            if (expectedHeaders) {
-                result.success = true;
-                while (prb_strScannerMove(&lineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch) && result.success) {
-                    String3 row = get3StrInQuotes(lineIter.betweenLastMatches);
-                    if (row.success) {
-                        prb_ParsedNumber hashResult = prb_parseNumber(row.strings[LogColumn_PreprocessedHash]);
-                        if (hashResult.kind == prb_ParsedNumberKind_U64) {
-                            ObjInfo info = {row.strings[LogColumn_CompileCmd], hashResult.parsedU64};
-                            shput(result.log, prb_strGetNullTerminated(arena, row.strings[LogColumn_ObjPath]), info);
-                        }
-                    } else {
-                        result.success = false;
-                    }
-                }
-            }
-        }
-    }
-    return result;
-}
-
-function void
-addLogRow(prb_GrowingStr* gstr, prb_Str* strings) {
-    for (i32 colIndex = 0; colIndex < LogColumn_Count; colIndex++) {
-        prb_addStrSegment(gstr, "\"%.*s\"", prb_LIT(strings[colIndex]));
-        if (colIndex == LogColumn_Count - 1) {
-            prb_addStrSegment(gstr, "\n");
-        } else {
-            prb_addStrSegment(gstr, ",");
-        }
-    }
-}
-
-function void
-writeLog(prb_Arena* arena, CompileLogEntry* log, prb_Str path, prb_Str* columnNames) {
-    prb_TempMemory temp = prb_beginTempMemory(arena);
-    prb_Arena      numberFmtArena = prb_createArenaFromArena(arena, 100);
-    prb_GrowingStr gstr = prb_beginStr(arena);
-    addLogRow(&gstr, columnNames);
-    for (i32 entryIndex = 0; entryIndex < shlen(log); entryIndex++) {
-        CompileLogEntry entry = log[entryIndex];
-        prb_TempMemory  tempNumber = prb_beginTempMemory(&numberFmtArena);
-
-        prb_Str strings[] = {
-            [LogColumn_ObjPath] = prb_STR(entry.key),
-            [LogColumn_CompileCmd] = entry.value.compileCmd,
-            [LogColumn_PreprocessedHash] = prb_fmt(&numberFmtArena, "0x%llX", (unsigned long long)entry.value.preprocessedHash),
-        };
-        addLogRow(&gstr, strings);
-        prb_endTempMemory(tempNumber);
-    }
-    prb_Str str = prb_endStr(&gstr);
-    prb_assert(prb_writeEntireFile(arena, path, str.ptr, str.len) == prb_Success);
-    prb_endTempMemory(temp);
-}
-
 int
 main() {
     prb_TimeStart scriptStartTime = prb_timeStart();
@@ -598,25 +619,6 @@ main() {
     project->release = prb_streq(buildTypeStr, prb_STR("release"));
     project->compileOutDir = prb_pathJoin(arena, project->rootDir, prb_fmt(arena, "build-%.*s-%.*s", prb_LIT(compilerStr), prb_LIT(buildTypeStr)));
     prb_assert(prb_createDirIfNotExists(arena, project->compileOutDir) == prb_Success);
-
-    // NOTE(khvorov) Log file from previous compilation
-
-    prb_Str logColumnNames[] = {
-        [LogColumn_ObjPath] = prb_STR("objPath"),
-        [LogColumn_CompileCmd] = prb_STR("compileCmd"),
-        [LogColumn_PreprocessedHash] = prb_STR("preprocessedHash"),
-    };
-    prb_Str buildLogPath = prb_pathJoin(arena, project->compileOutDir, prb_STR("log.csv"));
-    {
-        prb_ReadEntireFileResult prevLogRead = prb_readEntireFile(arena, buildLogPath);
-        if (prevLogRead.success) {
-            prb_Str        prevLog = (prb_Str) {(const char*)prevLogRead.content.data, prevLogRead.content.len};
-            ParseLogResult prevLogParsed = parseLog(arena, prevLog, logColumnNames);
-            if (prevLogParsed.success) {
-                project->prevCompileLog = prevLogParsed.log;
-            }
-        }
-    }
 
 #if prb_PLATFORM_WINDOWS
     prb_assert(prb_streq(compilerStr, prb_STR("msvc")) || prb_streq(compilerStr, prb_STR("clang")));
@@ -1118,28 +1120,26 @@ main() {
     // prb_assert(prb_clearDir(arena, harfbuzz.objDir) == prb_Success);
     // prb_assert(prb_clearDir(arena, sdl.objDir) == prb_Success);
 
-    // NOTE(khvorov) Compile single-threaded since we are not syncing access to the compile log.
-    // Multithreading this doesn't give us much anyway given that each library is already compiling its TUs in parallel.
     {
-        compileStaticLib(arena, &fribidi);
+        prb_Job* jobs = 0;
+        arrput(jobs, prb_createJob(compileStaticLib, &fribidi, arena, 50 * prb_MEGABYTE));
+        arrput(jobs, prb_createJob(compileStaticLib, &icu, arena, 50 * prb_MEGABYTE));
+        arrput(jobs, prb_createJob(compileStaticLib, &freetype, arena, 50 * prb_MEGABYTE));
+        arrput(jobs, prb_createJob(compileStaticLib, &harfbuzz, arena, 50 * prb_MEGABYTE));
+        arrput(jobs, prb_createJob(compileStaticLib, &sdl, arena, 50 * prb_MEGABYTE));
+
+        // NOTE(khvorov) Multithreading here doesn't really make it faster presumably because each job is
+        // paralellised already anyway
+        prb_assert(prb_launchJobs(jobs, arrlen(jobs), prb_Background_Yes));
+        prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
+
         prb_assert(fribidi.compileStatus == prb_ProcessStatus_CompletedSuccess);
-
-        compileStaticLib(arena, &icu);
         prb_assert(icu.compileStatus == prb_ProcessStatus_CompletedSuccess);
-
-        compileStaticLib(arena, &freetype);
         prb_assert(freetype.compileStatus == prb_ProcessStatus_CompletedSuccess);
-
-        compileStaticLib(arena, &harfbuzz);
         prb_assert(harfbuzz.compileStatus == prb_ProcessStatus_CompletedSuccess);
-
-        compileStaticLib(arena, &sdl);
         prb_assert(sdl.compileStatus == prb_ProcessStatus_CompletedSuccess);
 
         prb_writelnToStdout(arena, prb_fmt(arena, "total deps compile: %.2fms", prb_getMsFrom(compileStart)));
-
-        // NOTE(khvorov) The main program is always recompiled, so it's not in the log
-        writeLog(arena, project->thisCompileLog, buildLogPath, logColumnNames);
     }
 
     //
