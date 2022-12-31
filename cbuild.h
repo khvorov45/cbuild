@@ -1481,8 +1481,9 @@ prb_setWorkingDir(prb_Arena* arena, prb_Str dir) {
 
 #if prb_PLATFORM_WINDOWS
 
-    // TODO(khvorov) Make sure this works when there is no trailing slash
     prb_windows_WideStr pathWide = prb_windows_getWideStr(arena, dir);
+    // NOTE(khvorov) Windows might want to add a trailing slash, so leave 2 null terminators at the end just in case
+    prb_arenaAllocAndZero(arena, 2, 1);
     result = SetCurrentDirectoryW(pathWide.ptr) != 0 ? prb_Success : prb_Failure;
 
 #elif prb_PLATFORM_LINUX

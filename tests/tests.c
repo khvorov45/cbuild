@@ -706,23 +706,29 @@ test_setWorkingDir(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
     prb_Str cwdInit = prb_getWorkingDir(arena);
-    prb_Str newWd = getTempPath(arena, __FUNCTION__);
-    prb_assert(prb_removePathIfExists(arena, newWd) == prb_Success);
-    prb_Str newWdAbsolute = prb_getAbsolutePath(arena, newWd);
-    prb_assert(prb_setWorkingDir(arena, newWd) == prb_Failure);
-    prb_assert(prb_createDirIfNotExists(arena, newWd) == prb_Success);
-    prb_assert(prb_setWorkingDir(arena, newWd) == prb_Success);
-    prb_assert(prb_streq(prb_getWorkingDir(arena), newWdAbsolute));
-    prb_Str filename = prb_STR("testfile-setworkingdir.txt");
-    prb_assert(prb_writeEntireFile(arena, filename, filename.ptr, filename.len) == prb_Success);
-    prb_ReadEntireFileResult fileRead = prb_readEntireFile(arena, filename);
-    prb_assert(fileRead.success);
-    prb_assert(prb_streq(prb_strFromBytes(fileRead.content), filename));
-    prb_assert(prb_setWorkingDir(arena, cwdInit) == prb_Success);
-    fileRead = prb_readEntireFile(arena, filename);
-    prb_assert(!fileRead.success);
+    prb_Str newWdPlain = getTempPath(arena, __FUNCTION__);
+    prb_Str newWdTrailingFSlash = prb_fmt(arena, "%.*s/", prb_LIT(newWdPlain));
+    prb_Str newWdTrailingBSlash = prb_fmt(arena, "%.*s\\", prb_LIT(newWdPlain));
+    prb_Str newWds[] = {newWdPlain, newWdTrailingFSlash, newWdTrailingBSlash};
+    for (i32 newWdIndex = 0; newWdIndex < prb_arrayCount(newWds); newWdIndex++) {
+        prb_Str newWd = newWds[newWdIndex];
+        prb_assert(prb_removePathIfExists(arena, newWd) == prb_Success);
+        prb_Str newWdAbsolute = prb_getAbsolutePath(arena, newWd);
+        prb_assert(prb_setWorkingDir(arena, newWd) == prb_Failure);
+        prb_assert(prb_createDirIfNotExists(arena, newWd) == prb_Success);
+        prb_assert(prb_setWorkingDir(arena, newWd) == prb_Success);
+        prb_assert(prb_streq(prb_getWorkingDir(arena), newWdAbsolute));
+        prb_Str filename = prb_STR("testfile-setworkingdir.txt");
+        prb_assert(prb_writeEntireFile(arena, filename, filename.ptr, filename.len) == prb_Success);
+        prb_ReadEntireFileResult fileRead = prb_readEntireFile(arena, filename);
+        prb_assert(fileRead.success);
+        prb_assert(prb_streq(prb_strFromBytes(fileRead.content), filename));
+        prb_assert(prb_setWorkingDir(arena, cwdInit) == prb_Success);
+        fileRead = prb_readEntireFile(arena, filename);
+        prb_assert(!fileRead.success);
+        prb_assert(prb_removePathIfExists(arena, newWd));
+    }
 
-    prb_removePathIfExists(arena, newWd);
     prb_endTempMemory(temp);
 }
 
