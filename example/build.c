@@ -112,7 +112,7 @@ function prb_Status
 execCmd(prb_Arena* arena, prb_Str cmd) {
     prb_writelnToStdout(arena, cmd);
     prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
-    prb_Status status = prb_launchProcesses(arena, &proc, 1, prb_Background_No);
+    prb_Status  status = prb_launchProcesses(arena, &proc, 1, prb_Background_No);
     return status;
 }
 
@@ -186,9 +186,12 @@ constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_S
     }
 
 #if prb_PLATFORM_WINDOWS
-    if (compiler == Compiler_Msvc) {
-        prb_Str pdbPath = prb_replaceExt(outputPath, prb_STR("pdb"));
-        prb_addStrSegment(&cmd, " /Fd%.s", pdbPath);
+    // NOTE(khvorov) This is not a high security operation, microsoft
+    prb_addStrSegment(&cmd, " -D_CRT_SECURE_NO_WARNINGS");
+
+    if (project->compiler == Compiler_Msvc) {
+        prb_Str pdbPath = prb_replaceExt(arena, outputPath, prb_STR("pdb"));
+        prb_addStrSegment(&cmd, " /Fd%.*s", prb_LIT(pdbPath));
     }
 #endif
 
@@ -204,13 +207,30 @@ constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_S
         } break;
     }
 
-    if (linkFlags.ptr && linkFlags.len > 0) {
+#if prb_PLATFORM_WINDOWS
+    if (!isObj && !outIsPreprocess) {
         switch (project->compiler) {
-            case Compiler_Gcc:
-            case Compiler_Clang: prb_addStrSegment(&cmd, " %.*s", prb_LIT(linkFlags)); break;
-            case Compiler_Msvc: prb_addStrSegment(&cmd, "-link -incremental:no %.*s", prb_LIT(linkFlags)); break;
+            case Compiler_Gcc: break;
+            case Compiler_Clang: prb_addStrSegment(&cmd, " -Xlinker /incremental:no"); break;
+            case Compiler_Msvc: prb_addStrSegment(&cmd, " /link /incremental:no"); break;
         }
-        prb_addStrSegment(&cmd, " %.*s", prb_LIT(linkFlags));
+    }
+#endif
+
+    if (linkFlags.ptr && linkFlags.len > 0) {
+        prb_Str prefix = prb_STR("");
+#if prb_PLATFORM_WINDOWS
+        if (project->compiler == Compiler_Clang) {
+            prefix = prb_STR("-Xlinker ");
+        }
+#endif
+        prb_StrScanner  scanner = prb_createStrScanner(linkFlags);
+        prb_StrFindSpec space = {.pattern = prb_STR(" "), .alwaysMatchEnd = true};
+        while (prb_strScannerMove(&scanner, space, prb_StrScannerSide_AfterMatch)) {
+            if (scanner.betweenLastMatches.len > 0) {
+                prb_addStrSegment(&cmd, " %.*s%.*s", prb_LIT(prefix), prb_LIT(scanner.betweenLastMatches));
+            }
+        }
     }
 
     prb_Str cmdStr = prb_endStr(&cmd);
@@ -257,10 +277,16 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
                     atleastone = true;
                 }
             }
-            prb_assert(atleastone);
+            if (!atleastone) {
+                prb_writeToStdout(prb_fmt(arena, "src pattern no files: %.*s\n", prb_LIT(srcRelToDownload)));
+                prb_assert(!"src pattern corresponds to no files");
+            }
         } else {
             prb_Str path = prb_pathJoin(arena, lib->downloadDir, srcRelToDownload);
-            prb_assert(prb_isFile(arena, path));
+            if (!prb_isFile(arena, path)) {
+                prb_writeToStdout(prb_fmt(arena, "src file not found: %.*s\n", prb_LIT(srcRelToDownload)));
+                prb_assert(!"src file not found");
+            }
             arrput(inputPaths, path);
         }
     }
@@ -358,8 +384,11 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             }
         }
 
+        bool shouldRegenLib = false;
         if (arrlen(processesCompile) == 0) {
             prb_writelnToStdout(arena, prb_fmt(arena, "skip compile %.*s", prb_LIT(lib->name)));
+        } else {
+            shouldRegenLib = true;
         }
 
         prb_assert(prb_launchProcesses(arena, processesCompile, arrlen(processesCompile), prb_Background_Yes));
@@ -367,27 +396,11 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         arrfree(processesCompile);
 
         if (compileStatus == prb_Success) {
-            prb_Str objsPathsString = prb_stringsJoin(arena, outputObjs, arrlen(outputObjs), prb_STR(" "));
-
-            u64 sourceLastMod = 0;
-            {
-                prb_Multitime multitime = prb_createMultitime();
-                for (i32 pathIndex = 0; pathIndex < arrlen(outputObjs); pathIndex++) {
-                    prb_Str           path = outputObjs[pathIndex];
-                    prb_FileTimestamp lastMod = prb_getLastModified(arena, path);
-                    prb_assert(lastMod.valid);
-                    prb_multitimeAdd(&multitime, lastMod);
-                }
-                prb_assert(multitime.validAddedTimestampsCount > 0 && multitime.invalidAddedTimestampsCount == 0);
-                sourceLastMod = multitime.timeLatest;
-            }
-            arrfree(outputObjs);
-
-            prb_FileTimestamp outputLastMod = prb_getLastModified(arena, lib->libFile);
-            prb_Status        libStatus = prb_Success;
-            if (!outputLastMod.valid || (sourceLastMod > outputLastMod.timestamp)) {
+            prb_Status libStatus = prb_Success;
+            if (!prb_isFile(arena, lib->libFile) || shouldRegenLib) {
+                prb_Str objsPathsString = prb_stringsJoin(arena, outputObjs, arrlen(outputObjs), prb_STR(" "));
 #if prb_PLATFORM_WINDOWS
-                prb_Str libCmd = prb_fmt("lib /nologo -out:%.*s %.*s", libFile, objsPattern);
+                prb_Str libCmd = prb_fmt(arena, "llvm-lib /nologo -out:%.*s %.*s", prb_LIT(lib->libFile), prb_LIT(objsPathsString));
 #elif prb_PLATFORM_LINUX
                 prb_Str libCmd = prb_fmt(arena, "ar rcs %.*s %.*s", prb_LIT(lib->libFile), prb_LIT(objsPathsString));
 #endif
@@ -402,6 +415,8 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
                 lib->compileStatus = prb_ProcessStatus_CompletedSuccess;
             }
         }
+
+        arrfree(outputObjs);
     }
 
     if (lib->compileStatus != prb_ProcessStatus_CompletedSuccess) {
@@ -555,7 +570,7 @@ writeLog(prb_Arena* arena, CompileLogEntry* log, prb_Str path, prb_Str* columnNa
         prb_Str strings[] = {
             [LogColumn_ObjPath] = prb_STR(entry.key),
             [LogColumn_CompileCmd] = entry.value.compileCmd,
-            [LogColumn_PreprocessedHash] = prb_fmt(&numberFmtArena, "0x%lX", entry.value.preprocessedHash),
+            [LogColumn_PreprocessedHash] = prb_fmt(&numberFmtArena, "0x%llX", entry.value.preprocessedHash),
         };
         addLogRow(&gstr, strings);
         prb_endTempMemory(tempNumber);
@@ -620,7 +635,7 @@ main() {
     // NOTE(khvorov) Fribidi
 
     prb_Str fribidiCompileSouces[] = {prb_STR("lib/*.c")};
-    prb_Str fribidiNoConfigFlag = prb_STR("-DDONT_HAVE_FRIBIDI_CONFIG_H -DDONT_HAVE_FRIBIDI_UNICODE_VERSION_H");
+    prb_Str fribidiHeaderFlags = prb_STR("-DDONT_HAVE_FRIBIDI_CONFIG_H -DDONT_HAVE_FRIBIDI_UNICODE_VERSION_H -DFRIBIDI_LIB_STATIC=1");
 
     StaticLibInfo fribidi = getStaticLibInfo(
         arena,
@@ -628,7 +643,7 @@ main() {
         prb_STR("fribidi"),
         Lang_C,
         prb_STR("lib"),
-        prb_fmt(arena, "%.*s -Dfribidi_malloc=fribidiCustomMalloc -Dfribidi_free=fribidiCustomFree -DHAVE_STRING_H=1 -DHAVE_STRINGIZE=1", prb_LIT(fribidiNoConfigFlag)),
+        prb_fmt(arena, "%.*s -Dfribidi_malloc=fribidiCustomMalloc -Dfribidi_free=fribidiCustomFree -DHAVE_STRING_H=1 -DHAVE_STRINGIZE=1", prb_LIT(fribidiHeaderFlags)),
         fribidiCompileSouces,
         prb_arrayCount(fribidiCompileSouces)
     );
@@ -872,7 +887,7 @@ main() {
         prb_STR("src/*.c"),
         prb_STR("src/misc/*.c"),
 #if prb_PLATFORM_WINDOWS
-        prb_STR("src/core/windows/windows.c"),
+        prb_STR("src/core/windows/SDL_windows.c"),
         prb_STR("src/filesystem/windows/*.c"),
         prb_STR("src/timer/windows/*.c"),
         prb_STR("src/video/windows/*.c"),
@@ -933,6 +948,12 @@ main() {
     // SECTION Download
     //
 
+    // NOTE(khvorov) Force clean
+    // prb_assert(prb_removePathIfExists(arena, fribidi.downloadDir));
+    // fribidi.notDownloaded = true;
+    // prb_assert(prb_removePathIfExists(arena, sdl.downloadDir));
+    // sdl.notDownloaded = true;
+
     prb_Process* downloadHandles = 0;
     arrput(downloadHandles, gitClone(arena, fribidi, prb_STR("https://github.com/fribidi/fribidi")));
     arrput(downloadHandles, gitClone(arena, icu, prb_STR("https://github.com/unicode-org/icu")));
@@ -953,9 +974,9 @@ main() {
     //
 
     // NOTE(khvorov) Generate fribidi tables
-    {
+    if (fribidi.notDownloaded) {
         prb_Str gentabDir = prb_pathJoin(arena, fribidi.downloadDir, prb_STR("gen.tab"));
-        prb_Str flags = prb_fmt(arena, "%.*s %.*s -DHAVE_STDLIB_H=1 -DHAVE_STRING_H -DHAVE_STRINGIZE", prb_LIT(fribidiNoConfigFlag), prb_LIT(fribidi.includeFlag));
+        prb_Str flags = prb_fmt(arena, "%.*s %.*s -DHAVE_STDLIB_H=1 -DHAVE_STRING_H -DHAVE_STRINGIZE", prb_LIT(fribidiHeaderFlags), prb_LIT(fribidi.includeFlag));
         prb_Str datadir = prb_pathJoin(arena, gentabDir, prb_STR("unidata"));
         prb_Str unidat = prb_pathJoin(arena, datadir, prb_STR("UnicodeData.txt"));
 
@@ -972,10 +993,18 @@ main() {
             prb_pathJoin(arena, fribidi.includeDir, prb_STR("brackets.tab.i"))
         );
 
+        prb_Str genArabicShapingTab = prb_pathJoin(arena, gentabDir, prb_STR("gen-arabic-shaping-tab.c"));
+        textfileReplace(
+            arena,
+            genArabicShapingTab,
+            prb_STR("macro_name, (long)(maxshaped - minshaped + 1) * 4 * sizeof (FriBidiChar));"),
+            prb_STR("macro_name, (long)((maxshaped - minshaped + 1) * 4 * sizeof (FriBidiChar)));")
+        );
+
         compileAndRunBidiGenTab(
             arena,
             project,
-            prb_pathJoin(arena, gentabDir, prb_STR("gen-arabic-shaping-tab.c")),
+            genArabicShapingTab,
             flags,
             prb_fmt(arena, "%d %.*s", maxDepth, prb_LIT(unidat)),
             prb_pathJoin(arena, fribidi.includeDir, prb_STR("arabic-shaping.tab.i"))
@@ -1066,6 +1095,14 @@ main() {
             prb_STR("XDestroyImage(data->ximage);"),
             prb_STR("SDL_free(data->ximage->data);data->ximage->data = 0;XDestroyImage(data->ximage);")
         );
+
+        prb_Str sdlConfigH = prb_pathJoin(arena, downloadDir, prb_STR("include/SDL_config.h"));
+        textfileReplace(
+            arena,
+            sdlConfigH,
+            prb_STR("#include \"SDL_config_windows.h\""),
+            prb_STR("#include \"SDL_config_minimal.h\"")
+        );
     }
 
     //
@@ -1075,7 +1112,7 @@ main() {
     prb_TimeStart compileStart = prb_timeStart();
 
     // NOTE(khvorov) Force clean
-    // prb_assert(prb_clearDir(arena, fribidi.objDir) == prb_Success);
+    prb_assert(prb_clearDir(arena, fribidi.objDir) == prb_Success);
     // prb_assert(prb_clearDir(arena, icu.objDir) == prb_Success);
     // prb_assert(prb_clearDir(arena, freetype.objDir) == prb_Success);
     // prb_assert(prb_clearDir(arena, harfbuzz.objDir) == prb_Success);
@@ -1083,19 +1120,27 @@ main() {
 
     // NOTE(khvorov) Compile single-threaded since we are not syncing access to the compile log.
     // Multithreading this doesn't give us much anyway given that each library is already compiling its TUs in parallel.
-    compileStaticLib(arena, &fribidi);
-    compileStaticLib(arena, &icu);
-    compileStaticLib(arena, &freetype);
-    compileStaticLib(arena, &harfbuzz);
-    compileStaticLib(arena, &sdl);
+    {
+        compileStaticLib(arena, &fribidi);
+        prb_assert(fribidi.compileStatus == prb_ProcessStatus_CompletedSuccess);
 
-    prb_assert(fribidi.compileStatus == prb_ProcessStatus_CompletedSuccess);
-    prb_assert(icu.compileStatus == prb_ProcessStatus_CompletedSuccess);
-    prb_assert(freetype.compileStatus == prb_ProcessStatus_CompletedSuccess);
-    prb_assert(harfbuzz.compileStatus == prb_ProcessStatus_CompletedSuccess);
-    prb_assert(sdl.compileStatus == prb_ProcessStatus_CompletedSuccess);
+        compileStaticLib(arena, &icu);
+        prb_assert(icu.compileStatus == prb_ProcessStatus_CompletedSuccess);
 
-    prb_writelnToStdout(arena, prb_fmt(arena, "total deps compile: %.2fms", prb_getMsFrom(compileStart)));
+        compileStaticLib(arena, &freetype);
+        prb_assert(freetype.compileStatus == prb_ProcessStatus_CompletedSuccess);
+
+        compileStaticLib(arena, &harfbuzz);
+        prb_assert(harfbuzz.compileStatus == prb_ProcessStatus_CompletedSuccess);
+
+        compileStaticLib(arena, &sdl);
+        prb_assert(sdl.compileStatus == prb_ProcessStatus_CompletedSuccess);
+
+        prb_writelnToStdout(arena, prb_fmt(arena, "total deps compile: %.2fms", prb_getMsFrom(compileStart)));
+
+        // NOTE(khvorov) The main program is always recompiled, so it's not in the log
+        writeLog(arena, project->thisCompileLog, buildLogPath, logColumnNames);
+    }
 
     //
     // SECTION Main program
@@ -1107,7 +1152,7 @@ main() {
         harfbuzz.includeFlag,
         icu.includeFlag,
         fribidi.includeFlag,
-        fribidiNoConfigFlag,
+        fribidiHeaderFlags,
         prb_STR("-Wall -Wextra -Werror"),
     };
 
@@ -1143,7 +1188,6 @@ main() {
 
     prb_assert(prb_waitForProcesses(&mainHandlePre, 1) == prb_Success);
 
-    writeLog(arena, project->thisCompileLog, buildLogPath, logColumnNames);
     prb_writelnToStdout(arena, prb_fmt(arena, "total: %.2fms", prb_getMsFrom(scriptStartTime)));
     return 0;
 }

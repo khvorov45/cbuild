@@ -1432,9 +1432,12 @@ prb_removePathIfExists(prb_Arena* arena, prb_Str path) {
 #if prb_PLATFORM_WINDOWS
             prb_windows_WideStr entryWide = prb_windows_getWidePath(arena, entry);
             if (DeleteFileW(entryWide.ptr) == 0) {
-                DWORD err = GetLastError();
-                prb_unused(err);
                 result = prb_Failure;
+                if (SetFileAttributesW(entryWide.ptr, FILE_ATTRIBUTE_NORMAL)) {
+                    if (DeleteFileW(entryWide.ptr)) {
+                        result = prb_Success;
+                    }
+                }
             }
 #elif prb_PLATFORM_LINUX
             result = unlink(entry.ptr) == 0 ? prb_Success : prb_Failure;

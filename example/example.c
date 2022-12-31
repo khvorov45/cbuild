@@ -19,7 +19,8 @@
 #define PLATFORM_LINUX __LINUX__
 
 #if PLATFORM_WINDOWS
-#error unimlemented
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #elif PLATFORM_LINUX
 #include <sys/mman.h>
 #include <fontconfig/fontconfig.h>
@@ -62,14 +63,22 @@ typedef enum CompletionStatus {
 //
 
 function void*
-vmemAlloc(i32 size) {
+vmemAlloc(int32_t bytes) {
 #if PLATFORM_WINDOWS
-#error unimplemented
+
+    void* ptr = VirtualAlloc(0, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    assert(ptr);
+
 #elif PLATFORM_LINUX
-    void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+    void* ptr = mmap(0, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     assert(ptr != MAP_FAILED);
-    return ptr;
+
+#else
+#error unimplemented
 #endif
+
+    return ptr;
 }
 
 bool
@@ -431,14 +440,14 @@ typedef struct Font {
 } Font;
 
 typedef struct FontManager {
-    FcConfig*    fcConfig;
-    FcPattern*   fcPattern;
     FT_Library   ftLib;
     Font*        fonts;
     hb_buffer_t* hbBuf;
 #if PLATFORM_WINDOWS
-#error unimplemented;
+
 #elif PLATFORM_LINUX
+    FcConfig*    fcConfig;
+    FcPattern*   fcPattern;
     FcCharSet** fcCharSets;
 #endif
 } FontManager;
@@ -496,13 +505,21 @@ typedef struct GetFontResult {
 function GetFontResult
 getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriBidiChar* chars, i32 chCount) {
     GetFontResult result = {0};
+    if (script >= 0 && script < USCRIPT_CODE_LIMIT) {
 
 #if PLATFORM_WINDOWS
 
-#error unimplemented
+        // TODO(khvorov) Implement
+        UNUSED(fontManager);
+        UNUSED(script);
+        UNUSED(chars);
+        UNUSED(chCount);
+        assert(!"unimplemented");
+        loadFont(0, (String) {}, (ByteSlice) {});
+        unloadFont(0);
 
 #elif PLATFORM_LINUX
-    if (script >= 0 && script < USCRIPT_CODE_LIMIT) {
+    
         Font*      font = fontManager->fonts + script;
         FcCharSet* fcCharSet = fontManager->fcCharSets[script];
 
@@ -538,8 +555,8 @@ getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriB
         if (font->ftFace) {
             result = (GetFontResult) {.success = true, .font = font};
         }
-    }
 #endif
+    }
 
     return result;
 }
@@ -556,23 +573,27 @@ createFontManager(Arena* arena) {
     FT_Error                ftInitResult = FT_Init_FreeType(&ftLib);
     if (ftInitResult == FT_Err_Ok) {
         i32         fontCount = USCRIPT_CODE_LIMIT;
-        FontManager fontManager = {
-            .fcConfig = FcInitLoadConfigAndFonts(),
-            .fcPattern = FcPatternCreate(),
-            .ftLib = ftLib,
-            .fonts = arenaAllocArray(arena, Font, fontCount),
-            .fcCharSets = arenaAllocArray(arena, FcCharSet*, fontCount),
-            .hbBuf = hb_buffer_create(),
-        };
+        FontManager fontManager = {};
+
+        fontManager.ftLib = ftLib;
+        fontManager.fonts = arenaAllocArray(arena, Font, fontCount);
+        fontManager.hbBuf = hb_buffer_create();
+
+#if PLATFORM_WINDOWS
+        assert(!"unimplemented");
+#elif PLATFORM_LINUX
+        fontManager.fcConfig = FcInitLoadConfigAndFonts();
+        fontManager.fcCharSets = arenaAllocArray(arena, FcCharSet*, fontCount);
+        fontManager.fcPattern = FcPatternCreate();
         for (i32 fontIndex = 0; fontIndex < fontCount; fontIndex++) {
             fontManager.fcCharSets[fontIndex] = FcCharSetCreate();
         }
-
         FcPatternAddInteger(fontManager.fcPattern, FC_WEIGHT, FC_WEIGHT_MEDIUM);
         FcPatternAddInteger(fontManager.fcPattern, FC_SLANT, FC_SLANT_ROMAN);
 
         FcConfigSubstitute(fontManager.fcConfig, fontManager.fcPattern, FcMatchPattern);
         FcDefaultSubstitute(fontManager.fcPattern);
+#endif
 
         // clang-format off
         FriBidiChar ascii[] = {
