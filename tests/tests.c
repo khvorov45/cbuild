@@ -1,7 +1,5 @@
 #include "../cbuild.h"
 
-// TODO(khvorov) Make sure long paths work on windows
-
 #define function static
 #define global_variable static
 
@@ -96,6 +94,17 @@ getTempPath(prb_Arena* arena, const char* funcName) {
     prb_Str dir = prb_pathJoin(arena, prb_getParentDir(arena, prb_STR(__FILE__)), funcNameWithNonascii);
     return dir;
 }
+
+function prb_Str
+genLongPath(prb_Arena* arena) {
+    prb_GrowingStr gstr = prb_beginStr(arena);
+    for (i32 ind = 0; ind < 100; ind++) {
+        prb_addStrSegment(&gstr, "/0123456789");
+    }
+    prb_Str result = prb_endStr(&gstr);
+    return result;
+}
+
 
 function bool
 strIn(prb_Str str, prb_Str* arr, i32 arrc) {
@@ -372,6 +381,11 @@ test_pathExists(prb_Arena* arena) {
 
     prb_assert(prb_pathExists(arena, prb_STR(__FILE__)));
 
+    prb_Str longPath = prb_pathJoin(arena, dir, genLongPath(arena));
+    prb_assert(prb_removePathIfExists(arena, longPath));
+    prb_assert(prb_writeEntireFile(arena, longPath, longPath.ptr, longPath.len));
+
+    prb_assert(prb_removePathIfExists(arena, dir));
     prb_endTempMemory(temp);
 }
 
@@ -1128,6 +1142,14 @@ test_writeEntireFile(prb_Arena* arena) {
     prb_assert(prb_writeEntireFile(arena, nestedDir, nestedDir.ptr, nestedDir.len));
     prb_Str fileCantWrite = prb_pathJoin(arena, nestedDir, prb_STR("file"));
     prb_assert(prb_writeEntireFile(arena, fileCantWrite, fileCantWrite.ptr, fileCantWrite.len) == prb_Failure);
+
+    prb_Str longpath = prb_pathJoin(arena, dir, genLongPath(arena));
+    prb_assert(prb_writeEntireFile(arena, longpath, longpath.ptr, longpath.len));
+    {
+        prb_ReadEntireFileResult res = prb_readEntireFile(arena, longpath);
+        prb_assert(res.success);
+        prb_assert(prb_streq(prb_strFromBytes(res.content), longpath));
+    }
 
     prb_assert(prb_removePathIfExists(arena, dir) == prb_Success);
     prb_endTempMemory(temp);

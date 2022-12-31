@@ -1140,12 +1140,38 @@ prb_windows_strFromWideStr(prb_Arena* arena, prb_windows_WideStr wstr) {
     prb_Str result = {};
     char*   ptr = prb_arenaFreePtr(arena);
     int     bytesWritten = WideCharToMultiByte(CP_UTF8, 0, wstr.ptr, wstr.len, ptr, prb_arenaFreeSize(arena), 0, 0);
-    prb_assert(bytesWritten);
+    prb_assert(bytesWritten > 0);
     result.ptr = ptr;
     result.len = bytesWritten;
     prb_arenaChangeUsed(arena, bytesWritten);
     prb_arenaAllocAndZero(arena, 1, 1);  // NOTE(khvorov) Null terminator
     return result;
+}
+
+static prb_windows_WideStr
+prb_windows_getWidePath(prb_Arena* arena, prb_Str str) {
+    prb_windows_WideStr wstr = prb_windows_getWideStr(arena, str);
+
+    // NOTE(khvorov) 248 is from
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectoryw
+    if (wstr.len >= 248) {
+        int32_t newlen = wstr.len + 4;
+        LPWSTR newptr = (LPWSTR)prb_arenaAllocArray(arena, uint16_t, newlen);
+        newptr[0] = '\\';
+        newptr[1] = '\\';
+        newptr[2] = '?';
+        newptr[3] = '\\';
+        prb_memcpy(newptr + 4, wstr.ptr, wstr.len * sizeof(*wstr.ptr));
+        for (int32_t ind = 0; ind < newlen; ind++) {
+            if (newptr[ind] == '/') {
+                newptr[ind] = '\\';
+            }
+        }
+        wstr = (prb_windows_WideStr) {newptr, newlen};
+        prb_arenaAllocAndZero(arena, 2, 1);  // NOTE(khvorov) Null terminator
+    }
+
+    return wstr;
 }
 
 typedef struct prb_windows_GetFileStatResult {
@@ -1157,7 +1183,7 @@ static prb_windows_GetFileStatResult
 prb_windows_getFileStat(prb_Arena* arena, prb_Str path) {
     prb_TempMemory                temp = prb_beginTempMemory(arena);
     prb_windows_GetFileStatResult result = {};
-    prb_windows_WideStr           pathWide = prb_windows_getWideStr(arena, path);
+    prb_windows_WideStr           pathWide = prb_windows_getWidePath(arena, path);
     if (GetFileAttributesExW(pathWide.ptr, GetFileExInfoStandard, &result.stat) != 0) {
         result.success = true;
     }
@@ -1174,7 +1200,7 @@ static prb_windows_OpenResult
 prb_windows_open(prb_Arena* arena, prb_Str path, DWORD access, DWORD share, DWORD create, SECURITY_ATTRIBUTES* securityAttr) {
     prb_windows_OpenResult result = {};
     prb_TempMemory         temp = prb_beginTempMemory(arena);
-    prb_windows_WideStr    pathWide = prb_windows_getWideStr(arena, path);
+    prb_windows_WideStr    pathWide = prb_windows_getWidePath(arena, path);
 
     HANDLE handle = CreateFileW(pathWide.ptr, access, share, securityAttr, create, FILE_ATTRIBUTE_NORMAL, 0);
     if (handle != INVALID_HANDLE_VALUE) {
@@ -1252,7 +1278,6 @@ prb_pathIsAbsolute(prb_Str path) {
     bool result = false;
 #if prb_PLATFORM_WINDOWS
 
-    // TODO(khvorov) Are \\?\ paths always absolute?
     // NOTE(khvorov) Paths like \file.txt are "absolute" according to microsoft but not according to me
     // because they are still relative to the current volume.
     bool doubleSlash = path.len >= 2 && prb_charIsSep(path.ptr[0]) && prb_charIsSep(path.ptr[1]);
@@ -1373,7 +1398,7 @@ prb_createDirIfNotExists(prb_Arena* arena, prb_Str path) {
     while (prb_pathEntryIterNext(&iter) && result == prb_Success) {
         if (!prb_isDir(arena, iter.curEntryPath)) {
 #if prb_PLATFORM_WINDOWS
-            prb_windows_WideStr pathWide = prb_windows_getWideStr(arena, iter.curEntryPath);
+            prb_windows_WideStr pathWide = prb_windows_getWidePath(arena, iter.curEntryPath);
             result = CreateDirectoryW(pathWide.ptr, 0) != 0 ? prb_Success : prb_Failure;
 #elif prb_PLATFORM_LINUX
             const char* pathNull = prb_strGetNullTerminated(arena, iter.curEntryPath);
@@ -1406,7 +1431,7 @@ prb_removePathIfExists(prb_Arena* arena, prb_Str path) {
         prb_Str entry = toRemove[entryIndex];
         if (prb_isFile(arena, entry)) {
 #if prb_PLATFORM_WINDOWS
-            prb_windows_WideStr entryWide = prb_windows_getWideStr(arena, entry);
+            prb_windows_WideStr entryWide = prb_windows_getWidePath(arena, entry);
             if (DeleteFileW(entryWide.ptr) == 0) {
                 DWORD err = GetLastError();
                 prb_unused(err);
@@ -1426,7 +1451,7 @@ prb_removePathIfExists(prb_Arena* arena, prb_Str path) {
         prb_Str entry = toRemove[entryIndex];
         if (prb_isDir(arena, entry)) {
 #if prb_PLATFORM_WINDOWS
-            prb_windows_WideStr entryWide = prb_windows_getWideStr(arena, entry);
+            prb_windows_WideStr entryWide = prb_windows_getWidePath(arena, entry);
             if (RemoveDirectoryW(entryWide.ptr) == 0) {
                 result = prb_Failure;
             }
@@ -1493,7 +1518,7 @@ prb_setWorkingDir(prb_Arena* arena, prb_Str dir) {
 
 #if prb_PLATFORM_WINDOWS
 
-    prb_windows_WideStr pathWide = prb_windows_getWideStr(arena, dir);
+    prb_windows_WideStr pathWide = prb_windows_getWidePath(arena, dir);
     // NOTE(khvorov) Windows might want to add a trailing slash, so leave 2 null terminators at the end just in case
     prb_arenaAllocAndZero(arena, 2, 1);
     result = SetCurrentDirectoryW(pathWide.ptr) != 0 ? prb_Success : prb_Failure;
@@ -1661,7 +1686,7 @@ prb_getAllDirEntriesCustomBuffer(prb_Arena* arena, prb_Str dir, prb_Recursive mo
             prb_Str             thisDir = prb_stbds_arrpop(dirs);
             WIN32_FIND_DATAW    findData = {};
             prb_Str             pattern = prb_pathJoin(arena, thisDir, prb_STR("*"));
-            prb_windows_WideStr pathWide = prb_windows_getWideStr(arena, pattern);
+            prb_windows_WideStr pathWide = prb_windows_getWidePath(arena, pattern);
             HANDLE              handle = FindFirstFileExW(pathWide.ptr, FindExInfoStandard, &findData, FindExSearchNameMatch, 0, 0);
             if (handle != INVALID_HANDLE_VALUE) {
                 for (;;) {
