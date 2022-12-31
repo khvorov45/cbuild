@@ -388,9 +388,8 @@ test_pathIsAbsolute(prb_Arena* arena) {
     prb_assert(prb_pathIsAbsolute(prb_STR("\\\\network")));
     prb_assert(prb_pathIsAbsolute(prb_STR("C:\\path")));
 
-    // TODO(khvorov) What do we do about these paths?
-    prb_assert(prb_pathIsAbsolute(prb_STR("\\path")));
-    prb_assert(prb_pathIsAbsolute(prb_STR("/path")));
+    prb_assert(!prb_pathIsAbsolute(prb_STR("\\path")));
+    prb_assert(!prb_pathIsAbsolute(prb_STR("/path")));
 
 #elif prb_PLATFORM_LINUX
 
@@ -418,11 +417,19 @@ test_getAbsolutePath(prb_Arena* arena) {
 
 #if prb_PLATFORM_WINDOWS
 
+    prb_Str currentVolume = {};
+    {
+        prb_PathEntryIter iter = prb_createPathEntryIter(cwd);
+        prb_assert(prb_pathEntryIterNext(&iter));
+        currentVolume = iter.curEntryPath;
+    }
+
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("C:/progs")), prb_STR("C:/progs")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("C:\\progs")), prb_STR("C:/progs")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("C:\\\\progs")), prb_STR("C:/progs")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("//network/./path")), prb_STR("//network/path")));
     prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("//network/./path/../file")), prb_STR("//network/file")));
+    prb_assert(prb_streq(prb_getAbsolutePath(arena, prb_STR("\\file.txt")), prb_fmt(arena, "%.*s/file.txt", prb_LIT(currentVolume))));
 
 #elif prb_PLATFORM_LINUX
 

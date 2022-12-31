@@ -1253,9 +1253,11 @@ prb_pathIsAbsolute(prb_Str path) {
 #if prb_PLATFORM_WINDOWS
 
     // TODO(khvorov) Are \\?\ paths always absolute?
-    bool firstback = path.len >= 1 && prb_charIsSep(path.ptr[0]);
+    // NOTE(khvorov) Paths like \file.txt are "absolute" according to microsoft but not according to me
+    // because they are still relative to the current volume.
+    bool doubleSlash = path.len >= 2 && prb_charIsSep(path.ptr[0]) && prb_charIsSep(path.ptr[1]);
     bool disk = path.len >= 3 && path.ptr[1] == ':' && prb_charIsSep(path.ptr[2]);
-    result = firstback || disk;
+    result = doubleSlash || disk;
 
 #elif prb_PLATFORM_LINUX
 
@@ -1272,7 +1274,17 @@ prb_PUBLICDEF prb_Str
 prb_getAbsolutePath(prb_Arena* arena, prb_Str path) {
     prb_Str pathAbs = path;
     if (!prb_pathIsAbsolute(path)) {
-        pathAbs = prb_pathJoin(arena, prb_getWorkingDir(arena), path);
+        prb_Str cwd = prb_getWorkingDir(arena);
+        prb_Str toJoin = cwd;
+#if prb_PLATFORM_WINDOWS
+        // NOTE(khvorov) These are the semi-absolute \test.txt type paths
+        if (path.len > 0 && prb_charIsSep(path.ptr[0])) {
+            prb_PathEntryIter iter = prb_createPathEntryIter(cwd);
+            prb_assert(prb_pathEntryIterNext(&iter));
+            toJoin = iter.curEntryPath;
+        }
+#endif
+        pathAbs = prb_pathJoin(arena, toJoin, path);
     }
 
     prb_GrowingStr    gstr = prb_beginStr(arena);
