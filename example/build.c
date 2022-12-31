@@ -570,7 +570,7 @@ writeLog(prb_Arena* arena, CompileLogEntry* log, prb_Str path, prb_Str* columnNa
         prb_Str strings[] = {
             [LogColumn_ObjPath] = prb_STR(entry.key),
             [LogColumn_CompileCmd] = entry.value.compileCmd,
-            [LogColumn_PreprocessedHash] = prb_fmt(&numberFmtArena, "0x%llX", entry.value.preprocessedHash),
+            [LogColumn_PreprocessedHash] = prb_fmt(&numberFmtArena, "0x%llX", (unsigned long long)entry.value.preprocessedHash),
         };
         addLogRow(&gstr, strings);
         prb_endTempMemory(tempNumber);
