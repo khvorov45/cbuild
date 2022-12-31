@@ -1,7 +1,5 @@
 #include "../cbuild.h"
 
-// TODO(khvorov) Generate precompile.c instead of it just sitting there
-
 #define function static
 #define global_variable static
 
@@ -190,9 +188,12 @@ compileAndRunTests(prb_Arena* arena, void* data) {
     if (spec->twotu) {
         CompileSpec preSpec = compileSpec;
         preSpec.input = prb_pathJoin(arena, globalTestsDir, prb_STR("precompile.c"));
+        prb_Str precompContent = prb_STR("#define prb_NOT_STATIC\n#include \"../cbuild.h\"");
+        prb_assert(prb_writeEntireFile(arena, preSpec.input, precompContent.ptr, precompContent.len));
         preSpec.output = prb_fmt(arena, "%.*s-%.*s.obj", preSpec.input.len - 2, preSpec.input.ptr, prb_LIT(outputSuffix));
         prb_Str cmd = constructCompileCmd(arena, preSpec);
         prb_assert(execCmd(arena, cmd));
+        prb_assert(prb_removePathIfExists(arena, preSpec.input));
 
         compileSpec.flags = prb_fmt(arena, "-Dprb_NO_IMPLEMENTATION %.*s", prb_LIT(compileSpec.flags));
         compileSpec.optObj = preSpec.output;
