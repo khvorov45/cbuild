@@ -31,6 +31,7 @@ int main() {
 ```
 
 Compile and run `build.c` to compile the main program.
+On linux you'll have to link the build program to pthread `-lpthread` if the compiler doesn't do it by default.
 
 If using in multiple translation units:
     - Define prb_NOT_STATIC in the translation unit that has the implementation
@@ -108,8 +109,6 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #include <glob.h>
 #include <time.h>
 #include <fcntl.h>
-
-// TODO(khvorov) Drop pthread?
 #include <pthread.h>
 
 #endif

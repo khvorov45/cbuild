@@ -34,6 +34,7 @@ int main() {
 ```
 
 Compile and run `build.c` to compile the main program.
+On linux you'll have to link the build program to pthread `-lpthread` if the compiler doesn't do it by default.
 
 # Why not zig build?
 
