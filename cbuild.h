@@ -3228,9 +3228,17 @@ prb_PUBLICDEF void
 prb_sleep(float ms) {
 #if prb_PLATFORM_WINDOWS
 
-    DWORD msec = (DWORD)ms;
+    prb_TimeStart timeStart = prb_timeStart();
+    DWORD msec = (DWORD)(ms);
     Sleep(msec);
-    // TODO(khvorov) Spin for the rest of the time or is there a nanosleep equivalent?
+    float msSpentSleeping = prb_getMsFrom(timeStart);
+
+    float left = ms - msSpentSleeping;
+    float msSpentSpinning = 0.0f;
+    timeStart = prb_timeStart();
+    while (msSpentSpinning < left) {
+        msSpentSpinning = prb_getMsFrom(timeStart);
+    }
 
 #elif prb_PLATFORM_LINUX
 

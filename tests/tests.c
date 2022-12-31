@@ -2593,7 +2593,7 @@ function void
 test_sleep(prb_Arena* arena) {
     prb_unused(arena);
     prb_TimeStart timeStart = prb_timeStart();
-    float         sleepMs = 10.0f;
+    float         sleepMs = 10.9f;
     prb_sleep(sleepMs);
     float ms = prb_getMsFrom(timeStart);
     prb_assert(ms >= sleepMs);
