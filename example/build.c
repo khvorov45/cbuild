@@ -1112,7 +1112,7 @@ main() {
     prb_TimeStart compileStart = prb_timeStart();
 
     // NOTE(khvorov) Force clean
-    prb_assert(prb_clearDir(arena, fribidi.objDir) == prb_Success);
+    // prb_assert(prb_clearDir(arena, fribidi.objDir) == prb_Success);
     // prb_assert(prb_clearDir(arena, icu.objDir) == prb_Success);
     // prb_assert(prb_clearDir(arena, freetype.objDir) == prb_Success);
     // prb_assert(prb_clearDir(arena, harfbuzz.objDir) == prb_Success);
