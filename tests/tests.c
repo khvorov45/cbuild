@@ -1,3 +1,8 @@
+#ifdef _MSC_VER
+#pragma warning(disable : 4464)  // relative include path contains '..'
+#pragma warning(disable: 5045) // Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
+#endif
+
 #include "../cbuild.h"
 
 #define function static
@@ -9,7 +14,7 @@ typedef int32_t  i32;
 typedef uint32_t u32;
 typedef size_t   usize;
 
-global_variable prb_Str globalSuffix = prb_STR("");
+global_variable prb_Str globalSuffix;
 
 function prb_Str*
 setdiff(prb_Str* arr1, prb_Str* arr2) {
@@ -122,8 +127,12 @@ escapeBackslashes(prb_Arena* arena, prb_Str str) {
     prb_GrowingStr gstr = prb_beginStr(arena);
 
     prb_StrScanner  scanner = prb_createStrScanner(str);
-    prb_StrFindSpec backslash = {};
-    backslash.pattern = prb_STR("\\");
+    prb_StrFindSpec backslash = {
+        .mode = prb_StrFindMode_AnyChar,
+        .direction = prb_StrDirection_FromStart,
+        .pattern = prb_STR("\\"),
+        .alwaysMatchEnd = false,
+    };
     while (prb_strScannerMove(&scanner, backslash, prb_StrScannerSide_AfterMatch)) {
         prb_addStrSegment(&gstr, "%.*s\\\\", prb_LIT(scanner.betweenLastMatches));
     }
@@ -146,14 +155,14 @@ testMacros(prb_Arena* arena) {
     i32 testArr[] = {1, 2, 3};
     prb_assert(prb_arrayCount(testArr) == 3);
 
-    prb_arenaAlignFreePtr(arena, alignof(i32));
+    prb_arenaAlignFreePtr(arena, prb_alignof(i32));
     void* ptrBefore = prb_arenaFreePtr(arena);
     i32*  arr = prb_arenaAllocArray(arena, i32, 3);
     prb_assert(arr == ptrBefore);
     void* ptrAfter = prb_arenaFreePtr(arena);
     prb_assert(ptrAfter == (u8*)ptrBefore + sizeof(i32) * 3);
 
-    prb_arenaAlignFreePtr(arena, alignof(prb_Str));
+    prb_arenaAlignFreePtr(arena, prb_alignof(prb_Str));
     ptrBefore = prb_arenaFreePtr(arena);
     prb_Str* strPtr = prb_arenaAllocStruct(arena, prb_Str);
     prb_assert(strPtr == ptrBefore);
@@ -430,7 +439,7 @@ test_getAbsolutePath(prb_Arena* arena) {
 
 #if prb_PLATFORM_WINDOWS
 
-    prb_Str currentVolume = {};
+    prb_Str currentVolume = {.ptr = 0, .len = 0};
     {
         prb_PathEntryIter iter = prb_createPathEntryIter(cwd);
         prb_assert(prb_pathEntryIterNext(&iter));
@@ -1116,7 +1125,7 @@ test_readEntireFile(prb_Arena* arena) {
     prb_assert(!readResult.success);
     readResult = prb_readEntireFile(arena, prb_STR(__FILE__));
     prb_assert(readResult.success);
-    prb_assert(prb_strStartsWith(prb_strFromBytes(readResult.content), prb_STR("#include \"../cbuild.h\"")));
+    prb_assert(prb_strStartsWith(prb_strFromBytes(readResult.content), prb_STR("#ifdef _MSC_VER")));
     prb_endTempMemory(temp);
 }
 
@@ -1239,9 +1248,12 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         str = prb_STR("p1at4pattern1 pattern2 pattern3p2a.t");
-        prb_StrFindSpec spec = {};
-        spec.pattern = prb_STR("pattern");
-        spec.mode = prb_StrFindMode_Exact;
+        prb_StrFindSpec spec = {
+            .mode = prb_StrFindMode_Exact,
+            .direction = prb_StrDirection_FromStart,
+            .pattern = prb_STR("pattern"),
+            .alwaysMatchEnd = false,
+        };
         prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(
             res.found
@@ -1263,9 +1275,12 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         str = prb_STR("p1at4pat1ern1 pat1ern2 pat1ern3p2a.p");
-        prb_StrFindSpec spec = {};
-        spec.pattern = prb_STR("pattern");
-        spec.mode = prb_StrFindMode_Exact;
+        prb_StrFindSpec spec = {
+            .mode = prb_StrFindMode_Exact,
+            .direction = prb_StrDirection_FromStart,
+            .pattern = prb_STR("pattern"),
+            .alwaysMatchEnd = false,
+        };
         prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(!res.found);
 
@@ -1276,10 +1291,12 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         str = prb_STR("中华人民共和国是目前世界上人口最多的国家");
-        prb_StrFindSpec spec = {};
-        spec.pattern = prb_STR("民共和国");
-        ;
-        spec.mode = prb_StrFindMode_Exact;
+        prb_StrFindSpec spec = {
+            .mode = prb_StrFindMode_Exact,
+            .direction = prb_StrDirection_FromStart,
+            .pattern = prb_STR("民共和国"),
+            .alwaysMatchEnd = false,
+        };
         prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(
             res.found
@@ -1300,10 +1317,12 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         str = prb_STR("中华人民共和国是目前世界上人口最多的国家");
-        prb_StrFindSpec spec = {};
-        spec.pattern = prb_STR("民共和国");
-        ;
-        spec.mode = prb_StrFindMode_AnyChar;
+        prb_StrFindSpec spec = {
+            .mode = prb_StrFindMode_AnyChar,
+            .direction = prb_StrDirection_FromStart,
+            .pattern = prb_STR("民共和国"),
+            .alwaysMatchEnd = false,
+        };
         prb_StrFindResult res = prb_strFind(str, spec);
         prb_assert(
             res.found
@@ -1324,7 +1343,8 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         line = prb_STR("line1\r\na");
-        prb_StrFindSpec spec = {};
+        prb_StrFindSpec spec;
+        prb_memset(&spec, 0, sizeof(spec));
         spec.mode = prb_StrFindMode_LineBreak;
         prb_StrFindResult find = prb_strFind(line, spec);
         prb_assert(find.found);
@@ -1342,7 +1362,8 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         line = prb_STR("line1\ra");
-        prb_StrFindSpec spec = {};
+        prb_StrFindSpec spec;
+        prb_memset(&spec, 0, sizeof(spec));
         spec.mode = prb_StrFindMode_LineBreak;
         prb_StrFindResult find = prb_strFind(line, spec);
         prb_assert(find.found);
@@ -1360,7 +1381,8 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         line = prb_STR("line1\na");
-        prb_StrFindSpec spec = {};
+        prb_StrFindSpec spec;
+        prb_memset(&spec, 0, sizeof(spec));
         spec.mode = prb_StrFindMode_LineBreak;
         prb_StrFindResult find = prb_strFind(line, spec);
         prb_assert(find.found);
@@ -1378,7 +1400,8 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         line = prb_STR("line1\na\nb");
-        prb_StrFindSpec spec = {};
+        prb_StrFindSpec spec;
+        prb_memset(&spec, 0, sizeof(spec));
         spec.mode = prb_StrFindMode_LineBreak;
         prb_StrFindResult find = prb_strFind(line, spec);
         prb_assert(find.found);
@@ -1396,7 +1419,8 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         line = prb_STR("line1");
-        prb_StrFindSpec spec = {};
+        prb_StrFindSpec spec;
+        prb_memset(&spec, 0, sizeof(spec));
         spec.mode = prb_StrFindMode_LineBreak;
         prb_StrFindResult find = prb_strFind(line, spec);
         prb_assert(find.found);
@@ -1414,7 +1438,8 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         line = prb_STR("\nline1");
-        prb_StrFindSpec spec = {};
+        prb_StrFindSpec spec;
+        prb_memset(&spec, 0, sizeof(spec));
         spec.mode = prb_StrFindMode_LineBreak;
         prb_StrFindResult find = prb_strFind(line, spec);
         prb_assert(find.found);
@@ -1432,11 +1457,12 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         line = prb_STR("line");
-        prb_StrFindSpec spec = {};
-        spec.pattern = prb_STR("123");
-        spec.mode = prb_StrFindMode_AnyChar;
-        spec.alwaysMatchEnd = true;
-        spec.direction = prb_StrDirection_FromEnd;
+        prb_StrFindSpec spec = {
+            .mode = prb_StrFindMode_AnyChar,
+            .direction = prb_StrDirection_FromEnd,
+            .pattern = prb_STR("123"),
+            .alwaysMatchEnd = true,
+        };
         prb_StrFindResult find = prb_strFind(line, spec);
         prb_assert(find.found);
         prb_assert(prb_streq(find.beforeMatch, prb_STR("")));
@@ -1446,16 +1472,24 @@ test_strFind(prb_Arena* arena) {
 
     {
         prb_Str         line = prb_STR("lines");
-        prb_StrFindSpec spec = {};
-        spec.pattern = prb_STR("linxs");
+        prb_StrFindSpec spec = {
+            .mode = prb_StrFindMode_Exact,
+            .direction = prb_StrDirection_FromStart,
+            .pattern = prb_STR("linxs"),
+            .alwaysMatchEnd = false,
+        };
         prb_StrFindResult find = prb_strFind(line, spec);
         prb_assert(!find.found);
     }
 
     {
         prb_Str         line = prb_STR("lines");
-        prb_StrFindSpec spec = {};
-        spec.pattern = prb_STR("");
+        prb_StrFindSpec spec = {
+            .mode = prb_StrFindMode_Exact,
+            .direction = prb_StrDirection_FromStart,
+            .pattern = prb_STR(""),
+            .alwaysMatchEnd = false,
+        };
         prb_StrFindResult find = prb_strFind(line, spec);
         prb_assert(!find.found);
     }
@@ -1951,7 +1985,8 @@ test_strScanner(prb_Arena* arena) {
         prb_Str        lines = prb_STR("line1\r\nline2\nline3\rline4\n\nline6\r\rline8\r\n\r\nline10\r\n\nline12\r\r\nline14");
         prb_StrScanner iter = prb_createStrScanner(lines);
 
-        prb_StrFindSpec lineBreakSpec = {};
+        prb_StrFindSpec lineBreakSpec;
+        prb_memset(&lineBreakSpec, 0, sizeof(lineBreakSpec));
         lineBreakSpec.mode = prb_StrFindMode_LineBreak;
 
         prb_assert(iter.matchCount == 0);
@@ -2045,7 +2080,8 @@ test_strScanner(prb_Arena* arena) {
         prb_Str        lines = prb_STR("\n");
         prb_StrScanner iter = prb_createStrScanner(lines);
 
-        prb_StrFindSpec lineBreakSpec = {};
+        prb_StrFindSpec lineBreakSpec;
+        prb_memset(&lineBreakSpec, 0, sizeof(lineBreakSpec));
         lineBreakSpec.mode = prb_StrFindMode_LineBreak;
 
         prb_assert(prb_strScannerMove(&iter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
@@ -2182,13 +2218,16 @@ test_terminate(prb_Arena* arena) {
         prb_Str progExe = prb_replaceExt(arena, progPath, prb_STR("exe"));
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
 
+        prb_ProcessSpec nullSpec;
+        prb_memset(&nullSpec, 0, sizeof(nullSpec));
+
         {
-            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_Process proc = prb_createProcess(compileCmd, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
 
         {
-            prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+            prb_Process proc = prb_createProcess(progExe, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No) == statuses[progIndex]);
         }
     }
@@ -2219,23 +2258,30 @@ test_getCmdline(prb_Arena* arena) {
     prb_Str programSrc = prb_pathJoin(arena, tempDir, prb_STR("program.c"));
     prb_assert(prb_writeEntireFile(arena, programSrc, program.ptr, program.len));
 
+    prb_ProcessSpec nullSpec;
+    prb_memset(&nullSpec, 0, sizeof(nullSpec));
+
     prb_Str     cmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(programSrc), prb_LIT(programExe));
-    prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+    prb_Process proc = prb_createProcess(cmd, nullSpec);
     prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
 
-    proc = prb_createProcess(programExe, (prb_ProcessSpec) {});
+    proc = prb_createProcess(programExe, nullSpec);
     prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No) == prb_Failure);
 
     cmd = prb_fmt(arena, "%.*s arg1 arg2", prb_LIT(programExe));
-    proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+    proc = prb_createProcess(cmd, nullSpec);
     prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
 
     prb_assert(prb_removePathIfExists(arena, tempDir));
 
     prb_Str ownCmd = prb_getCmdline(arena);
     {
-        prb_StrFindSpec spec = {};
-        spec.pattern = globalSuffix;
+        prb_StrFindSpec spec = {
+            .mode = prb_StrFindMode_Exact,
+            .direction = prb_StrDirection_FromStart,
+            .pattern = globalSuffix,
+            .alwaysMatchEnd = false,
+        };
         prb_assert(prb_strFind(ownCmd, spec).found);
     }
 
@@ -2265,15 +2311,18 @@ test_getCmdArgs(prb_Arena* arena) {
     prb_Str programSrc = prb_pathJoin(arena, tempDir, prb_STR("program.c"));
     prb_assert(prb_writeEntireFile(arena, programSrc, program.ptr, program.len));
 
+    prb_ProcessSpec nullSpec;
+    prb_memset(&nullSpec, 0, sizeof(nullSpec));
+
     prb_Str     cmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(programSrc), prb_LIT(programExe));
-    prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+    prb_Process proc = prb_createProcess(cmd, nullSpec);
     prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
 
-    proc = prb_createProcess(programExe, (prb_ProcessSpec) {});
+    proc = prb_createProcess(programExe, nullSpec);
     prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No) == prb_Failure);
 
     cmd = prb_fmt(arena, "%.*s arg1 arg2", prb_LIT(programExe));
-    proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+    proc = prb_createProcess(cmd, nullSpec);
     prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
 
     prb_assert(prb_removePathIfExists(arena, tempDir));
@@ -2361,6 +2410,9 @@ test_process(prb_Arena* arena) {
 #error unimplemented
 #endif
 
+    prb_ProcessSpec nullSpec;
+    prb_memset(&nullSpec, 0, sizeof(nullSpec));
+
     {
         prb_Str helloWorldPath = prb_pathJoin(arena, dir, prb_STR("helloworld.c"));
         prb_Str helloWorld = prb_STR(
@@ -2378,12 +2430,15 @@ test_process(prb_Arena* arena) {
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(helloWorldPath), prb_LIT(helloExe));
 
         {
-            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_ProcessSpec spec;
+            prb_memset(&spec, 0, sizeof(spec));
+            prb_Process proc = prb_createProcess(compileCmd, spec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
 
         {
-            prb_ProcessSpec spec = {};
+            prb_ProcessSpec spec;
+            prb_memset(&spec, 0, sizeof(spec));
             spec.redirectStdout = true;
             spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
             spec.redirectStderr = true;
@@ -2395,7 +2450,8 @@ test_process(prb_Arena* arena) {
         }
 
         {
-            prb_ProcessSpec spec = {};
+            prb_ProcessSpec spec;
+            prb_memset(&spec, 0, sizeof(spec));
             spec.redirectStderr = true;
             spec.stderrFilepath = prb_pathJoin(arena, dir, prb_STR("stderr.txt"));
             spec.redirectStdout = true;
@@ -2407,7 +2463,8 @@ test_process(prb_Arena* arena) {
         }
 
         {
-            prb_ProcessSpec spec = {};
+            prb_ProcessSpec spec;
+            prb_memset(&spec, 0, sizeof(spec));
             spec.redirectStdout = true;
             spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
             spec.redirectStderr = true;
@@ -2427,7 +2484,8 @@ test_process(prb_Arena* arena) {
         }
 
         {
-            prb_ProcessSpec spec = {};
+            prb_ProcessSpec spec;
+            prb_memset(&spec, 0, sizeof(spec));
             spec.redirectStdout = true;
             spec.stdoutFilepath = prb_pathJoin(arena, dir, prb_STR("stdout.txt"));
             spec.redirectStderr = true;
@@ -2465,17 +2523,20 @@ test_process(prb_Arena* arena) {
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
 
         {
-            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_ProcessSpec spec;
+            prb_memset(&spec, 0, sizeof(spec));
+            prb_Process proc = prb_createProcess(compileCmd, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
 
         {
-            prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+            prb_Process proc = prb_createProcess(progExe, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No) == prb_Failure);
         }
 
         {
-            prb_ProcessSpec spec = {};
+            prb_ProcessSpec spec;
+            prb_memset(&spec, 0, sizeof(spec));
             spec.addEnv = addEnv;
             prb_Process proc = prb_createProcess(progExe, spec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
@@ -2503,19 +2564,20 @@ test_process(prb_Arena* arena) {
 
         prb_Str progExe = prb_replaceExt(arena, progPath, prb_STR("exe"));
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
-
+        
         {
-            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_Process proc = prb_createProcess(compileCmd, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
 
         {
-            prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+            prb_Process proc = prb_createProcess(progExe, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No) == prb_Failure);
         }
 
         {
-            prb_ProcessSpec spec = {};
+            prb_ProcessSpec spec;
+            prb_memset(&spec, 0, sizeof(spec));
             spec.addEnv = addEnv;
             prb_Process proc = prb_createProcess(progExe, spec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
@@ -2546,19 +2608,20 @@ test_process(prb_Arena* arena) {
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
 
         {
-            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_Process proc = prb_createProcess(compileCmd, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
 
         {
-            prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+            prb_Process proc = prb_createProcess(progExe, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
 
         prb_Str addEnv = prb_STR("test_env_var=1");
 
         {
-            prb_ProcessSpec spec = {};
+            prb_ProcessSpec spec;
+            prb_memset(&spec, 0, sizeof(spec));
             spec.addEnv = addEnv;
             prb_Process proc = prb_createProcess(progExe, spec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
@@ -2575,12 +2638,12 @@ test_process(prb_Arena* arena) {
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
 
         {
-            prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+            prb_Process proc = prb_createProcess(compileCmd, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
         }
 
         {
-            prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+            prb_Process proc = prb_createProcess(progExe, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_Yes));
             prb_assert(prb_killProcesses(&proc, 1));
         }
@@ -2590,7 +2653,7 @@ test_process(prb_Arena* arena) {
     {
         prb_Str     progPaths[] = {prb_pathJoin(arena, dir, prb_STR("success.c")), prb_pathJoin(arena, dir, prb_STR("fail.c"))};
         prb_Str     progs[] = {prb_STR("int main() {return 0;}"), prb_STR("int main() {return 1;}")};
-        prb_Process procs[2] = {};
+        prb_Process procs[2];
         for (i32 progIndex = 0; progIndex < prb_arrayCount(progPaths); progIndex++) {
             prb_Str progPath = progPaths[progIndex];
             prb_Str prog = progs[progIndex];
@@ -2600,12 +2663,12 @@ test_process(prb_Arena* arena) {
             prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
 
             {
-                prb_Process proc = prb_createProcess(compileCmd, (prb_ProcessSpec) {});
+                prb_Process proc = prb_createProcess(compileCmd, nullSpec);
                 prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
             }
 
             {
-                prb_Process proc = prb_createProcess(progExe, (prb_ProcessSpec) {});
+                prb_Process proc = prb_createProcess(progExe, nullSpec);
                 prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_Yes));
                 procs[progIndex] = proc;
             }
@@ -2826,7 +2889,8 @@ test_fileformat(prb_Arena* arena) {
     prb_StrScanner lineIter = prb_createStrScanner(fileContentsStr);
 
     prb_Str*        headerNames = 0;
-    prb_StrFindSpec lineBreakSpec = {};
+    prb_StrFindSpec lineBreakSpec;
+    prb_memset(&lineBreakSpec, 0, sizeof(lineBreakSpec));
     lineBreakSpec.mode = prb_StrFindMode_LineBreak;
     while (prb_strScannerMove(&lineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success) {
         prb_assert(!prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_PUBLICDEF")));
@@ -2836,12 +2900,19 @@ test_fileformat(prb_Arena* arena) {
             arrput(headerNames, name);
         } else if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_PUBLICDEC"))) {
             prb_StrScanner  scanner = prb_createStrScanner(lineIter.betweenLastMatches);
-            prb_StrFindSpec bracket = {};
-            bracket.pattern = prb_STR("(");
+            prb_StrFindSpec bracket = {
+                .mode = prb_StrFindMode_AnyChar,
+                .direction = prb_StrDirection_FromStart,
+                .pattern = prb_STR("("),
+                .alwaysMatchEnd = false,
+            };
             prb_assert(prb_strScannerMove(&scanner, bracket, prb_StrScannerSide_AfterMatch));
-            prb_StrFindSpec space = {};
-            space.pattern = prb_STR(" ");
-            space.direction = prb_StrDirection_FromEnd;
+            prb_StrFindSpec space = {
+                .mode = prb_StrFindMode_AnyChar,
+                .direction = prb_StrDirection_FromEnd,
+                .pattern = prb_STR(" "),
+                .alwaysMatchEnd = false,
+            };
             prb_assert(prb_strScannerMove(&scanner, space, prb_StrScannerSide_BeforeMatch));
             arrput(headerNames, scanner.betweenLastMatches);
         } else if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("#ifndef prb_NO_IMPLEMENTATION"))) {
@@ -2854,16 +2925,24 @@ test_fileformat(prb_Arena* arena) {
         prb_assert(!prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_PUBLICDEC")));
 
         if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("// SECTION"))) {
-            prb_StrFindSpec spec = {};
-            spec.pattern = prb_STR(" (implementation)");
+            prb_StrFindSpec spec = {
+                .mode = prb_StrFindMode_Exact,
+                .direction = prb_StrDirection_FromStart,
+                .pattern = prb_STR(" (implementation)"),
+                .alwaysMatchEnd = false,
+            };
             prb_StrFindResult implementationRes = prb_strFind(lineIter.betweenLastMatches, spec);
             prb_assert(implementationRes.found);
             arrput(implNames, implementationRes.beforeMatch);
         } else if (prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_PUBLICDEF"))) {
             prb_assert(prb_strScannerMove(&lineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch) == prb_Success);
             prb_assert(prb_strStartsWith(lineIter.betweenLastMatches, prb_STR("prb_")));
-            prb_StrFindSpec spec = {};
-            spec.pattern = prb_STR("(");
+            prb_StrFindSpec spec = {
+                .mode = prb_StrFindMode_AnyChar,
+                .direction = prb_StrDirection_FromStart,
+                .pattern = prb_STR("("),
+                .alwaysMatchEnd = false,
+            };
             prb_StrFindResult nameLenRes = prb_strFind(lineIter.betweenLastMatches, spec);
             prb_assert(nameLenRes.found);
             arrput(implNames, nameLenRes.beforeMatch);
@@ -2886,8 +2965,12 @@ test_fileformat(prb_Arena* arena) {
                 arrput(testNames, testFileLineIter.betweenLastMatches);
             }
         } else if (prb_strStartsWith(testFileLineIter.betweenLastMatches, testFunctionsPrefix)) {
-            prb_StrFindSpec bracketSpec = {};
-            bracketSpec.pattern = prb_STR("(");
+            prb_StrFindSpec bracketSpec = {
+                .mode = prb_StrFindMode_AnyChar,
+                .direction = prb_StrDirection_FromStart,
+                .pattern = prb_STR("("),
+                .alwaysMatchEnd = false,
+            };
             prb_StrFindResult bracket = prb_strFind(testFileLineIter.betweenLastMatches, bracketSpec);
             prb_assert(bracket.found);
             testNameToPrbName(arena, bracket.beforeMatch, &testNames);
@@ -2900,7 +2983,7 @@ test_fileformat(prb_Arena* arena) {
 
     prb_Str* testNamesInMain = 0;
     while (prb_strScannerMove(&testFileLineIter, lineBreakSpec, prb_StrScannerSide_AfterMatch)) {
-        if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("main() {"))) {
+        if (prb_strStartsWith(testFileLineIter.betweenLastMatches, prb_STR("main(void) {"))) {
             break;
         }
     }
@@ -2913,8 +2996,12 @@ test_fileformat(prb_Arena* arena) {
             }
         } else {
             prb_StrScanner  scanner = prb_createStrScanner(testFileLineIter.betweenLastMatches);
-            prb_StrFindSpec spec = {};
-            spec.pattern = prb_STR("test_");
+            prb_StrFindSpec spec = {
+                .mode = prb_StrFindMode_Exact,
+                .direction = prb_StrDirection_FromStart,
+                .pattern = prb_STR("test_"),
+                .alwaysMatchEnd = false,
+            };
             if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
                 spec.pattern = prb_STR("(,");
                 spec.mode = prb_StrFindMode_AnyChar;
@@ -2953,11 +3040,15 @@ test_fileformat(prb_Arena* arena) {
         for (i32 strIndex = 0; strIndex < prb_arrayCount(strWithExample); strIndex++) {
             prb_Str strToSearch = strWithExample[strIndex];
 
-            prb_Str exampleCode = {};
+            prb_Str exampleCode = {.ptr = 0, .len = 0};
             {
                 prb_StrScanner  scanner = prb_createStrScanner(strToSearch);
-                prb_StrFindSpec spec = {};
-                spec.pattern = prb_STR("```c");
+                prb_StrFindSpec spec = {
+                    .mode = prb_StrFindMode_Exact,
+                    .direction = prb_StrDirection_FromStart,
+                    .pattern = prb_STR("```c"),
+                    .alwaysMatchEnd = false,
+                };
                 prb_assert(prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch));
                 spec.pattern = prb_STR("```");
                 prb_assert(prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch));
@@ -2967,13 +3058,17 @@ test_fileformat(prb_Arena* arena) {
             prb_Str buildProgramSrc = prb_pathJoin(arena, dir, prb_STR("build.c"));
             prb_assert(prb_writeEntireFile(arena, buildProgramSrc, exampleCode.ptr, exampleCode.len));
             prb_Str buildProgramExe = prb_pathJoin(arena, dir, prb_STR("build.exe"));
+
+            prb_ProcessSpec nullSpec;
+            prb_memset(&nullSpec, 0, sizeof(nullSpec));
+
             {
                 prb_Str     cmd = prb_fmt(arena, "clang -Wall -Wextra %.*s -o %.*s", prb_LIT(buildProgramSrc), prb_LIT(buildProgramExe));
-                prb_Process proc = prb_createProcess(cmd, (prb_ProcessSpec) {});
+                prb_Process proc = prb_createProcess(cmd, nullSpec);
                 prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
             }
             {
-                prb_Process proc = prb_createProcess(buildProgramExe, (prb_ProcessSpec) {});
+                prb_Process proc = prb_createProcess(buildProgramExe, nullSpec);
                 prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
             }
         }
@@ -2984,7 +3079,7 @@ test_fileformat(prb_Arena* arena) {
 }
 
 int
-main() {
+main(void) {
     prb_TimeStart testStart = prb_timeStart();
     prb_Arena     arena_ = prb_createArenaFromVmem(1 * prb_GIGABYTE);
     prb_Arena*    arena = &arena_;

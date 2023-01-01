@@ -106,7 +106,7 @@ constructCompileCmd(prb_Arena* arena, CompileSpec spec) {
 #if prb_PLATFORM_WINDOWS
             case Compiler_Gcc:
             case Compiler_Clang: prb_addStrSegment(&cmd, " -Xlinker /incremental:no"); break;
-            case Compiler_Msvc: break;
+            case Compiler_Msvc: prb_addStrSegment(&cmd, " /link /incremental:no"); break;
 #elif prb_PLATFORM_LINUX
             case Compiler_Gcc:
             case Compiler_Clang: prb_addStrSegment(&cmd, " -lpthread"); break;
