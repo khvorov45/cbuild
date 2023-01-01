@@ -74,9 +74,11 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 
 #ifdef _MSC_VER
 #pragma warning(push)
-#pragma warning(disable : 4820)  // padding
-#pragma warning(disable : 4201)  // nonstandard extension used: nameless struct/union
 #pragma warning(disable : 4146)  // unary minus operator applied to unsigned type, result still unsigned
+#pragma warning(disable : 4201)  // nonstandard extension used: nameless struct/union
+#pragma warning(disable : 4505)  // unreferenced function with internal linkage has been removed
+#pragma warning(disable : 4576)  // a parenthesized type followed by an initializer list is a non-standard explicit type conversion syntax
+#pragma warning(disable : 4820)  // padding
 #pragma warning(disable : 5045)  // Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
 #endif
 
@@ -142,11 +144,17 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #define prb_alignof alignof
 #endif
 
+#if defined(__cplusplus)
+#define prb_FALLTHROUGH [[fallthrough]]
+#else
+#define prb_FALLTHROUGH
+#endif
+
 #define prb_max(a, b) (((a) > (b)) ? (a) : (b))
 #define prb_min(a, b) (((a) < (b)) ? (a) : (b))
 #define prb_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define prb_arrayCount(arr) (int32_t)(sizeof(arr) / sizeof(arr[0]))
-#define prb_arenaAllocArray(arena, type, len) (type*)prb_arenaAllocAndZero(arena, (len) * sizeof(type), prb_alignof(type))
+#define prb_arenaAllocArray(arena, type, len) (type*)prb_arenaAllocAndZero(arena, (len) * (int32_t)sizeof(type), prb_alignof(type))
 #define prb_arenaAllocStruct(arena, type) (type*)prb_arenaAllocAndZero(arena, sizeof(type), prb_alignof(type))
 #define prb_isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
 #define prb_unused(x) ((x) = (x))
@@ -235,7 +243,7 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 
 #ifndef prb_assert
 // NOTE(khvorov) Assign condition to a variable to catch prb_assert(x = y) instead of prb_assert(x == y)
-#define prb_assert(condition) do { bool assertbool = condition; if (!(assertbool)) { prb_assertAction(); } } while (0)
+#define prb_assert(condition) do { bool assertbool = (bool)(condition); if (!(assertbool)) { prb_assertAction(); } } while (0)
 #endif
 // clang-format on
 
@@ -1023,7 +1031,7 @@ prb_stbds_shmode_func_wrapper(T*, size_t elemsize, int mode) {
 prb_PUBLICDEF bool
 prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes) {
     prb_assert(bytes >= 0);
-    int  memcmpResult = prb_memcmp(ptr1, ptr2, bytes);
+    int  memcmpResult = prb_memcmp(ptr1, ptr2, (size_t)bytes);
     bool result = memcmpResult == 0;
     return result;
 }
@@ -1033,7 +1041,7 @@ prb_getOffsetForAlignment(void* ptr, int32_t align) {
     prb_assert(prb_isPowerOf2(align));
     uintptr_t ptrAligned = (uintptr_t)((uint8_t*)ptr + (align - 1)) & (uintptr_t)(~(align - 1));
     prb_assert(ptrAligned >= (uintptr_t)ptr);
-    intptr_t diff = ptrAligned - (uintptr_t)ptr;
+    intptr_t diff = (intptr_t)(ptrAligned - (uintptr_t)ptr);
     prb_assert(diff < align && diff >= 0);
     return (int32_t)diff;
 }
@@ -1042,7 +1050,7 @@ prb_PUBLICDEF void*
 prb_vmemAlloc(int32_t bytes) {
 #if prb_PLATFORM_WINDOWS
 
-    void* ptr = VirtualAlloc(0, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    void* ptr = VirtualAlloc(0, (SIZE_T)bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     prb_assert(ptr);
 
 #elif prb_PLATFORM_LINUX
@@ -1088,7 +1096,7 @@ prb_arenaAllocAndZero(prb_Arena* arena, int32_t size, int32_t align) {
     prb_arenaAlignFreePtr(arena, align);
     void* result = prb_arenaFreePtr(arena);
     prb_arenaChangeUsed(arena, size);
-    prb_memset(result, 0, size);
+    prb_memset(result, 0, (size_t)size);
     return result;
 }
 
@@ -1145,13 +1153,13 @@ static prb_windows_WideStr
 prb_windows_getWideStr(prb_Arena* arena, prb_Str str) {
     prb_windows_WideStr result = {.ptr = 0, .len = 0};
     prb_arenaAlignFreePtr(arena, prb_alignof(uint16_t));
-    result.ptr = prb_arenaFreePtr(arena);
-    int multiByteResult = MultiByteToWideChar(CP_UTF8, 0, str.ptr, str.len, prb_arenaFreePtr(arena), prb_arenaFreeSize(arena) / sizeof(uint16_t));
+    result.ptr = (LPWSTR)prb_arenaFreePtr(arena);
+    int multiByteResult = MultiByteToWideChar(CP_UTF8, 0, str.ptr, str.len, result.ptr, prb_arenaFreeSize(arena) / (int32_t)sizeof(uint16_t));
     prb_assert(multiByteResult > 0);
     result.len = multiByteResult;
     LPWSTR temp = result.ptr;
     prb_unused(temp);
-    prb_arenaChangeUsed(arena, multiByteResult * sizeof(uint16_t));
+    prb_arenaChangeUsed(arena, multiByteResult * (int32_t)sizeof(uint16_t));
     prb_arenaAllocAndZero(arena, 2, 1);  // NOTE(khvorov) Null terminator just in case
     return result;
 }
@@ -1159,7 +1167,7 @@ prb_windows_getWideStr(prb_Arena* arena, prb_Str str) {
 static prb_Str
 prb_windows_strFromWideStr(prb_Arena* arena, prb_windows_WideStr wstr) {
     prb_Str result = {.ptr = 0, .len = 0};
-    char*   ptr = prb_arenaFreePtr(arena);
+    char*   ptr = (char*)prb_arenaFreePtr(arena);
     int     bytesWritten = WideCharToMultiByte(CP_UTF8, 0, wstr.ptr, wstr.len, ptr, prb_arenaFreeSize(arena), 0, 0);
     prb_assert(bytesWritten > 0);
     result.ptr = ptr;
@@ -1512,8 +1520,8 @@ prb_getWorkingDir(prb_Arena* arena) {
     LPWSTR ptrWide = (LPWSTR)prb_arenaFreePtr(arena);
     DWORD  lenWide = GetCurrentDirectoryW(prb_arenaFreeSize(arena) / sizeof(uint16_t), ptrWide);
     prb_assert(lenWide > 0);
-    prb_arenaChangeUsed(arena, lenWide * sizeof(uint16_t));
-    result = prb_windows_strFromWideStr(arena, (prb_windows_WideStr) {ptrWide, lenWide});
+    prb_arenaChangeUsed(arena, (int32_t)lenWide * (int32_t)sizeof(uint16_t));
+    result = prb_windows_strFromWideStr(arena, (prb_windows_WideStr) {ptrWide, (int32_t)lenWide});
     // NOTE(khvorov) Change backslashes to forward slashes
     for (int32_t index = 0; index < result.len; index++) {
         if (result.ptr[index] == '\\') {
@@ -1853,14 +1861,14 @@ prb_readEntireFile(prb_Arena* arena, prb_Str path) {
         if (GetFileSizeEx(handle.handle, &size)) {
             prb_assert(size.QuadPart <= INT32_MAX);
             int32_t  bytesToRead = (int32_t)size.QuadPart;
-            uint8_t* buf = prb_arenaAllocAndZero(arena, bytesToRead, 1);
+            uint8_t* buf = (uint8_t*)prb_arenaAllocAndZero(arena, bytesToRead, 1);
             DWORD    bytesRead = 0;
-            if (ReadFile(handle.handle, buf, bytesToRead, &bytesRead, 0)) {
+            if (ReadFile(handle.handle, buf, (DWORD)bytesToRead, &bytesRead, 0)) {
                 prb_assert(bytesRead <= INT32_MAX);
                 if ((int32_t)bytesRead == bytesToRead) {
                     result.success = true;
                     result.content.data = buf;
-                    result.content.len = bytesRead;
+                    result.content.len = (int32_t)bytesRead;
                 }
             }
         }
@@ -1892,6 +1900,7 @@ prb_readEntireFile(prb_Arena* arena, prb_Str path) {
 
 prb_PUBLICDEF prb_Status
 prb_writeEntireFile(prb_Arena* arena, prb_Str path, const void* content, int32_t contentLen) {
+    prb_assert(contentLen >= 0);
     prb_TempMemory temp = prb_beginTempMemory(arena);
     prb_Status     result = prb_Failure;
     prb_Str        parent = prb_getParentDir(arena, path);
@@ -1900,7 +1909,7 @@ prb_writeEntireFile(prb_Arena* arena, prb_Str path, const void* content, int32_t
         prb_windows_OpenResult handle = prb_windows_open(arena, path, GENERIC_WRITE, 0, CREATE_ALWAYS, 0);
         if (handle.success) {
             DWORD bytesWritten = 0;
-            if (WriteFile(handle.handle, content, contentLen, &bytesWritten, 0)) {
+            if (WriteFile(handle.handle, content, (DWORD)contentLen, &bytesWritten, 0)) {
                 prb_assert(bytesWritten <= INT32_MAX);
                 result = (int32_t)bytesWritten == contentLen ? prb_Success : prb_Failure;
             }
@@ -1928,7 +1937,7 @@ prb_getFileHash(prb_Arena* arena, prb_Str filepath) {
     prb_ReadEntireFileResult readRes = prb_readEntireFile(arena, filepath);
     if (readRes.success) {
         result.valid = true;
-        result.hash = prb_stbds_hash_bytes(readRes.content.data, readRes.content.len, 1);
+        result.hash = prb_stbds_hash_bytes(readRes.content.data, (size_t)readRes.content.len, (size_t)1);
     }
     prb_endTempMemory(temp);
     return result;
@@ -2262,7 +2271,7 @@ prb_writeToStdout(prb_Str msg) {
 #if prb_PLATFORM_WINDOWS
 
     HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
-    WriteFile(out, msg.ptr, msg.len, 0, 0);
+    WriteFile(out, msg.ptr, (DWORD)msg.len, 0, 0);
 
 #elif prb_PLATFORM_LINUX
 
@@ -2354,7 +2363,7 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
         int32_t  chBytes = 0;
         bool     isValid = false;
 
-        uint8_t firstByte = iter->str.ptr[iter->curByteOffset];
+        uint8_t firstByte = (uint8_t)iter->str.ptr[iter->curByteOffset];
         bool    isAscii = firstByte < 0b10000000;
         if (isAscii) {
             isValid = true;
@@ -2378,9 +2387,9 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
                                 chBytes = 4;
                             }
                         }
-                        ch = firstByte & firstByteMask[chBytes - 2];
+                        ch = (uint32_t)(firstByte & firstByteMask[chBytes - 2]);
                         for (int32_t byteIndex = 1; byteIndex < chBytes; byteIndex++) {
-                            uint8_t byte = iter->str.ptr[iter->curByteOffset + byteIndex];
+                            uint8_t byte = (uint8_t)iter->str.ptr[iter->curByteOffset + byteIndex];
                             if (byte >= 0b10000000 && byte < 0b11000000) {
                                 ch = (ch << 6) | (byte & 0b00111111);
                             } else {
@@ -2393,10 +2402,10 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
 
                 case prb_StrDirection_FromEnd: {
                     if (firstByte < 0b11000000) {
-                        ch = firstByte & 0b00111111;
+                        ch = (uint32_t)(firstByte & 0b00111111);
                         int32_t maxExtraBytes = prb_min(3, iter->curByteOffset);
                         for (int32_t byteIndex = 0; byteIndex < maxExtraBytes; byteIndex++) {
-                            uint8_t byte = iter->str.ptr[iter->curByteOffset - 1 - byteIndex];
+                            uint8_t byte = (uint8_t)iter->str.ptr[iter->curByteOffset - 1 - byteIndex];
                             int32_t chBytesTaken = 6 * (byteIndex + 1);
                             if (byte >= 0b10000000 && byte < 0b11000000) {
                                 ch = ((byte & 0b00111111) << chBytesTaken) | ch;
@@ -2493,11 +2502,11 @@ prb_parseUint(prb_Str digits, uint64_t base) {
             uint64_t value = 0;
             char     ch = digits.ptr[digitsIndex];
             if (ch >= '0' && ch <= '9') {
-                value = ch - '0';
+                value = (uint64_t)(ch - '0');
             } else if (base == 16 && ch >= 'A' && ch <= 'F') {
-                value = ch - 'A' + 10;
+                value = (uint64_t)(ch - 'A' + 10);
             } else if (base == 16 && ch >= 'a' && ch <= 'f') {
-                value = ch - 'a' + 10;
+                value = (uint64_t)(ch - 'a' + 10);
             } else {
                 result.success = false;
             }
@@ -2724,7 +2733,7 @@ prb_linux_getAffinity(prb_Arena* arena) {
 prb_PUBLICDEF void
 prb_terminate(int32_t code) {
 #if prb_PLATFORM_WINDOWS
-    ExitProcess(code);
+    ExitProcess((UINT)code);
 #elif prb_PLATFORM_LINUX
     exit(code);
 #else
@@ -2824,7 +2833,7 @@ prb_getArgArrayFromStr(prb_Arena* arena, prb_Str str) {
     }
 
     // NOTE(khvorov) Arg array needs a null at the end
-    prb_stbds_arrsetcap(args, prb_stbds_arrlen(args) + 1);
+    prb_stbds_arrsetcap(args, (size_t)(prb_stbds_arrlen(args) + 1));
     args[prb_stbds_arrlen(args)] = 0;
 
     return args;
@@ -3076,7 +3085,7 @@ prb_launchProcesses(prb_Arena* arena, prb_Process* procs, int32_t procCount, prb
                             existingEnvLen += 1;
                         }
                     }
-                    env = prb_arenaAllocArray(arena, uint16_t, envCopy.len + 1 + existingEnvLen + 2);
+                    env = (LPWCH)prb_arenaAllocArray(arena, uint16_t, envCopy.len + 1 + existingEnvLen + 2);
                     prb_memcpy(env, envCopy.ptr, envCopy.len * sizeof(*envCopy.ptr));
                     prb_memcpy(env + envCopy.len + 1, existingEnv, existingEnvLen * sizeof(*existingEnv));
                     FreeEnvironmentStringsW(existingEnv);
@@ -3404,11 +3413,11 @@ prb_getenv(prb_Arena* arena, prb_Str name) {
     prb_arenaAlignFreePtr(arena, prb_alignof(uint16_t));
     prb_windows_WideStr wname = prb_windows_getWideStr(arena, name);
     LPWSTR              wptr = (LPWSTR)prb_arenaFreePtr(arena);
-    DWORD               getEnvResult = GetEnvironmentVariableW(wname.ptr, wptr, prb_arenaFreeSize(arena));
+    DWORD               getEnvResult = GetEnvironmentVariableW(wname.ptr, wptr, (DWORD)prb_arenaFreeSize(arena));
     if (getEnvResult > 0) {
-        prb_arenaChangeUsed(arena, getEnvResult * sizeof(*wptr));
+        prb_arenaChangeUsed(arena, (int32_t)getEnvResult * (int32_t)sizeof(*wptr));
         prb_arenaAllocAndZero(arena, 2, 1);  // NOTE(khvorov) Null terminator
-        result.str = prb_windows_strFromWideStr(arena, (prb_windows_WideStr) {wptr, getEnvResult});
+        result.str = prb_windows_strFromWideStr(arena, (prb_windows_WideStr) {wptr, (int32_t)getEnvResult});
         result.found = true;
     }
 
@@ -3959,7 +3968,7 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
 
         // get the field width
         if (f[0] == '*') {
-            fw = va_arg(va, prb_stbsp__uint32);
+            fw = va_arg(va, prb_stbsp__int32);
             ++f;
         } else {
             while ((f[0] >= '0') && (f[0] <= '9')) {
@@ -3971,7 +3980,7 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
         if (f[0] == '.') {
             ++f;
             if (f[0] == '*') {
-                pr = va_arg(va, prb_stbsp__uint32);
+                pr = va_arg(va, prb_stbsp__int32);
                 ++f;
             } else {
                 pr = 0;
@@ -4135,11 +4144,11 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                 sn = s;
 
                 // print the bits
-                n = pr;
+                n = (unsigned int)pr;
                 if (n > 13)
                     n = 13;
                 if (pr > (prb_stbsp__int32)n)
-                    tz = pr - n;
+                    tz = (int)(pr - n);
                 pr = 0;
                 while (n--) {
                     *s++ = h[(n64 >> 60) & 15];
@@ -4153,7 +4162,7 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                     dp = -dp;
                 } else
                     tail[2] = '+';
-                n = (dp >= 1000) ? 6 : ((dp >= 100) ? 5 : ((dp >= 10) ? 4 : 3));
+                n = (dp >= 1000) ? (unsigned int)6 : ((dp >= 100) ? 5 : ((dp >= 10) ? 4 : 3));
                 tail[0] = (char)n;
                 for (;;) {
                     tail[n] = '0' + dp % 10;
@@ -4164,7 +4173,7 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                 }
 
                 dp = (int)(s - sn);
-                l = (int)(s - (num + 64));
+                l = (unsigned int)(s - (num + 64));
                 s = num + 64;
                 cs = 1 + (3 << 24);
                 goto scopy;
@@ -4182,9 +4191,9 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                     fl |= prb_STBSP__NEGATIVE;
 
                 // clamp the precision and delete extra zeros after clamp
-                n = pr;
+                n = (unsigned int)pr;
                 if (l > (prb_stbsp__uint32)pr)
-                    l = pr;
+                    l = (unsigned int)pr;
                 while ((l > 1) && (pr) && (sn[l - 1] == '0')) {
                     --pr;
                     --l;
@@ -4193,14 +4202,14 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                 // should we use %e
                 if ((dp <= -4) || (dp > (prb_stbsp__int32)n)) {
                     if (pr > (prb_stbsp__int32)l)
-                        pr = l - 1;
+                        pr = (int)(l - 1);
                     else if (pr)
                         --pr;  // when using %e, there is one digit before the decimal
                     goto doexpfromg;
                 }
                 // this is the insane action to get the pr to match %g semantics for %f
                 if (dp > 0) {
-                    pr = (dp < (prb_stbsp__int32)l) ? l - dp : 0;
+                    pr = (dp < (prb_stbsp__int32)l) ? (int)(l - dp) : 0;
                 } else {
                     pr = -dp + ((pr > (prb_stbsp__int32)l) ? (prb_stbsp__int32)l : pr);
                 }
@@ -4233,11 +4242,11 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
 
                 // handle after decimal
                 if ((l - 1) > (prb_stbsp__uint32)pr)
-                    l = pr + 1;
+                    l = (unsigned int)(pr + 1);
                 for (n = 1; n < l; n++)
                     *s++ = sn[n];
                 // trailing zeros
-                tz = pr - (l - 1);
+                tz = (int)(pr - (l - 1));
                 pr = 0;
                 // dump expo
                 tail[1] = h[0xe];
@@ -4250,7 +4259,7 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
 #ifdef prb_STB_SPRINTF_MSVC_MODE
                 n = 5;
 #else
-                n = (dp >= 100) ? 5 : 4;
+                n = (dp >= 100) ? (unsigned int)5 : (unsigned int)4;
 #endif
                 tail[0] = (char)n;
                 for (;;) {
@@ -4282,7 +4291,7 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                 if (pr == -1)
                     pr = 6;  // default is 6
                 // read the double into a string
-                if (prb_stbsp__real_to_str(&sn, &l, num, &dp, fv, pr))
+                if (prb_stbsp__real_to_str(&sn, &l, num, &dp, fv, (unsigned int)pr))
                     fl |= prb_STBSP__NEGATIVE;
             dofloatfromg:
                 tail[0] = 0;
@@ -4302,10 +4311,10 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                     *s++ = '0';
                     if (pr)
                         *s++ = prb_stbsp__period;
-                    n = -dp;
+                    n = (unsigned int)(-dp);
                     if ((prb_stbsp__int32)n > pr)
-                        n = pr;
-                    i = n;
+                        n = (unsigned int)pr;
+                    i = (int)n;
                     while (i) {
                         if ((((prb_stbsp__uintptr)s) & 3) == 0)
                             break;
@@ -4323,12 +4332,12 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                     }
                     if ((prb_stbsp__int32)(l + n) > pr)
                         l = pr - n;
-                    i = l;
+                    i = (int)l;
                     while (i) {
                         *s++ = *sn++;
                         --i;
                     }
-                    tz = pr - (n + l);
+                    tz = (int)(pr - (n + l));
                     cs = 1 + (3 << 24);  // how many tens did we write (for commas below)
                 } else {
                     cs = (fl & prb_STBSP__TRIPLET_COMMA) ? ((600 - (prb_stbsp__uint32)dp) % 3) : 0;
@@ -4371,7 +4380,7 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                                 }
                             }
                         }
-                        cs = (int)(s - (num + 64)) + (3 << 24);  // cs is how many tens
+                        cs = (unsigned int)((int)(s - (num + 64)) + (3 << 24));  // cs is how many tens
                         if (pr) {
                             *s++ = prb_stbsp__period;
                             tz = pr;
@@ -4390,16 +4399,16 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                                     break;
                             }
                         }
-                        cs = (int)(s - (num + 64)) + (3 << 24);  // cs is how many tens
+                        cs = (unsigned int)((int)(s - (num + 64)) + (3 << 24));  // cs is how many tens
                         if (pr)
                             *s++ = prb_stbsp__period;
                         if ((l - dp) > (prb_stbsp__uint32)pr)
-                            l = pr + dp;
+                            l = (unsigned int)(pr + dp);
                         while (n < l) {
                             *s++ = sn[n];
                             ++n;
                         }
-                        tz = pr - (l - dp);
+                        tz = pr - ((int)l - dp);
                     }
                 }
                 pr = 0;
@@ -4462,6 +4471,7 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                 fl |= (sizeof(void*) == 8) ? prb_STBSP__INTMAX : 0;
                 pr = sizeof(void*) * 2;
                 fl &= ~prb_STBSP__LEADINGZERO;  // 'p' only prints the pointer with zeros
+                prb_FALLTHROUGH;
                     // fall through - to X
 
             case 'X':  // upper hex
@@ -4607,10 +4617,10 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
             scopy:
                 // get fw=leading/trailing space, pr=leading zeros
                 if (pr < (prb_stbsp__int32)l)
-                    pr = l;
-                n = pr + lead[0] + tail[0] + tz;
+                    pr = (int)l;
+                n = pr + lead[0] + tail[0] + (unsigned int)tz;
                 if (fw < (prb_stbsp__int32)n)
-                    fw = n;
+                    fw = (int)n;
                 fw -= n;
                 pr -= l;
 
@@ -4716,7 +4726,7 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                 n = l;
                 while (n) {
                     prb_stbsp__int32 i;
-                    prb_stbsp__cb_buf_clamp(i, n);
+                    prb_stbsp__cb_buf_clamp(i, (int)n);
                     n -= i;
                     prb_STBSP__UNALIGNED(while (i >= 4) {
                         *(prb_stbsp__uint32 volatile*)bf = *(prb_stbsp__uint32 volatile*)s;
@@ -4797,7 +4807,8 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                 s = num + prb_STBSP__NUMSZ - 1;
                 *s = f[0];
                 l = 1;
-                fw = fl = 0;
+                fl = 0;
+                fw = 0;
                 lead[0] = 0;
                 tail[0] = 0;
                 pr = 0;
@@ -4960,7 +4971,7 @@ prb_stbsp__real_to_parts(prb_stbsp__int64* bits, prb_stbsp__int32* expo, double 
 
     prb_STBSP__COPYFP(b, d);
 
-    *bits = b & ((((prb_stbsp__uint64)1) << 52) - 1);
+    *bits = b & (signed long long)((((prb_stbsp__uint64)1) << 52) - 1);
     *expo = (prb_stbsp__int32)(((b >> 52) & 2047) - 1023);
 
     return (prb_stbsp__int32)((prb_stbsp__uint64)b >> 63);
@@ -5232,11 +5243,11 @@ prb_stbsp__real_to_str(
         if (frac_digits < dg) {
             prb_stbsp__uint64 r;
             // add 0.5 at the right position and round
-            e = dg - frac_digits;
+            e = (signed int)(dg - frac_digits);
             if ((prb_stbsp__uint32)e >= 24)
                 goto noround;
             r = prb_stbsp__powten[e];
-            bits = bits + (r / 2);
+            bits = bits + (signed long long)(r / 2);
             if ((prb_stbsp__uint64)bits >= prb_stbsp__powten[dg])
                 ++tens;
             bits /= r;
@@ -5296,7 +5307,7 @@ prb_stbsp__real_to_str(
 
     *decimal_pos = tens;
     *start = out;
-    *len = e;
+    *len = (unsigned int)e;
     return ng;
 }
 
@@ -5686,13 +5697,13 @@ prb_stbds_siphash_bytes(void* p, size_t len, size_t seed) {
     }
     data = len << (prb_STBDS_SIZE_T_BITS - 8);
     switch (len - i) {
-        case 7: data |= ((size_t)d[6] << 24) << 24;  // fall through
-        case 6: data |= ((size_t)d[5] << 20) << 20;  // fall through
-        case 5: data |= ((size_t)d[4] << 16) << 16;  // fall through
-        case 4: data |= (d[3] << 24);  // fall through
-        case 3: data |= (d[2] << 16);  // fall through
-        case 2: data |= (d[1] << 8);  // fall through
-        case 1: data |= d[0];  // fall through
+        case 7: data |= ((size_t)d[6] << 24) << 24; prb_FALLTHROUGH;  // fall through
+        case 6: data |= ((size_t)d[5] << 20) << 20; prb_FALLTHROUGH; // fall through
+        case 5: data |= ((size_t)d[4] << 16) << 16; prb_FALLTHROUGH; // fall through
+        case 4: data |= (d[3] << 24); prb_FALLTHROUGH; // fall through
+        case 3: data |= (d[2] << 16); prb_FALLTHROUGH; // fall through
+        case 2: data |= (d[1] << 8); prb_FALLTHROUGH; // fall through
+        case 1: data |= d[0]; prb_FALLTHROUGH; // fall through
         case 0: break;
     }
     v3 ^= data;
@@ -5719,7 +5730,7 @@ prb_stbds_hash_bytes(void* p, size_t len, size_t seed) {
     unsigned char* d = (unsigned char*)p;
 
     if (len == 4) {
-        unsigned int hash = d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24);
+        unsigned int hash = (unsigned int)d[0] | (unsigned int)(d[1] << 8) | (unsigned int)(d[2] << 16) | (unsigned int)(d[3] << 24);
 #if 0
     // HASH32-A  Bob Jenkin's hash function w/o large constants
     hash ^= seed;
@@ -5775,7 +5786,7 @@ prb_stbds_hash_bytes(void* p, size_t len, size_t seed) {
 
         return (((size_t)hash << 16 << 16) | hash) ^ seed;
     } else if (len == 8 && sizeof(size_t) == 8) {
-        size_t hash = d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24);
+        size_t hash = (size_t)d[0] | (size_t)(d[1] << 8) | (size_t)(d[2] << 16) | (size_t)(d[3] << 24);
         hash |= (size_t)(d[4] | (d[5] << 8) | (d[6] << 16) | (d[7] << 24)) << 16 << 16;  // avoid warning if size_t == 4
         hash ^= seed;
         hash = (~hash) + (hash << 21);
@@ -5851,8 +5862,8 @@ prb_stbds_hm_find_slot(void* a, size_t elemsize, void* key, size_t keysize, size
         // start searching from pos to end of bucket, this should help performance on small hash tables that fit in cache
         for (i = pos & prb_STBDS_BUCKET_MASK; i < prb_STBDS_BUCKET_LENGTH; ++i) {
             if (bucket->hash[i] == hash) {
-                if (prb_stbds_is_key_equal(a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
-                    return (pos & ~prb_STBDS_BUCKET_MASK) + i;
+                if (prb_stbds_is_key_equal(a, elemsize, key, keysize, keyoffset, mode, (size_t)bucket->index[i])) {
+                    return (ptrdiff_t)((pos & ~prb_STBDS_BUCKET_MASK) + i);
                 }
             } else if (bucket->hash[i] == prb_STBDS_HASH_EMPTY) {
                 return -1;
@@ -5863,8 +5874,8 @@ prb_stbds_hm_find_slot(void* a, size_t elemsize, void* key, size_t keysize, size
         limit = pos & prb_STBDS_BUCKET_MASK;
         for (i = 0; i < limit; ++i) {
             if (bucket->hash[i] == hash) {
-                if (prb_stbds_is_key_equal(a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
-                    return (pos & ~prb_STBDS_BUCKET_MASK) + i;
+                if (prb_stbds_is_key_equal(a, elemsize, key, keysize, keyoffset, mode, (size_t)bucket->index[i])) {
+                    return (ptrdiff_t)((pos & ~prb_STBDS_BUCKET_MASK) + i);
                 }
             } else if (bucket->hash[i] == prb_STBDS_HASH_EMPTY) {
                 return -1;
@@ -5964,7 +5975,7 @@ prb_stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mod
         if (table)
             prb_STBDS_FREE(NULL, table);
         else
-            nt->string.mode = mode >= prb_STBDS_HM_STRING ? prb_STBDS_SH_DEFAULT : 0;
+            nt->string.mode = mode >= prb_STBDS_HM_STRING ? (unsigned char)prb_STBDS_SH_DEFAULT : (unsigned char)0;
         prb_stbds_header(a)->hash_table = table = nt;
         prb_STBDS_STATS(++prb_stbds_hash_grow);
     }
@@ -5992,7 +6003,7 @@ prb_stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mod
             // start searching from pos to end of bucket
             for (i = pos & prb_STBDS_BUCKET_MASK; i < prb_STBDS_BUCKET_LENGTH; ++i) {
                 if (bucket->hash[i] == hash) {
-                    if (prb_stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+                    if (prb_stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, (size_t)bucket->index[i])) {
                         prb_stbds_temp(a) = bucket->index[i];
                         if (mode >= prb_STBDS_HM_STRING)
                             prb_stbds_temp_key(a) = *(char**)((char*)raw_a + elemsize * bucket->index[i] + keyoffset);
@@ -6011,7 +6022,7 @@ prb_stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mod
             limit = pos & prb_STBDS_BUCKET_MASK;
             for (i = 0; i < limit; ++i) {
                 if (bucket->hash[i] == hash) {
-                    if (prb_stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+                    if (prb_stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, (size_t)bucket->index[i])) {
                         prb_stbds_temp(a) = bucket->index[i];
                         return prb_STBDS_ARR_TO_HASH(a, elemsize);
                     }
@@ -6031,7 +6042,7 @@ prb_stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mod
         }
     found_empty_slot:
         if (tombstone >= 0) {
-            pos = tombstone;
+            pos = (size_t)tombstone;
             --table->tombstone_count;
         }
         ++table->used_count;
@@ -6045,7 +6056,7 @@ prb_stbds_hmput_key(void* a, size_t elemsize, void* key, size_t keysize, int mod
             prb_unused(raw_a);
 
             prb_STBDS_ASSERT((size_t)i + 1 <= prb_stbds_arrcap(a));
-            prb_stbds_header(a)->length = i + 1;
+            prb_stbds_header(a)->length = (size_t)(i + 1);
             bucket = &table->storage[pos >> prb_STBDS_BUCKET_SHIFT];
             bucket->hash[pos & prb_STBDS_BUCKET_MASK] = hash;
             bucket->index[pos & prb_STBDS_BUCKET_MASK] = i - 1;
@@ -6165,7 +6176,7 @@ static char*
 prb_stbds_strdup(char* str) {
     // to keep replaceable allocator simple, we don't want to use strdup.
     // rolling our own also avoids problem of strdup vs _strdup
-    size_t len = prb_strlen(str) + 1;
+    size_t len = (size_t)prb_strlen(str) + 1;
     char*  p = (char*)prb_STBDS_REALLOC(NULL, 0, len);
     prb_memmove(p, str, len);
     return p;
@@ -6181,7 +6192,7 @@ prb_stbds_strdup(char* str) {
 prb_STBDS__PUBLICDEF char*
 prb_stbds_stralloc(prb_stbds_string_arena* a, char* str) {
     char*  p;
-    size_t len = prb_strlen(str) + 1;
+    size_t len = (size_t)prb_strlen(str) + 1;
     if (len > a->remaining) {
         // compute the next blocksize
         size_t blocksize = a->block;

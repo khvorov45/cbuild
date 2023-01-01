@@ -73,7 +73,7 @@ constructCompileCmd(prb_Arena* arena, CompileSpec spec) {
             switch (spec.compiler) {
                 case Compiler_Gcc:
                 case Compiler_Clang: prb_addStrSegment(&cmd, " -x c++"); break;
-                case Compiler_Msvc: prb_addStrSegment(&cmd, " /Tp"); break;
+                case Compiler_Msvc: prb_addStrSegment(&cmd, " /std:c++20 /Tp"); break;
             }
             break;
     }

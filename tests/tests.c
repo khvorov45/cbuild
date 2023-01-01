@@ -1,6 +1,7 @@
 #ifdef _MSC_VER
 #pragma warning(disable : 4464)  // relative include path contains '..'
-#pragma warning(disable: 5045) // Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
+#pragma warning(disable : 4576)  // a parenthesized type followed by an initializer list is a non-standard explicit type conversion syntax
+#pragma warning(disable : 5045)  // Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
 #endif
 
 #include "../cbuild.h"
@@ -209,15 +210,15 @@ test_getOffsetForAlignment(prb_Arena* arena) {
 function void
 test_vmemAlloc(prb_Arena* arena) {
     prb_unused(arena);
-    int32_t bytes = 100;
-    void*   ptr = prb_vmemAlloc(bytes);
-    prb_memset(ptr, 1, bytes);
+    i32   bytes = 100;
+    void* ptr = prb_vmemAlloc(bytes);
+    prb_memset(ptr, 1, (size_t)bytes);
 }
 
 function void
 test_createArenaFromVmem(prb_Arena* arena) {
     prb_unused(arena);
-    int32_t   bytes = 100;
+    i32       bytes = 100;
     prb_Arena newArena = prb_createArenaFromVmem(bytes);
     prb_arenaAllocAndZero(&newArena, bytes, 1);
 }
@@ -225,7 +226,7 @@ test_createArenaFromVmem(prb_Arena* arena) {
 function void
 test_createArenaFromArena(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
-    int32_t        bytes = 100;
+    i32            bytes = 100;
     prb_Arena      newArena = prb_createArenaFromArena(arena, bytes);
     prb_Str        arenaStr = prb_fmt(arena, "arena");
     prb_Str        newArenaStr = prb_fmt(&newArena, "new");
@@ -2564,7 +2565,7 @@ test_process(prb_Arena* arena) {
 
         prb_Str progExe = prb_replaceExt(arena, progPath, prb_STR("exe"));
         prb_Str compileCmd = prb_fmt(arena, "clang %.*s -o %.*s", prb_LIT(progPath), prb_LIT(progExe));
-        
+
         {
             prb_Process proc = prb_createProcess(compileCmd, nullSpec);
             prb_assert(prb_launchProcesses(arena, &proc, 1, prb_Background_No));
@@ -2763,7 +2764,7 @@ test_jobs(prb_Arena* arena) {
 
     prb_Background bgs[] = {prb_Background_No, prb_Background_Yes};
 
-    for (int32_t backgroundIndex = 0; backgroundIndex < prb_arrayCount(bgs); backgroundIndex++) {
+    for (i32 backgroundIndex = 0; backgroundIndex < prb_arrayCount(bgs); backgroundIndex++) {
         for (i32 jobIndex = 0; jobIndex < jobCount; jobIndex++) {
             jobs[jobIndex] = prb_createJob(randomJob, jobDone + jobIndex, arena, 0);
             jobDone[jobIndex] = false;
@@ -2786,8 +2787,8 @@ function void
 test_createRng(prb_Arena* arena) {
     prb_unused(arena);
 
-    for (int32_t seed = 0; seed < 100; seed++) {
-        prb_Rng rng = prb_createRng(seed);
+    for (i32 seed = 0; seed < 100; seed++) {
+        prb_Rng rng = prb_createRng((u32)seed);
         prb_assert((rng.inc & 1) != 0);
     }
 }
@@ -2795,16 +2796,16 @@ test_createRng(prb_Arena* arena) {
 function void
 test_randomU32(prb_Arena* arena) {
     prb_unused(arena);
-    for (int32_t seed = 0; seed < 100; seed++) {
-        prb_Rng rng = prb_createRng(seed);
-        int32_t odds = 0;
-        for (int32_t ind = 0; ind < 1000; ind++) {
+    for (i32 seed = 0; seed < 100; seed++) {
+        prb_Rng rng = prb_createRng((u32)seed);
+        i32     odds = 0;
+        for (i32 ind = 0; ind < 1000; ind++) {
             u32 num = prb_randomU32(&rng);
             odds += num & 1;
         }
         // NOTE(khvorov) 48 is about 3 sd in this case
-        int32_t oddsMin = 500 - 48;
-        int32_t oddsMax = 500 + 48;
+        i32 oddsMin = 500 - 48;
+        i32 oddsMax = 500 + 48;
         prb_assert(odds >= oddsMin && odds <= oddsMax);
     }
 }
@@ -2812,10 +2813,10 @@ test_randomU32(prb_Arena* arena) {
 function void
 test_randomU32Bound(prb_Arena* arena) {
     prb_unused(arena);
-    for (int32_t seed = 0; seed < 100; seed++) {
-        prb_Rng rng = prb_createRng(seed);
+    for (i32 seed = 0; seed < 100; seed++) {
+        prb_Rng rng = prb_createRng((u32)seed);
         for (uint32_t bound = 1; bound < 20; bound++) {
-            for (int32_t ind = 0; ind < 1000; ind++) {
+            for (i32 ind = 0; ind < 1000; ind++) {
                 u32 num = prb_randomU32Bound(&rng, bound);
                 prb_assert(num < bound);
             }
@@ -2826,10 +2827,10 @@ test_randomU32Bound(prb_Arena* arena) {
 function void
 test_randomF3201(prb_Arena* arena) {
     prb_unused(arena);
-    for (int32_t seed = 0; seed < 100; seed++) {
-        prb_Rng rng = prb_createRng(seed);
+    for (i32 seed = 0; seed < 100; seed++) {
+        prb_Rng rng = prb_createRng((u32)seed);
         for (uint32_t bound = 1; bound < 20; bound++) {
-            for (int32_t ind = 0; ind < 1000; ind++) {
+            for (i32 ind = 0; ind < 1000; ind++) {
                 float num = prb_randomF3201(&rng);
                 prb_assert(num >= 0.0f && num < 1.0f);
             }
