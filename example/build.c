@@ -923,7 +923,6 @@ main() {
         prb_STR("src/timer/unix/*.c"),
         prb_STR("src/stdlib/SDL_strtokr.c"),
         prb_STR("src/filesystem/unix/*.c"),
-        prb_STR("src/loadso/dlopen/*.c"), // TODO(khvorov) Remove?
         prb_STR("src/video/x11/*.c"),
         prb_STR("src/core/unix/SDL_poll.c"),
         prb_STR("src/core/linux/SDL_threadprio.c"),
