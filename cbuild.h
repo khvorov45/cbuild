@@ -60,6 +60,8 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 }
 */
 
+// TODO(khvorov) License
+
 // NOLINTBEGIN(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 
 #ifdef __GNUC__
@@ -77,6 +79,7 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #pragma warning(disable : 4146)  // unary minus operator applied to unsigned type, result still unsigned
 #pragma warning(disable : 4201)  // nonstandard extension used: nameless struct/union
 #pragma warning(disable : 4505)  // unreferenced function with internal linkage has been removed
+// TODO(khvorov) Remove this?
 #pragma warning(disable : 4576)  // a parenthesized type followed by an initializer list is a non-standard explicit type conversion syntax
 #pragma warning(disable : 4820)  // padding
 #pragma warning(disable : 5045)  // Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
