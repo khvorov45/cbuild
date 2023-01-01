@@ -921,6 +921,7 @@ main() {
         prb_STR("src/main/windows/*.c"),
 #elif prb_PLATFORM_LINUX
         prb_STR("src/timer/unix/*.c"),
+        prb_STR("src/stdlib/SDL_strtokr.c"),
         prb_STR("src/filesystem/unix/*.c"),
         prb_STR("src/loadso/dlopen/*.c"), // TODO(khvorov) Remove?
         prb_STR("src/video/x11/*.c"),
