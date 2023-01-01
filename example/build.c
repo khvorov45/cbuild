@@ -912,6 +912,7 @@ main() {
         prb_STR("src/*.c"),
         prb_STR("src/misc/*.c"),
 #if prb_PLATFORM_WINDOWS
+        prb_STR("src/loadso/dummy/*.c"),
         prb_STR("src/core/windows/SDL_windows.c"),
         prb_STR("src/filesystem/windows/*.c"),
         prb_STR("src/timer/windows/*.c"),
@@ -921,7 +922,7 @@ main() {
 #elif prb_PLATFORM_LINUX
         prb_STR("src/timer/unix/*.c"),
         prb_STR("src/filesystem/unix/*.c"),
-        prb_STR("src/loadso/dlopen/*.c"),
+        prb_STR("src/loadso/dlopen/*.c"), // TODO(khvorov) Remove?
         prb_STR("src/video/x11/*.c"),
         prb_STR("src/core/unix/SDL_poll.c"),
         prb_STR("src/core/linux/SDL_threadprio.c"),
@@ -945,6 +946,7 @@ main() {
         prb_STR("-DSDL_VIDEO_RENDER_OGL_ES2=0"),
 #if prb_PLATFORM_WINDOWS
         prb_STR("-DSDL_TIMER_WINDOWS=1"),
+        prb_STR("-DSDL_VIDEO_DRIVER_WINDOWS=1"),
 #elif prb_PLATFORM_LINUX
         prb_STR("-Wno-deprecated-declarations"),
         prb_STR("-DHAVE_STRING_H=1"),
@@ -1203,7 +1205,7 @@ main() {
     prb_Str mainOutPath = prb_replaceExt(arena, mainPreprocessedPath, prb_STR("exe"));
 
 #if prb_PLATFORM_WINDOWS
-    prb_Str mainLinkFlags = prb_STR("-subsystem:windows User32.lib Shell32.lib Advapi32.lib Ole32.lib Winmm.lib");
+    prb_Str mainLinkFlags = prb_STR("-subsystem:windows User32.lib Shell32.lib Advapi32.lib Ole32.lib Winmm.lib Gdi32.lib Imm32.lib OleAut32.lib Version.lib");
 #elif prb_PLATFORM_LINUX
     prb_Str mainLinkFlags = prb_STR("-lX11 -lm -lstdc++ -ldl -lfontconfig");
 #endif
