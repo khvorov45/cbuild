@@ -626,12 +626,9 @@ createFontManager(Arena* arena) {
         };
         // clang-format on
 
-        GetFontResult getDefaultFontResult =
-            getFontForScriptAndUtf32Chars(&fontManager, USCRIPT_LATIN, ascii, arrayLen(ascii));
-
-        if (getDefaultFontResult.success) {
-            result = (CreateFontManagerResult) {.success = true, .fontManager = fontManager};
-        }
+        // NOTE(khvorov) Not gonna check for error here because we should be able to tolerate not loading the default font
+        getFontForScriptAndUtf32Chars(&fontManager, USCRIPT_LATIN, ascii, arrayLen(ascii));
+        result = (CreateFontManagerResult) {.success = true, .fontManager = fontManager};
     }
     return result;
 }
