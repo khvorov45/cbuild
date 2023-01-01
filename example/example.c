@@ -523,10 +523,24 @@ getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriB
 
 #if PLATFORM_WINDOWS
 
-        // TODO(khvorov) Best effort to find matching font info here
-        String fontpath = stringFromCstring("C:\\Windows\\Fonts\\Micross.ttf");
+        // NOTE(khvorov) I have no idea how to ask windows for a path to a font file that contains a
+        // specific script and/or character set. So I'll just load these fonts which should always ship
+        // with windows
+        // https://learn.microsoft.com/en-us/typography/font-list/microsoft-sans-serif
         UNUSED(chars);
         UNUSED(chCount);
+        String fontpath = {};
+        switch (script) {
+            case USCRIPT_HAN:
+            case USCRIPT_JAPANESE:
+            case USCRIPT_HIRAGANA:
+            case USCRIPT_KATAKANA: fontpath = stringFromCstring("C:\\Windows\\Fonts\\Msyh.ttc"); break;
+            case USCRIPT_KOREAN:
+            case USCRIPT_HANGUL: fontpath = stringFromCstring("C:\\Windows\\Fonts\\Malgun.ttf"); break;
+            case USCRIPT_DEVANAGARI: fontpath = stringFromCstring("C:\\Windows\\Fonts\\Nirmala.ttf"); break;
+            case USCRIPT_KHMER: fontpath = stringFromCstring("C:\\Windows\\Fonts\\Leelawui.ttf"); break;
+            default: fontpath = stringFromCstring("C:\\Windows\\Fonts\\Micross.ttf"); break;
+        }
 
 #elif PLATFORM_LINUX
 
