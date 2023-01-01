@@ -516,14 +516,15 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         }
 
         // NOTE(khvorov) Remove all objs that don't correspond to any inputs
+        bool shouldRegenLib = false;
         for (i32 existingObjIndex = 0; existingObjIndex < shlen(existingObjs); existingObjIndex++) {
             StringFound existingObj = existingObjs[existingObjIndex];
             if (!existingObj.value) {
                 prb_assert(prb_removePathIfExists(arena, prb_STR(existingObj.key)) == prb_Success);
+                shouldRegenLib = true;
             }
         }
 
-        bool shouldRegenLib = false;
         if (arrlen(processesCompile) == 0) {
             prb_writelnToStdout(arena, prb_fmt(arena, "skip compile %.*s", prb_LIT(lib->name)));
         } else {
@@ -708,6 +709,23 @@ main() {
         prb_STR("icu4c/source/common/propname.cpp"),
         prb_STR("icu4c/source/common/bytestrie.cpp"),
         prb_STR("icu4c/source/stubdata/stubdata.cpp"),  // NOTE(khvorov) We won't need to access data here
+#if prb_PLATFORM_WINDOWS
+        prb_STR("icu4c/source/common/uloc.cpp"),
+        prb_STR("icu4c/source/common/uloc_keytype.cpp"),
+        prb_STR("icu4c/source/common/uresbund.cpp"),
+        prb_STR("icu4c/source/common/uresdata.cpp"),
+        prb_STR("icu4c/source/common/ucol_swp.cpp"),
+        prb_STR("icu4c/source/common/resource.cpp"),
+        prb_STR("icu4c/source/common/uenum.cpp"),
+        prb_STR("icu4c/source/common/uloc_tag.cpp"),
+        prb_STR("icu4c/source/common/locid.cpp"),
+        prb_STR("icu4c/source/common/ustrenum.cpp"),
+        prb_STR("icu4c/source/common/localebuilder.cpp"),
+        prb_STR("icu4c/source/common/loclikely.cpp"),
+        prb_STR("icu4c/source/common/uscript_props.cpp"),
+        prb_STR("icu4c/source/common/locmap.cpp"),
+        prb_STR("icu4c/source/common/wintz.cpp"),
+#endif
     };
 
     StaticLibInfo icu = getStaticLibInfo(
@@ -876,7 +894,12 @@ main() {
         prb_STR("src/thread/generic/*.c"),
         prb_STR("src/events/*.c"),
         prb_STR("src/file/*.c"),
-        prb_STR("src/stdlib/*.c"),
+        prb_STR("src/stdlib/SDL_stdlib.c"),
+        prb_STR("src/stdlib/SDL_string.c"),
+        prb_STR("src/stdlib/SDL_getenv.c"),
+        prb_STR("src/stdlib/SDL_qsort.c"),
+        prb_STR("src/stdlib/SDL_iconv.c"),
+        prb_STR("src/stdlib/SDL_malloc.c"),
         prb_STR("src/libm/*.c"),
         prb_STR("src/locale/*.c"),
         prb_STR("src/timer/*.c"),
@@ -920,7 +943,9 @@ main() {
         prb_STR("-DSDL_VIDEO_RENDER_D3D12=0"),
         prb_STR("-DSDL_VIDEO_RENDER_OGL=0"),
         prb_STR("-DSDL_VIDEO_RENDER_OGL_ES2=0"),
-#if prb_PLATFORM_LINUX
+#if prb_PLATFORM_WINDOWS
+        prb_STR("-DSDL_TIMER_WINDOWS=1"),
+#elif prb_PLATFORM_LINUX
         prb_STR("-Wno-deprecated-declarations"),
         prb_STR("-DHAVE_STRING_H=1"),
         prb_STR("-DHAVE_STDIO_H=1"),
@@ -1120,7 +1145,7 @@ main() {
     // prb_assert(prb_clearDir(arena, harfbuzz.objDir) == prb_Success);
     // prb_assert(prb_clearDir(arena, sdl.objDir) == prb_Success);
 
-    {
+    if (true) {
         prb_Job* jobs = 0;
         arrput(jobs, prb_createJob(compileStaticLib, &fribidi, arena, 50 * prb_MEGABYTE));
         arrput(jobs, prb_createJob(compileStaticLib, &icu, arena, 50 * prb_MEGABYTE));
@@ -1178,7 +1203,7 @@ main() {
     prb_Str mainOutPath = prb_replaceExt(arena, mainPreprocessedPath, prb_STR("exe"));
 
 #if prb_PLATFORM_WINDOWS
-    prb_Str mainLinkFlags = prb_STR("-subsystem:windows User32.lib");
+    prb_Str mainLinkFlags = prb_STR("-subsystem:windows User32.lib Shell32.lib Advapi32.lib Ole32.lib Winmm.lib");
 #elif prb_PLATFORM_LINUX
     prb_Str mainLinkFlags = prb_STR("-lX11 -lm -lstdc++ -ldl -lfontconfig");
 #endif

@@ -105,7 +105,6 @@ genLongPath(prb_Arena* arena) {
     return result;
 }
 
-
 function bool
 strIn(prb_Str str, prb_Str* arr, i32 arrc) {
     bool result = false;
@@ -2679,7 +2678,8 @@ test_timer(prb_Arena* arena) {
 function void
 randomJob(prb_Arena* arena, void* data) {
     prb_unused(arena);
-    prb_unused(data);
+    bool* done = (bool*)data;
+    prb_assert(!*done);
     prb_Rng rng = prb_createRng(0);
     for (;;) {
         float num = prb_randomF3201(&rng);
@@ -2687,34 +2687,31 @@ randomJob(prb_Arena* arena, void* data) {
             break;
         }
     }
+    *done = true;
 }
 
 function void
 test_jobs(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    {
-        prb_Job* jobs = 0;
-        i32      jobCount = 100;
+    i32      jobCount = 100;
+    prb_Job* jobs = prb_arenaAllocArray(arena, prb_Job, jobCount);
+    bool*    jobDone = prb_arenaAllocArray(arena, bool, jobCount);
+
+    prb_Background bgs[] = {prb_Background_No, prb_Background_Yes};
+
+    for (int32_t backgroundIndex = 0; backgroundIndex < prb_arrayCount(bgs); backgroundIndex++) {
         for (i32 jobIndex = 0; jobIndex < jobCount; jobIndex++) {
-            arrput(jobs, prb_createJob(randomJob, 0, arena, 0));
+            jobs[jobIndex] = prb_createJob(randomJob, jobDone + jobIndex, arena, 0);
+            jobDone[jobIndex] = false;
         }
 
-        prb_assert(prb_launchJobs(jobs, jobCount, prb_Background_Yes));
+        prb_assert(prb_launchJobs(jobs, jobCount, bgs[backgroundIndex]));
         prb_assert(prb_waitForJobs(jobs, jobCount));
-        arrfree(jobs);
-    }
 
-    {
-        prb_Job* jobs = 0;
-        i32      jobCount = 100;
         for (i32 jobIndex = 0; jobIndex < jobCount; jobIndex++) {
-            arrput(jobs, prb_createJob(randomJob, 0, arena, 0));
+            prb_assert(jobDone[jobIndex]);
         }
-
-        prb_assert(prb_launchJobs(jobs, jobCount, prb_Background_No));
-        prb_assert(prb_waitForJobs(jobs, jobCount));
-        arrfree(jobs);
     }
 
     prb_endTempMemory(temp);

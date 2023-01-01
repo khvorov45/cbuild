@@ -3540,7 +3540,7 @@ prb_waitForJobs(prb_Job* jobs, int32_t jobsCount) {
         if (job->status == prb_JobStatus_Launched) {
 #if prb_PLATFORM_WINDOWS
 
-            if (WaitForSingleObject(jobs->threadhandle, INFINITE) == WAIT_OBJECT_0) {
+            if (WaitForSingleObject(job->threadhandle, INFINITE) == WAIT_OBJECT_0) {
                 job->status = prb_JobStatus_Completed;
             } else {
                 result = prb_Failure;
