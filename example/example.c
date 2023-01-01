@@ -40,7 +40,7 @@
 #define max(x, y) (((x) > (y)) ? (x) : (y))
 #define clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define isPowerOf2(x) (((x) > 0) && (((x) & ((x)-1)) == 0))
-#define arrayLen(arr) (sizeof(arr) / sizeof(arr[0]))
+#define arrayLen(arr) ((int32_t)(sizeof(arr) / sizeof(arr[0])))
 #define assert(condition) do { if (!(condition)) { SDL_TriggerBreakpoint(); } } while (0)
 #define arenaAllocArray(arena, type, count) (type*)(arenaAllocAndZero(arena, sizeof(type) * (count), _Alignof(type)))
 // clang-format on
@@ -176,7 +176,7 @@ uprv_malloc(size_t s) {
 }
 
 void*
-uprv_realloc(void * buffer, size_t size) {
+uprv_realloc(void* buffer, size_t size) {
     assert(!"should not be called");
     UNUSED(buffer);
     UNUSED(size);
@@ -184,12 +184,12 @@ uprv_realloc(void * buffer, size_t size) {
 }
 
 void
-uprv_free(void *buffer) {
+uprv_free(void* buffer) {
     assert(!"should not be called");
     UNUSED(buffer);
 }
 
-UBool 
+UBool
 cmemory_cleanup(void) {
     assert(!"should not be called");
     return false;
@@ -206,7 +206,7 @@ void  dlfree(void*);
 
 typedef struct GeneralPurposeAllocatorData {
     usize used;
-    i32 allocCount;
+    i32   allocCount;
 } GeneralPurposeAllocatorData;
 
 function usize
@@ -424,6 +424,20 @@ streq(String str1, String str2) {
 // SECTION Font
 //
 
+#if PLATFORM_WINDOWS
+
+typedef struct WinWstr {
+    LPWSTR wstr;
+    i32    len;
+} WinWstr;
+
+typedef struct WinFont {
+    WinWstr family;
+    WinWstr path;
+} WinFont;
+
+#endif
+
 typedef struct Glyph {
     i32 width, height, pitch;
     i32 offsetX, offsetY;
@@ -443,11 +457,10 @@ typedef struct FontManager {
     FT_Library   ftLib;
     Font*        fonts;
     hb_buffer_t* hbBuf;
-#if PLATFORM_WINDOWS
 
-#elif PLATFORM_LINUX
-    FcConfig*    fcConfig;
-    FcPattern*   fcPattern;
+#if PLATFORM_LINUX
+    FcConfig*   fcConfig;
+    FcPattern*  fcPattern;
     FcCharSet** fcCharSets;
 #endif
 } FontManager;
@@ -506,21 +519,17 @@ function GetFontResult
 getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriBidiChar* chars, i32 chCount) {
     GetFontResult result = {0};
     if (script >= 0 && script < USCRIPT_CODE_LIMIT) {
+        Font* font = fontManager->fonts + script;
 
 #if PLATFORM_WINDOWS
 
-        // TODO(khvorov) Implement
-        UNUSED(fontManager);
-        UNUSED(script);
+        // TODO(khvorov) Best effort to find matching font info here
+        String fontpath = stringFromCstring("C:\\Windows\\Fonts\\Micross.ttf");
         UNUSED(chars);
         UNUSED(chCount);
-        assert(!"unimplemented");
-        loadFont(0, (String) {}, (ByteSlice) {});
-        unloadFont(0);
 
 #elif PLATFORM_LINUX
-    
-        Font*      font = fontManager->fonts + script;
+
         FcCharSet* fcCharSet = fontManager->fcCharSets[script];
 
         for (i32 charIndex = 0; charIndex < chCount; charIndex++) {
@@ -538,11 +547,12 @@ getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriB
 
         char* matchFontFilename = 0;
         FcPatternGetString(matchFont, FC_FILE, 0, (FcChar8**)&matchFontFilename);
-
         String fontpath = stringFromCstring(matchFontFilename);
+#endif
+
         if (font->ftFace == 0 || !streq(font->path, fontpath)) {
             usize fileSize = 0;
-            void* fileContents = SDL_LoadFile(matchFontFilename, &fileSize);
+            void* fileContents = SDL_LoadFile(fontpath.ptr, &fileSize);
             assert(fileSize <= INT32_MAX);
             ByteSlice      fontFileContents = {fileContents, fileSize};
             LoadFontResult loadFontResult = loadFont(fontManager->ftLib, fontpath, fontFileContents);
@@ -555,7 +565,6 @@ getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriB
         if (font->ftFace) {
             result = (GetFontResult) {.success = true, .font = font};
         }
-#endif
     }
 
     return result;
@@ -579,9 +588,7 @@ createFontManager(Arena* arena) {
         fontManager.fonts = arenaAllocArray(arena, Font, fontCount);
         fontManager.hbBuf = hb_buffer_create();
 
-#if PLATFORM_WINDOWS
-        assert(!"unimplemented");
-#elif PLATFORM_LINUX
+#if PLATFORM_LINUX
         fontManager.fcConfig = FcInitLoadConfigAndFonts();
         fontManager.fcCharSets = arenaAllocArray(arena, FcCharSet*, fontCount);
         fontManager.fcPattern = FcPatternCreate();
@@ -642,7 +649,7 @@ createRenderer(Arena* arena, const char* windowName) {
         FontManager fontManager = createFontManagerResult.fontManager;
         i32         windowWidth = 1000;
         i32         windowHeight = 1000;
-        SDL_Window* sdlWindow = SDL_CreateWindow(windowName, 0, 0, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
+        SDL_Window* sdlWindow = SDL_CreateWindow(windowName, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
         if (sdlWindow) {
             SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
             if (sdlRenderer) {
