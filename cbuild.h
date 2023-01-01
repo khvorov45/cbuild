@@ -3469,7 +3469,8 @@ prb_unsetenv(prb_Arena* arena, prb_Str name) {
 
 prb_PUBLICDEF prb_TimeStart
 prb_timeStart(void) {
-    prb_TimeStart result = {.valid = false, .ticks = 0};
+    prb_TimeStart result;
+    prb_memset(&result, 0, sizeof(result));
 #if prb_PLATFORM_WINDOWS
     LARGE_INTEGER ticks;
     prb_memset(&ticks, 0, sizeof(ticks));
