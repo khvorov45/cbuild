@@ -23,3 +23,4 @@
 /tests/*.log
 /tests/coverage*
 /tests/shell.bat
+/example/shell.bat
