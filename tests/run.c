@@ -462,7 +462,7 @@ main() {
 
             // NOTE(khvorov) Use the build program to compile the examples
             prb_Str compilerArgs[] = {
-                prb_STR("clang")
+                prb_STR("clang"),
 #if prb_PLATFORM_WINDOWS
                 prb_STR("msvc")
 #elif prb_PLATFORM_LINUX
