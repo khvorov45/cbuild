@@ -645,6 +645,8 @@ main() {
 #endif
 
     project->tuCompilationMode = prb_Background_Yes;
+
+    // NOTE(khvorov) MSVC runs out of memory on CI (lol wtf microsoft)
     if (runningOnCi && project->compiler == Compiler_Msvc) {
         project->tuCompilationMode = prb_Background_No;
     }
