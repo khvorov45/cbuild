@@ -22,10 +22,11 @@ typedef struct CompileLogEntry {
 } CompileLogEntry;
 
 typedef struct ProjectInfo {
-    prb_Str  rootDir;
-    prb_Str  compileOutDir;
-    Compiler compiler;
-    bool     release;
+    prb_Str        rootDir;
+    prb_Str        compileOutDir;
+    Compiler       compiler;
+    bool           release;
+    prb_Background tuCompilationMode;
 } ProjectInfo;
 
 typedef enum LogColumn {
@@ -243,7 +244,7 @@ fileIsPreprocessed(prb_Str name) {
 function prb_Str
 constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_Str inputPath, prb_Str outputPath, prb_Str linkFlags) {
     prb_Str pdbPath = prb_replaceExt(arena, outputPath, prb_STR("pdb"));
-    prb_unused(pdbPath); // NOTE(khvorov) MSVC only
+    prb_unused(pdbPath);  // NOTE(khvorov) MSVC only
     prb_Str outputDir = prb_getParentDir(arena, outputPath);
 
     prb_GrowingStr cmd = prb_beginStr(arena);
@@ -465,7 +466,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
         arrput(processesPreprocess, proc);
     }
 
-    prb_assert(prb_launchProcesses(arena, processesPreprocess, arrlen(processesPreprocess), prb_Background_Yes));
+    prb_assert(prb_launchProcesses(arena, processesPreprocess, arrlen(processesPreprocess), lib->project->tuCompilationMode));
     prb_Status preprocessStatus = prb_waitForProcesses(processesPreprocess, arrlen(processesPreprocess));
     arrfree(processesPreprocess);
 
@@ -538,7 +539,7 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             shouldRegenLib = true;
         }
 
-        prb_assert(prb_launchProcesses(arena, processesCompile, arrlen(processesCompile), prb_Background_Yes));
+        prb_assert(prb_launchProcesses(arena, processesCompile, arrlen(processesCompile), lib->project->tuCompilationMode));
         prb_Status compileStatus = prb_waitForProcesses(processesCompile, arrlen(processesCompile));
         arrfree(processesCompile);
 
@@ -625,13 +626,18 @@ main() {
     prb_assert(arrlen(cmdArgs) == 3 || arrlen(cmdArgs) == 4);
     prb_Str compilerStr = cmdArgs[1];
     prb_Str buildTypeStr = cmdArgs[2];
-    bool runningOnCi = arrlen(cmdArgs) == 4 && prb_streq(cmdArgs[3], prb_STR("ci"));
+    bool    runningOnCi = arrlen(cmdArgs) == 4 && prb_streq(cmdArgs[3], prb_STR("ci"));
     prb_assert(prb_streq(buildTypeStr, prb_STR("debug")) || prb_streq(buildTypeStr, prb_STR("release")));
 
     project->rootDir = prb_getParentDir(arena, prb_STR(__FILE__));
     project->release = prb_streq(buildTypeStr, prb_STR("release"));
     project->compileOutDir = prb_pathJoin(arena, project->rootDir, prb_fmt(arena, "build-%.*s-%.*s", prb_LIT(compilerStr), prb_LIT(buildTypeStr)));
     prb_assert(prb_createDirIfNotExists(arena, project->compileOutDir) == prb_Success);
+
+    project->tuCompilationMode = prb_Background_Yes;
+    if (runningOnCi && project->compiler == Compiler_Msvc) {
+        project->tuCompilationMode = prb_Background_No;
+    }
 
 #if prb_PLATFORM_WINDOWS
     prb_assert(prb_streq(compilerStr, prb_STR("msvc")) || prb_streq(compilerStr, prb_STR("clang")));
@@ -1177,12 +1183,7 @@ main() {
 
         // NOTE(khvorov) Multithreading here doesn't really make it faster presumably because each job is
         // paralellised already anyway
-        prb_Background bg = prb_Background_Yes;
-        if (runningOnCi && project->compiler == Compiler_Msvc) {
-            prb_writeToStdout(prb_STR("TEST SWITCH TO ST\n"));
-            bg = prb_Background_No;
-        }
-        prb_assert(prb_launchJobs(jobs, arrlen(jobs), bg));
+        prb_assert(prb_launchJobs(jobs, arrlen(jobs), project->tuCompilationMode));
         prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
 
         prb_assert(fribidi.compileStatus == prb_ProcessStatus_CompletedSuccess);
