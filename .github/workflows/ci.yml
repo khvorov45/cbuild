@@ -27,10 +27,22 @@ jobs:
       run: cmd /c "curl -fsSL -o LLVM-15.0.6-win64.exe https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe"
     - name: Install LLVM
       run: cmd /c "LLVM-15.0.6-win64.exe /S"
-    - uses: ilammy/msvc-dev-cmd@v1
     - uses: actions/checkout@v2
     - name: tests
-      run: ./tests/run.bat ci
+      shell: cmd
+      run: |
+        @echo off
+        setlocal enabledelayedexpansion
+        where /Q cl.exe || (
+          set __VSCMD_ARG_NO_LOGO=1
+          for /f "tokens=*" %%i in ('"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath') do set VS=%%i
+          if "!VS!" equ "" (
+            echo ERROR: Visual Studio installation not found
+            exit /b 1
+          )  
+          call "!VS!\VC\Auxiliary\Build\vcvarsall.bat" amd64 || exit /b 1
+        )
+        ./tests/run.bat ci
     - name: coverage
       uses: codecov/codecov-action@v3
       with:
