@@ -31,6 +31,7 @@ global_variable prb_Str globalTestsDir = {};
 function prb_Str
 constructCompileCmd(prb_Arena* arena, CompileSpec spec) {
     prb_Str outputNamePdb = prb_replaceExt(arena, spec.output, prb_STR("pdb"));
+    prb_Str outputNameObj = prb_replaceExt(arena, spec.output, prb_STR("obj"));
 
     prb_GrowingStr cmd = prb_beginStr(arena);
 
@@ -92,7 +93,7 @@ constructCompileCmd(prb_Arena* arena, CompileSpec spec) {
         case Compiler_Gcc:
         case Compiler_Clang: prb_addStrSegment(&cmd, " -o %.*s", prb_LIT(spec.output)); break;
         case Compiler_Msvc: {
-            prb_addStrSegment(&cmd, " /Fd%.*s", prb_LIT(outputNamePdb));
+            prb_addStrSegment(&cmd, " /Fo%.*s /Fd%.*s", prb_LIT(outputNameObj), prb_LIT(outputNamePdb));
             if (outIsObj) {
                 prb_addStrSegment(&cmd, " /Fo%.*s", prb_LIT(spec.output));
             } else {
@@ -266,6 +267,8 @@ main() {
                     || prb_strEndsWith(entry, prb_STR(".exe"))
                     || prb_strEndsWith(entry, prb_STR(".pdb"))
                     || prb_strEndsWith(entry, prb_STR(".obj"))
+                    || prb_strEndsWith(entry, prb_STR(".exp"))
+                    || prb_strEndsWith(entry, prb_STR(".lib"))
                     || prb_strEndsWith(entry, prb_STR(".log"))
                     || prb_strEndsWith(entry, prb_STR(".supp"))
                     || prb_strStartsWith(entryName, prb_STR("coverage"));
@@ -379,6 +382,23 @@ main() {
 
         // NOTE(khvorov) Sanitizers
         {
+            TestJobSpec spec = {};
+
+            spec.flags = prb_STR("-fsanitize=address -fno-omit-frame-pointer");
+            spec.addOutputSuffix = prb_STR("san-address");
+            arrput(jobs, createTestJob(arena, spec));
+
+#if prb_PLATFORM_LINUX
+            // NOTE(khvorov) Not implemented on windows
+            spec.flags = prb_STR("-fsanitize=thread");
+            spec.addOutputSuffix = prb_STR("san-thread");
+            arrput(jobs, createTestJob(arena, spec));
+
+            // NOTE(khvorov) Not implemented on windows
+            spec.flags = prb_STR("-fsanitize=memory -fno-omit-frame-pointer");
+            spec.addOutputSuffix = prb_STR("san-memory");
+            arrput(jobs, createTestJob(arena, spec));
+
             {
                 prb_Str ubSuppress = prb_STR("alignment:prb_stbsp_vsprintfcb");
                 prb_Str ubsanFilepath = prb_pathJoin(arena, globalTestsDir, prb_STR("ubsan.supp"));
@@ -386,23 +406,13 @@ main() {
                 prb_assert(prb_setenv(arena, prb_STR("UBSAN_OPTIONS"), prb_fmt(arena, "suppressions=%.*s", prb_LIT(ubsanFilepath))));
             }
 
-            TestJobSpec spec = {};
-
-            spec.flags = prb_STR("-fsanitize=address -fno-omit-frame-pointer");
-            spec.addOutputSuffix = prb_STR("san-address");
-            arrput(jobs, createTestJob(arena, spec));
-
-            spec.flags = prb_STR("-fsanitize=thread");
-            spec.addOutputSuffix = prb_STR("san-thread");
-            arrput(jobs, createTestJob(arena, spec));
-
-            spec.flags = prb_STR("-fsanitize=memory -fno-omit-frame-pointer");
-            spec.addOutputSuffix = prb_STR("san-memory");
-            arrput(jobs, createTestJob(arena, spec));
-
+            // NOTE(khvorov) Implemented on windows but apparently incapable of reading an environment variable correctly:
+            // UndefinedBehaviorSanitizer: ERROR: expected '=' in UBSAN_OPTIONS
+            // Note that I can read that environment variable in child using prb_getenv just fine
             spec.flags = prb_STR("-fsanitize=undefined");
             spec.addOutputSuffix = prb_STR("san-ub");
             arrput(jobs, createTestJob(arena, spec));
+#endif
         }
 
         // NOTE(khvorov) Run tests for all combinations of compiler/language

@@ -3,6 +3,8 @@
 *.exe
 *.ilk
 *.obj
+*.exp
+*.lib
 /shell.bat
 /example/freetype
 /example/sdl

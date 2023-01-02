@@ -1674,7 +1674,6 @@ prb_pathEntryIterNext(prb_PathEntryIter* iter) {
         while (iter->curOffset < iter->ogstr.len && !sepFound) {
             if (prb_charIsSep(iter->ogstr.ptr[iter->curOffset])) {
                 firstFoundSepIndex = iter->curOffset;
-                sepFound = true;
 
 #if prb_PLATFORM_WINDOWS
                 // NOTE(khvorov) Windows's //network type path
@@ -1682,6 +1681,10 @@ prb_pathEntryIterNext(prb_PathEntryIter* iter) {
                 if (!sepFound) {
                     iter->curOffset = 2;
                 }
+#elif prb_PLATFORM_LINUX
+                sepFound = true;
+#else
+#error unimplemented
 #endif
 
                 // NOTE(khvorov) Ignore multiple separators in a row
@@ -1855,7 +1858,7 @@ prb_readEntireFile(prb_Arena* arena, prb_Str path) {
 
 #if prb_PLATFORM_WINDOWS
 
-    prb_windows_OpenResult handle = prb_windows_open(arena, path, GENERIC_READ, 0, OPEN_EXISTING, 0);
+    prb_windows_OpenResult handle = prb_windows_open(arena, path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, 0);
     if (handle.success) {
         LARGE_INTEGER size;
         prb_memset(&size, 0, sizeof(size));
