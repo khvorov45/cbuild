@@ -27,6 +27,7 @@ jobs:
       run: cmd /c "curl -fsSL -o LLVM-15.0.6-win64.exe https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe"
     - name: Install LLVM
       run: cmd /c "LLVM-15.0.6-win64.exe /S"
+    - uses: ilammy/msvc-dev-cmd@v1
     - uses: actions/checkout@v2
     - name: tests
       run: ./tests/run.bat ci
