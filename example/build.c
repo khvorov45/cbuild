@@ -243,6 +243,7 @@ fileIsPreprocessed(prb_Str name) {
 function prb_Str
 constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_Str inputPath, prb_Str outputPath, prb_Str linkFlags) {
     prb_Str pdbPath = prb_replaceExt(arena, outputPath, prb_STR("pdb"));
+    prb_unused(pdbPath); // NOTE(khvorov) MSVC only
     prb_Str outputDir = prb_getParentDir(arena, outputPath);
 
     prb_GrowingStr cmd = prb_beginStr(arena);
@@ -1033,11 +1034,19 @@ main() {
         );
 
         prb_Str genArabicShapingTab = prb_pathJoin(arena, gentabDir, prb_STR("gen-arabic-shaping-tab.c"));
+
+        // NOTE(khvorov) Fix compiler warnings
         textfileReplace(
             arena,
             genArabicShapingTab,
             prb_STR("macro_name, (long)(maxshaped - minshaped + 1) * 4 * sizeof (FriBidiChar));"),
             prb_STR("macro_name, (long)((maxshaped - minshaped + 1) * 4 * sizeof (FriBidiChar)));")
+        );
+        textfileReplace(
+            arena,
+            genArabicShapingTab,
+            prb_STR("	  data_file_type[0], data_file_type[1]);"),
+            prb_STR("	  data_file_type[0], \"\");")
         );
 
         compileAndRunBidiGenTab(
