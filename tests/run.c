@@ -472,6 +472,11 @@ main() {
                     prb_assert(execCmd(arena, cmd));
                     // NOTE(khvorov) Compile again to make sure incremental compilation code executes
                     prb_assert(execCmd(arena, cmd));
+
+                    // NOTE(khvorov) Remove fribidi to make sure we can generate the tables with any compiler/mode settings
+                    prb_Str fribidiDir = prb_pathJoin(arena, exampleDir, prb_STR("firbidi"));
+                    prb_assert(prb_isDir(arena, fribidiDir));
+                    prb_assert(prb_removePathIfExists(arena, fribidiDir));
                 }
             }
 

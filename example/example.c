@@ -1,3 +1,12 @@
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4061)  // enumerator 'USCRIPT_CODE_LIMIT' in switch of enum 'UScriptCode' is not explicitly handled by a case label
+#pragma warning(disable : 4245)  // '=': conversion from 'int' to 'u32', signed/unsigned mismatch (ICU macros trigger this)
+#pragma warning(disable : 4668)  // '__LINUX__' is not defined as a preprocessor macro, replacing with '0' for '#if/#elif'
+#pragma warning(disable : 4820)  // padding
+#pragma warning(disable : 5045)  // Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
+#endif
+
 #include <stdbool.h>
 
 #include <ft2build.h>
@@ -529,7 +538,7 @@ getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriB
         // https://learn.microsoft.com/en-us/typography/font-list/microsoft-sans-serif
         UNUSED(chars);
         UNUSED(chCount);
-        String fontpath = {};
+        String fontpath = {.ptr = 0, .len = 0};
         switch (script) {
             case USCRIPT_HAN:
             case USCRIPT_JAPANESE:
@@ -568,7 +577,7 @@ getFontForScriptAndUtf32Chars(FontManager* fontManager, UScriptCode script, FriB
             usize fileSize = 0;
             void* fileContents = SDL_LoadFile(fontpath.ptr, &fileSize);
             assert(fileSize <= INT32_MAX);
-            ByteSlice      fontFileContents = {fileContents, fileSize};
+            ByteSlice      fontFileContents = {fileContents, (i32)fileSize};
             LoadFontResult loadFontResult = loadFont(fontManager->ftLib, fontpath, fontFileContents);
             if (loadFontResult.success) {
                 unloadFont(font);
@@ -596,7 +605,8 @@ createFontManager(Arena* arena) {
     FT_Error                ftInitResult = FT_Init_FreeType(&ftLib);
     if (ftInitResult == FT_Err_Ok) {
         i32         fontCount = USCRIPT_CODE_LIMIT;
-        FontManager fontManager = {};
+        FontManager fontManager;
+        SDL_memset(&fontManager, 0, sizeof(fontManager));
 
         fontManager.ftLib = ftLib;
         fontManager.fonts = arenaAllocArray(arena, Font, fontCount);
@@ -1089,8 +1099,7 @@ main(int argc, char* argv[]) {
 
                 // NOTE(khvorov) Visualize memory usage
                 {
-                    i32 totalMemoryUsed =
-                        globalGPADataSDL.used + globalGPADataFT.used + globalGPADataHB.used + globalGPADataFribidi.used + virtualArena.size;
+                    i32 totalMemoryUsed = (i32)(globalGPADataSDL.used + globalGPADataFT.used + globalGPADataHB.used + globalGPADataFribidi.used + virtualArena.size);
                     i32 memRectHeight = 20;
                     i32 textXPad = 5;
                     i32 arbitraryLineHeight = 20;
@@ -1098,7 +1107,7 @@ main(int argc, char* argv[]) {
                     i32 topY = drawMemRect(
                         &renderer,
                         0,
-                        globalGPADataSDL.used,
+                        (i32)globalGPADataSDL.used,
                         totalMemoryUsed,
                         memRectHeight,
                         (Color) {.r = 100, .g = 100, .a = 255},
@@ -1109,7 +1118,7 @@ main(int argc, char* argv[]) {
                     topY = drawMemRect(
                         &renderer,
                         topY,
-                        globalGPADataFT.used,
+                        (i32)globalGPADataFT.used,
                         totalMemoryUsed,
                         memRectHeight,
                         (Color) {.r = 100, .b = 100, .a = 255},
@@ -1120,7 +1129,7 @@ main(int argc, char* argv[]) {
                     topY = drawMemRect(
                         &renderer,
                         topY,
-                        globalGPADataHB.used,
+                        (i32)globalGPADataHB.used,
                         totalMemoryUsed,
                         memRectHeight,
                         (Color) {.g = 100, .b = 100, .a = 255},
@@ -1131,7 +1140,7 @@ main(int argc, char* argv[]) {
                     topY = drawMemRect(
                         &renderer,
                         topY,
-                        globalGPADataFribidi.used,
+                        (i32)globalGPADataFribidi.used,
                         totalMemoryUsed,
                         memRectHeight,
                         (Color) {.g = 100, .b = 200, .a = 255},
@@ -1186,3 +1195,7 @@ main(int argc, char* argv[]) {
 
     return 0;
 }
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

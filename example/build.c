@@ -242,12 +242,15 @@ fileIsPreprocessed(prb_Str name) {
 
 function prb_Str
 constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_Str inputPath, prb_Str outputPath, prb_Str linkFlags) {
+    prb_Str pdbPath = prb_replaceExt(arena, outputPath, prb_STR("pdb"));
+    prb_Str outputDir = prb_getParentDir(arena, outputPath);
+
     prb_GrowingStr cmd = prb_beginStr(arena);
 
     switch (project->compiler) {
         case Compiler_Gcc: prb_addStrSegment(&cmd, "gcc"); break;
         case Compiler_Clang: prb_addStrSegment(&cmd, "clang"); break;
-        case Compiler_Msvc: prb_addStrSegment(&cmd, "cl /nologo /diagnostics:column /FC"); break;
+        case Compiler_Msvc: prb_addStrSegment(&cmd, "cl /nologo /diagnostics:column /FC /utf-8"); break;
     }
 
     if (project->release) {
@@ -271,7 +274,9 @@ constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_S
         switch (project->compiler) {
             case Compiler_Gcc:
             case Compiler_Clang: prb_addStrSegment(&cmd, " -E"); break;
-            case Compiler_Msvc: prb_addStrSegment(&cmd, " /P /Fi%.*s", prb_LIT(outputPath)); break;
+            // NOTE(khvorov) Warning 4668 is "'__LINUX__' is not defined as a preprocessor macro, replacing with '0' for '#if/#elif'"
+            // I have to disable it here because buggy msvc doesn't respect the pragma when only doing the preprocessing
+            case Compiler_Msvc: prb_addStrSegment(&cmd, " -wd4668 /P /Fi%.*s", prb_LIT(outputPath)); break;
         }
     }
     if (inIsPreprocessed) {
@@ -294,7 +299,6 @@ constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_S
     prb_addStrSegment(&cmd, " -D_CRT_SECURE_NO_WARNINGS");
 
     if (project->compiler == Compiler_Msvc) {
-        prb_Str pdbPath = prb_replaceExt(arena, outputPath, prb_STR("pdb"));
         prb_addStrSegment(&cmd, " /Fd%.*s", prb_LIT(pdbPath));
     }
 #endif
@@ -303,11 +307,12 @@ constructCompileCmd(prb_Arena* arena, ProjectInfo* project, prb_Str flags, prb_S
         case Compiler_Gcc:
         case Compiler_Clang: prb_addStrSegment(&cmd, " %.*s -o %.*s", prb_LIT(inputPath), prb_LIT(outputPath)); break;
         case Compiler_Msvc: {
-            prb_Str objPath = isObj ? outputPath : prb_replaceExt(arena, outputPath, prb_STR("obj"));
-            prb_addStrSegment(&cmd, " /Fo%.*s", prb_LIT(objPath));
             if (!isObj) {
-                prb_addStrSegment(&cmd, " /Fe%.*s", prb_LIT(outputPath));
+                prb_addStrSegment(&cmd, " /Fo%.*s/ /Fe%.*s", prb_LIT(outputDir), prb_LIT(outputPath));
+            } else {
+                prb_addStrSegment(&cmd, " /Fo%.*s", prb_LIT(outputPath));
             }
+            prb_addStrSegment(&cmd, " %.*s", prb_LIT(inputPath));
         } break;
     }
 
@@ -438,8 +443,6 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             prb_Str entry = entries[entryIndex];
             if (prb_strEndsWith(entry, prb_STR(".obj"))) {
                 shput(existingObjs, entry.ptr, false);
-            } else {
-                prb_removePathIfExists(arena, entry);
             }
         }
     }
@@ -521,6 +524,9 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             StringFound existingObj = existingObjs[existingObjIndex];
             if (!existingObj.value) {
                 prb_assert(prb_removePathIfExists(arena, prb_STR(existingObj.key)) == prb_Success);
+                prb_assert(prb_removePathIfExists(arena, prb_replaceExt(arena, prb_STR(existingObj.key), prb_STR("i"))) == prb_Success);
+                prb_assert(prb_removePathIfExists(arena, prb_replaceExt(arena, prb_STR(existingObj.key), prb_STR("ii"))) == prb_Success);
+                prb_assert(prb_removePathIfExists(arena, prb_replaceExt(arena, prb_STR(existingObj.key), prb_STR("pdb"))) == prb_Success);
                 shouldRegenLib = true;
             }
         }
@@ -540,7 +546,11 @@ compileStaticLib(prb_Arena* arena, void* staticLibInfo) {
             if (!prb_isFile(arena, lib->libFile) || shouldRegenLib) {
                 prb_Str objsPathsString = prb_stringsJoin(arena, outputObjs, arrlen(outputObjs), prb_STR(" "));
 #if prb_PLATFORM_WINDOWS
-                prb_Str libCmd = prb_fmt(arena, "llvm-lib /nologo -out:%.*s %.*s", prb_LIT(lib->libFile), prb_LIT(objsPathsString));
+                prb_Str libProg = prb_STR("lib");
+                if (lib->project->compiler == Compiler_Clang) {
+                    libProg = prb_STR("llvm-lib");
+                }
+                prb_Str libCmd = prb_fmt(arena, "%.*s /nologo -out:%.*s %.*s", prb_LIT(libProg), prb_LIT(lib->libFile), prb_LIT(objsPathsString));
 #elif prb_PLATFORM_LINUX
                 prb_Str libCmd = prb_fmt(arena, "ar rcs %.*s %.*s", prb_LIT(lib->libFile), prb_LIT(objsPathsString));
 #endif
@@ -1173,6 +1183,11 @@ main() {
     // SECTION Main program
     //
 
+    prb_Str mainWarningFlags = prb_STR("-Wall -Wextra -Werror");
+    if (project->compiler == Compiler_Msvc) {
+        mainWarningFlags = prb_STR("/Wall /WX");
+    }
+
     prb_Str mainFlags[] = {
         freetype.includeFlag,
         sdl.includeFlag,
@@ -1180,7 +1195,7 @@ main() {
         icu.includeFlag,
         fribidi.includeFlag,
         fribidiHeaderFlags,
-        prb_STR("-Wall -Wextra -Werror"),
+        mainWarningFlags,
     };
 
     prb_Str mainNotPreprocessedName = prb_STR("example.c");
