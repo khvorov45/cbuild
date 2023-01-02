@@ -418,11 +418,10 @@ main() {
         // NOTE(khvorov) Run tests for all combinations of compiler/language
         {
             Compiler compilers[] = {
+                Compiler_Clang,
 #if prb_PLATFORM_WINDOWS
-                Compiler_Msvc,
-                Compiler_Clang,
+                Compiler_Msvc
 #elif prb_PLATFORM_LINUX
-                Compiler_Clang,
                 Compiler_Gcc
 #else
 #error unimplemented
@@ -463,11 +462,10 @@ main() {
 
             // NOTE(khvorov) Use the build program to compile the examples
             prb_Str compilerArgs[] = {
-#if prb_PLATFORM_WINDOWS
-                prb_STR("msvc"),
                 prb_STR("clang")
+#if prb_PLATFORM_WINDOWS
+                prb_STR("msvc")
 #elif prb_PLATFORM_LINUX
-                prb_STR("clang"),
                 prb_STR("gcc")
 #else
 #error unimplemented
@@ -530,8 +528,15 @@ main() {
             }
         }
 
-        prb_assert(prb_launchJobs(jobs, arrlen(jobs), prb_Background_Yes));
-        prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
+        {
+            // NOTE(khvorov) Could run out of memory on CI
+            prb_Background bg = prb_Background_Yes;
+            if (runningOnCi) {
+                bg = prb_Background_No;
+            }
+            prb_assert(prb_launchJobs(jobs, arrlen(jobs), bg));
+            prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
+        }
 
         // NOTE(khvorov) Print result of static analysis
         prb_assert(prb_waitForProcesses(&staticAnalysisProc, 1));
