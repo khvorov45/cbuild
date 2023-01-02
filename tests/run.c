@@ -418,10 +418,11 @@ main() {
         // NOTE(khvorov) Run tests for all combinations of compiler/language
         {
             Compiler compilers[] = {
-                Compiler_Clang,
 #if prb_PLATFORM_WINDOWS
-                Compiler_Msvc
+                Compiler_Msvc,
+                Compiler_Clang,
 #elif prb_PLATFORM_LINUX
+                Compiler_Clang,
                 Compiler_Gcc
 #else
 #error unimplemented
@@ -462,10 +463,11 @@ main() {
 
             // NOTE(khvorov) Use the build program to compile the examples
             prb_Str compilerArgs[] = {
-                prb_STR("clang"),
 #if prb_PLATFORM_WINDOWS
-                prb_STR("msvc")
+                prb_STR("msvc"),
+                prb_STR("clang")
 #elif prb_PLATFORM_LINUX
+                prb_STR("clang"),
                 prb_STR("gcc")
 #else
 #error unimplemented
@@ -484,6 +486,9 @@ main() {
                     prb_assert(prb_removePathIfExists(arena, fribidiDir));
 
                     prb_Str cmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(spec.output), prb_LIT(compilerArg), prb_LIT(buildModeArg));
+                    if (runningOnCi) {
+                        cmd = prb_fmt(arena, "%.*s ci", prb_LIT(cmd));
+                    }
                     prb_assert(execCmd(arena, cmd));
                     // NOTE(khvorov) Compile again to make sure incremental compilation code executes
                     prb_assert(execCmd(arena, cmd));
@@ -514,6 +519,9 @@ main() {
 #endif
 
                 prb_Str execBuildcmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(buildScriptCmd), prb_LIT(compilerArgs[0]), prb_LIT(buildModeArgs[0]));
+                if (runningOnCi) {
+                    execBuildcmd = prb_fmt(arena, "%.*s ci", prb_LIT(execBuildcmd));
+                }
                 prb_assert(execCmd(arena, execBuildcmd));
 
                 prb_assert(prb_setWorkingDir(arena, exampleDir) == prb_Success);
