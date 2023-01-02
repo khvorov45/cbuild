@@ -23,10 +23,10 @@ jobs:
   build-windows:
     runs-on: windows-2022
     steps:
-    - name: Install LLVM (for coverage)
-      run: >-
-        curl -fsSL -o "LLVM-15.0.6-win64.exe" "https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe"
-        "LLVM-15.0.6-win64.exe" /S
+    - name: Download LLVM
+      run: curl -fsSL -o LLVM-15.0.6-win64.exe https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe
+    - name: Install LLVM
+      run: LLVM-15.0.6-win64.exe /S
     - uses: actions/checkout@v2
     - name: tests
       run: ./tests/run.bat ci
