@@ -24,7 +24,7 @@ jobs:
     runs-on: windows-2022
     steps:
     - name: Download LLVM
-      run: curl -fsSL -o LLVM-15.0.6-win64.exe https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe
+      run: cmd /c "curl -fsSL -o LLVM-15.0.6-win64.exe https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe"
     - name: Install LLVM
       run: LLVM-15.0.6-win64.exe /S
     - uses: actions/checkout@v2
