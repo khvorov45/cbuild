@@ -23,13 +23,9 @@ jobs:
   build-windows:
     runs-on: windows-2022
     steps:
-    - name: Download LLVM
-      run: cmd /c "curl -fsSL -o LLVM-15.0.6-win64.exe https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe"
-    - name: Install LLVM
-      run: cmd /c "LLVM-15.0.6-win64.exe /S"
-    - uses: actions/checkout@v2
     - name: set up MSVC
       uses: ilammy/msvc-dev-cmd@v1
+    - uses: actions/checkout@v2
     - name: tests
       shell: cmd
       run: ./tests/run.bat ci
