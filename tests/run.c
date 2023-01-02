@@ -471,13 +471,15 @@ main() {
 
                     // NOTE(khvorov) Remove fribidi to make sure we can generate the tables with any compiler/mode settings
                     prb_Str fribidiDir = prb_pathJoin(arena, exampleDir, prb_STR("fribidi"));
-                    prb_assert(prb_isDir(arena, fribidiDir));
                     prb_assert(prb_removePathIfExists(arena, fribidiDir));
 
                     prb_Str cmd = prb_fmt(arena, "%.*s %.*s %.*s", prb_LIT(spec.output), prb_LIT(compilerArg), prb_LIT(buildModeArg));
                     prb_assert(execCmd(arena, cmd));
                     // NOTE(khvorov) Compile again to make sure incremental compilation code executes
                     prb_assert(execCmd(arena, cmd));
+
+                    // NOTE(khvorov) Make sure the path is what I expect it to be
+                    prb_assert(prb_isDir(arena, fribidiDir));
                 }
             }
 
