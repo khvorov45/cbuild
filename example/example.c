@@ -3,6 +3,7 @@
 #pragma warning(disable : 4061)  // enumerator 'USCRIPT_CODE_LIMIT' in switch of enum 'UScriptCode' is not explicitly handled by a case label
 #pragma warning(disable : 4245)  // '=': conversion from 'int' to 'u32', signed/unsigned mismatch (ICU macros trigger this)
 #pragma warning(disable : 4668)  // '__LINUX__' is not defined as a preprocessor macro, replacing with '0' for '#if/#elif'
+#pragma warning(disable : 4711)  // function selected for automatic inline expansion (how is this even a warning wtf microsoft)
 #pragma warning(disable : 4820)  // padding
 #pragma warning(disable : 5045)  // Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
 #endif
