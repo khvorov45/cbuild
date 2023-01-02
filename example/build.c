@@ -634,11 +634,6 @@ main() {
     project->compileOutDir = prb_pathJoin(arena, project->rootDir, prb_fmt(arena, "build-%.*s-%.*s", prb_LIT(compilerStr), prb_LIT(buildTypeStr)));
     prb_assert(prb_createDirIfNotExists(arena, project->compileOutDir) == prb_Success);
 
-    project->tuCompilationMode = prb_Background_Yes;
-    if (runningOnCi && project->compiler == Compiler_Msvc) {
-        project->tuCompilationMode = prb_Background_No;
-    }
-
 #if prb_PLATFORM_WINDOWS
     prb_assert(prb_streq(compilerStr, prb_STR("msvc")) || prb_streq(compilerStr, prb_STR("clang")));
     project->compiler = prb_streq(compilerStr, prb_STR("msvc")) ? Compiler_Msvc : Compiler_Clang;
@@ -648,6 +643,11 @@ main() {
 #else
 #error unimlemented
 #endif
+
+    project->tuCompilationMode = prb_Background_Yes;
+    if (runningOnCi && project->compiler == Compiler_Msvc) {
+        project->tuCompilationMode = prb_Background_No;
+    }
 
     //
     // SECTION Setup
