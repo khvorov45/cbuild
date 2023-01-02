@@ -73,7 +73,6 @@ constructCompileCmd(prb_Arena* arena, CompileSpec spec) {
             switch (spec.compiler) {
                 case Compiler_Gcc:
                 case Compiler_Clang: prb_addStrSegment(&cmd, " -x c++"); break;
-                // TODO(khvorov) Get rid of c++20 requirement?
                 case Compiler_Msvc: prb_addStrSegment(&cmd, " /std:c++20 /Tp"); break;
             }
             break;
