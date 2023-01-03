@@ -1,6 +1,6 @@
 # cbuild
 
-A set of utilities for writing "build scripts" as small C (or C++) programs.
+Single-header public domain (or MIT licensed) set of utilities for writing "build scripts" as small C (or C++) programs.
 
 Works on windows and linux.
 
