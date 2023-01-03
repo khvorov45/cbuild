@@ -1,5 +1,7 @@
 /* A set of utilities for writing "build scripts" as small C (or C++) programs.
 
+Works on windows and linux.
+
 Repository: https://github.com/khvorov45/cbuild
 See example/build.c for a non-trivial example build program.
 

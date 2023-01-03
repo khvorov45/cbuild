@@ -2,6 +2,8 @@
 
 A set of utilities for writing "build scripts" as small C (or C++) programs.
 
+Works on windows and linux.
+
 See `example/build.c` for a non-trivial example build program.
 
 A simple build program might look like this
