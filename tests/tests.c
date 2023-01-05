@@ -1,4 +1,5 @@
 #ifdef _MSC_VER
+#pragma warning(disable : 4127)  // conditional expression is constant
 #pragma warning(disable : 4464)  // relative include path contains '..'
 #pragma warning(disable : 4576)  // a parenthesized type followed by an initializer list is a non-standard explicit type conversion syntax
 #pragma warning(disable : 5045)  // Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
