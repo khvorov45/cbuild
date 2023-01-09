@@ -262,16 +262,16 @@ for (prb_Iter iter = prb_createIter(); prb_iterNext(&iter) == prb_Success;) {
 #endif
 
 typedef struct prb_Arena {
-    void*   base;
-    int32_t size;
-    int32_t used;
-    bool    lockedForStr;
-    int32_t tempCount;
+    void*    base;
+    intptr_t size;
+    intptr_t used;
+    bool     lockedForStr;
+    int32_t  tempCount;
 } prb_Arena;
 
 typedef struct prb_TempMemory {
     prb_Arena* arena;
-    int32_t    usedAtBegin;
+    intptr_t   usedAtBegin;
     int32_t    tempCountAtBegin;
 } prb_TempMemory;
 
@@ -501,9 +501,9 @@ typedef struct prb_CoreCountResult {
 // SECTION Memory
 prb_PUBLICDEC bool           prb_memeq(const void* ptr1, const void* ptr2, int32_t bytes);
 prb_PUBLICDEC int32_t        prb_getOffsetForAlignment(void* ptr, int32_t align);
-prb_PUBLICDEC void*          prb_vmemAlloc(int32_t bytes);
-prb_PUBLICDEC prb_Arena      prb_createArenaFromVmem(int32_t bytes);
-prb_PUBLICDEC prb_Arena      prb_createArenaFromArena(prb_Arena* arena, int32_t bytes);
+prb_PUBLICDEC void*          prb_vmemAlloc(intptr_t bytes);
+prb_PUBLICDEC prb_Arena      prb_createArenaFromVmem(intptr_t bytes);
+prb_PUBLICDEC prb_Arena      prb_createArenaFromArena(prb_Arena* arena, intptr_t bytes);
 prb_PUBLICDEC void*          prb_arenaAllocAndZero(prb_Arena* arena, int32_t size, int32_t align);
 prb_PUBLICDEC void           prb_arenaAlignFreePtr(prb_Arena* arena, int32_t align);
 prb_PUBLICDEC void*          prb_arenaFreePtr(prb_Arena* arena);
@@ -1049,7 +1049,7 @@ prb_getOffsetForAlignment(void* ptr, int32_t align) {
 }
 
 prb_PUBLICDEF void*
-prb_vmemAlloc(int32_t bytes) {
+prb_vmemAlloc(intptr_t bytes) {
 #if prb_PLATFORM_WINDOWS
 
     void* ptr = VirtualAlloc(0, (SIZE_T)bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -1068,7 +1068,7 @@ prb_vmemAlloc(int32_t bytes) {
 }
 
 prb_PUBLICDEF prb_Arena
-prb_createArenaFromVmem(int32_t bytes) {
+prb_createArenaFromVmem(intptr_t bytes) {
     prb_Arena arena = {
         .base = prb_vmemAlloc(bytes),
         .size = bytes,
@@ -1080,7 +1080,7 @@ prb_createArenaFromVmem(int32_t bytes) {
 }
 
 prb_PUBLICDEF prb_Arena
-prb_createArenaFromArena(prb_Arena* parent, int32_t bytes) {
+prb_createArenaFromArena(prb_Arena* parent, intptr_t bytes) {
     prb_Arena arena = {
         .base = prb_arenaFreePtr(parent),
         .size = bytes,
@@ -4478,7 +4478,7 @@ prb_STB_SPRINTF_DECORATE(vsprintfcb)(prb_STBSP_SPRINTFCB* callback, void* user, 
                 pr = sizeof(void*) * 2;
                 fl &= ~prb_STBSP__LEADINGZERO;  // 'p' only prints the pointer with zeros
                 prb_FALLTHROUGH;
-                    // fall through - to X
+                // fall through - to X
 
             case 'X':  // upper hex
             case 'x':  // lower hex
@@ -5704,12 +5704,12 @@ prb_stbds_siphash_bytes(void* p, size_t len, size_t seed) {
     data = len << (prb_STBDS_SIZE_T_BITS - 8);
     switch (len - i) {
         case 7: data |= ((size_t)d[6] << 24) << 24; prb_FALLTHROUGH;  // fall through
-        case 6: data |= ((size_t)d[5] << 20) << 20; prb_FALLTHROUGH; // fall through
-        case 5: data |= ((size_t)d[4] << 16) << 16; prb_FALLTHROUGH; // fall through
-        case 4: data |= (d[3] << 24); prb_FALLTHROUGH; // fall through
-        case 3: data |= (d[2] << 16); prb_FALLTHROUGH; // fall through
-        case 2: data |= (d[1] << 8); prb_FALLTHROUGH; // fall through
-        case 1: data |= d[0]; prb_FALLTHROUGH; // fall through
+        case 6: data |= ((size_t)d[5] << 20) << 20; prb_FALLTHROUGH;  // fall through
+        case 5: data |= ((size_t)d[4] << 16) << 16; prb_FALLTHROUGH;  // fall through
+        case 4: data |= (d[3] << 24); prb_FALLTHROUGH;  // fall through
+        case 3: data |= (d[2] << 16); prb_FALLTHROUGH;  // fall through
+        case 2: data |= (d[1] << 8); prb_FALLTHROUGH;  // fall through
+        case 1: data |= d[0]; prb_FALLTHROUGH;  // fall through
         case 0: break;
     }
     v3 ^= data;

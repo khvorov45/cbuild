@@ -298,7 +298,7 @@ function void
 test_arenaChangeUsed(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    i32 init = arena->used;
+    intptr_t init = arena->used;
     i32 delta = 100;
     prb_arenaChangeUsed(arena, delta);
     prb_assert(arena->used == init + delta);
