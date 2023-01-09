@@ -286,8 +286,8 @@ function void
 test_arenaFreeSize(prb_Arena* arena) {
     prb_TempMemory temp = prb_beginTempMemory(arena);
 
-    i32 sizeInit = prb_arenaFreeSize(arena);
-    i32 size = 1;
+    intptr_t sizeInit = prb_arenaFreeSize(arena);
+    i32      size = 1;
     prb_arenaAllocAndZero(arena, size, 1);
     prb_assert(prb_arenaFreeSize(arena) == sizeInit - size);
 

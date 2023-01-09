@@ -450,6 +450,17 @@ main() {
             arrput(jobs, createTestJob(arena, spec));
         }
 
+        // NOTE(khvorov) Actually run the tests
+        {
+            // NOTE(khvorov) Could run out of memory on CI
+            prb_Background bg = prb_Background_Yes;
+            if (runningOnCi) {
+                bg = prb_Background_No;
+            }
+            prb_assert(prb_launchJobs(jobs, arrlen(jobs), bg));
+            prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
+        }
+
         // NOTE(khvorov) Compile all the examples in every supported way
         {
             // NOTE(khvorov) Compile the build program
@@ -526,16 +537,6 @@ main() {
                 prb_assert(execCmd(arena, execBuildcmd));
                 prb_assert(prb_setWorkingDir(arena, rootDir) == prb_Success);
             }
-        }
-
-        {
-            // NOTE(khvorov) Could run out of memory on CI
-            prb_Background bg = prb_Background_Yes;
-            if (runningOnCi) {
-                bg = prb_Background_No;
-            }
-            prb_assert(prb_launchJobs(jobs, arrlen(jobs), bg));
-            prb_assert(prb_waitForJobs(jobs, arrlen(jobs)));
         }
 
         // NOTE(khvorov) Print result of static analysis
