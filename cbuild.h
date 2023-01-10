@@ -2201,7 +2201,7 @@ prb_strStartsWith(prb_Str str, prb_Str pattern) {
 prb_PUBLICDEF bool
 prb_strEndsWith(prb_Str str, prb_Str pattern) {
     bool result = false;
-    if (str.len > pattern.len) {
+    if (str.len >= pattern.len) {
         result = prb_memeq(str.ptr + str.len - pattern.len, pattern.ptr, pattern.len);
     }
     return result;
