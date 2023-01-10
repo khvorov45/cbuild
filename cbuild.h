@@ -1765,7 +1765,9 @@ prb_getAllDirEntriesCustomBuffer(prb_Arena* arena, prb_Str dir, prb_Recursive mo
             if (openRes.success) {
                 prb_arenaAlignFreePtr(arena, prb_alignof(prb_linux_Dirent64));
                 prb_linux_Dirent64* buf = (prb_linux_Dirent64*)(prb_arenaFreePtr(arena));
-                long syscallReturn = syscall(SYS_getdents64, openRes.handle, buf, (unsigned int)prb_min(prb_arenaFreeSize(arena), UINT32_MAX));
+                unsigned int bufSize = (unsigned int)prb_min(prb_arenaFreeSize(arena), 1 * prb_GIGABYTE);
+                bufSize += prb_getOffsetForAlignment((void*)(uintptr_t)bufSize, prb_alignof(prb_linux_Dirent64));
+                long syscallReturn = syscall(SYS_getdents64, openRes.handle, buf, bufSize);
                 if (syscallReturn > 0) {
                     prb_arenaChangeUsed(arena, syscallReturn);
                     for (long offset = 0; offset < syscallReturn;) {
