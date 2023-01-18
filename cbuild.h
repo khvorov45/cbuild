@@ -1280,6 +1280,24 @@ prb_linux_open(prb_Arena* arena, prb_Str path, int oflags, mode_t mode) {
     return result;
 }
 
+static prb_Bytes
+prb_linux_readFromHandle(prb_Arena* arena, int handle) {
+    uint8_t* buf = prb_arenaFreePtr(arena);
+    int32_t size = 0;
+    for (;;) {
+        int readRes = read(handle, prb_arenaFreePtr(arena), prb_arenaFreeSize(arena));
+        if (readRes == 0) {
+            break;
+        }
+        size += readRes;
+        prb_arenaChangeUsed(arena, readRes);
+    }
+    // NOTE(khvorov) Null terminator
+    prb_arenaAllocAndZero(arena, 1, 1);
+    prb_Bytes result = {buf, size};
+    return result;
+}
+
 typedef struct prb_linux_Dirent64 {
     uint64_t d_ino;
     int64_t d_off;
@@ -1888,11 +1906,10 @@ prb_readEntireFile(prb_Arena* arena, prb_Str path) {
     if (handle.success) {
         struct stat statBuf = {};
         if (fstat(handle.handle, &statBuf) == 0) {
-            uint8_t* buf = (uint8_t*)prb_arenaAllocAndZero(arena, statBuf.st_size + 1, 1);  // NOTE(sen) Null terminator just in case
-            int32_t readResult = read(handle.handle, buf, statBuf.st_size);
-            if (readResult == statBuf.st_size) {
+            prb_Bytes content = prb_linux_readFromHandle(arena, handle.handle);
+            if (content.len == statBuf.st_size) {
                 result.success = true;
-                result.content = (prb_Bytes) {buf, readResult};
+                result.content = content;
             }
         }
         close(handle.handle);
@@ -2458,13 +2475,14 @@ prb_utf8CharIterNext(prb_Utf8CharIter* iter) {
 prb_PUBLICDEF prb_StrScanner
 prb_createStrScanner(prb_Str str) {
     prb_assert(str.ptr && str.len >= 0);
+    prb_Str nullSlice = prb_strSlice(str, 0, 0);
     prb_StrScanner iter = {
         .ogstr = str,
-        .beforeMatch = prb_strSlice(str, 0, 0),
-        .match = str,
+        .beforeMatch = nullSlice,
+        .match = nullSlice,
         .afterMatch = str,
         .matchCount = 0,
-        .betweenLastMatches = prb_strSlice(str, 0, 0),
+        .betweenLastMatches = nullSlice,
     };
     iter.match.len = 0;
     return iter;
@@ -2684,13 +2702,10 @@ static prb_Bytes
 prb_linux_readFromProc(prb_Arena* arena, prb_Str filename) {
     prb_linux_OpenResult handle = prb_linux_open(arena, prb_fmt(arena, "/proc/%.*s", prb_LIT(filename)), O_RDONLY, 0);
     prb_assert(handle.success);
-    prb_GrowingStr gstr = prb_beginStr(arena);
-    gstr.str.len = read(handle.handle, (void*)gstr.str.ptr, prb_arenaFreeSize(arena));
-    prb_assert(gstr.str.len > 0);
-    prb_arenaChangeUsed(arena, gstr.str.len);
-    prb_Str str = prb_endStr(&gstr);
-    prb_Bytes result = {(uint8_t*)str.ptr, str.len};
-    return result;
+    prb_Bytes content = prb_linux_readFromHandle(arena, handle.handle);
+    prb_assert(content.len > 0);
+    close(handle.handle);
+    return content;
 }
 
 static void
@@ -2860,9 +2875,11 @@ prb_getCoreCount(prb_Arena* arena) {
     prb_Str cpuinfo = prb_strFromBytes(prb_linux_readFromProc(arena, prb_STR("cpuinfo")));
     prb_StrScanner scanner = prb_createStrScanner(cpuinfo);
     prb_StrFindSpec spec = {};
-    spec.pattern = prb_STR("siblings");
+    spec.pattern = prb_STR("processor");
+    spec.direction = prb_StrDirection_FromEnd;
     if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
         spec.pattern = prb_STR(":");
+        spec.direction = prb_StrDirection_FromStart;
         if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
             spec.mode = prb_StrFindMode_LineBreak;
             if (prb_strScannerMove(&scanner, spec, prb_StrScannerSide_AfterMatch)) {
@@ -2870,7 +2887,9 @@ prb_getCoreCount(prb_Arena* arena) {
                 prb_ParseUintResult parse = prb_parseUint(coresStr, 10);
                 if (parse.success) {
                     result.success = true;
-                    result.cores = parse.number;
+                    // NOTE(khvorov) This number is the last CPU index + 1
+                    // Sibling count is not accurate on boards with multiple sockets
+                    result.cores = parse.number + 1;
                 }
             }
         }
