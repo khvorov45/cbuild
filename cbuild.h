@@ -1282,7 +1282,7 @@ prb_linux_open(prb_Arena* arena, prb_Str path, int oflags, mode_t mode) {
 
 static prb_Bytes
 prb_linux_readFromHandle(prb_Arena* arena, int handle) {
-    uint8_t* buf = prb_arenaFreePtr(arena);
+    uint8_t* buf = (uint8_t*)prb_arenaFreePtr(arena);
     int32_t size = 0;
     for (;;) {
         int readRes = read(handle, prb_arenaFreePtr(arena), prb_arenaFreeSize(arena));
