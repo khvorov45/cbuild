@@ -1496,6 +1496,28 @@ test_strFind(prb_Arena* arena) {
         prb_assert(!find.found);
     }
 
+    {
+        prb_Str         line = prb_STR("other");
+        prb_StrFindSpec spec = {
+            .mode = prb_StrFindMode_Exact,
+            .direction = prb_StrDirection_FromStart,
+            .pattern = prb_STR("pat"),
+            .alwaysMatchEnd = true,
+        };
+        prb_StrFindResult find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, line));
+        spec.mode = prb_StrFindMode_AnyChar;
+        spec.pattern = prb_STR("x");
+        find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, line));
+        spec.mode = prb_StrFindMode_LineBreak;
+        find = prb_strFind(line, spec);
+        prb_assert(find.found);
+        prb_assert(prb_streq(find.beforeMatch, line));
+    }
+
     prb_endTempMemory(temp);
 }
 

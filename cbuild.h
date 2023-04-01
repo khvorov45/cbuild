@@ -2147,17 +2147,6 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
                         }
                     }
                 }
-
-                if (!result.found && spec.alwaysMatchEnd) {
-                    int32_t matchPos = str.len;
-                    if (spec.direction == prb_StrDirection_FromEnd) {
-                        matchPos = 0;
-                    }
-                    result.found = true;
-                    result.beforeMatch = prb_strSlice(str, 0, matchPos);
-                    result.match = prb_strSlice(str, matchPos, matchPos);
-                    result.afterMatch = prb_strSlice(str, matchPos, str.len);
-                }
             }
         } break;
 
@@ -2203,6 +2192,17 @@ prb_strFind(prb_Str str, prb_StrFindSpec spec) {
                 result.afterMatch = prb_strSlice(str, lineEndIndex + lineEndLen, str.len);
             }
         }
+    }
+
+    if (!result.found && spec.alwaysMatchEnd && str.len > 0) {
+        int32_t matchPos = str.len;
+        if (spec.direction == prb_StrDirection_FromEnd) {
+            matchPos = 0;
+        }
+        result.found = true;
+        result.beforeMatch = prb_strSlice(str, 0, matchPos);
+        result.match = prb_strSlice(str, matchPos, matchPos);
+        result.afterMatch = prb_strSlice(str, matchPos, str.len);
     }
 
     return result;
